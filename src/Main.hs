@@ -25,7 +25,7 @@ simplify e = simplify' e e
     where simplify' e o = if simplifyExpr e == o then o else simplify' (simplifyExpr e) e
 
 simplifyExpr (Par e) = Par (simplifyExpr e)
-simplifyExpr (Mul '/' e1 (Mul '/' e2 e3)) = Mul '/' (simplifyExpr e1) (Mul '*' (simplifyExpr e2) (simplifyExpr e3))
+simplifyExpr (UMinus e) = UMinus (simplifyExpr e)
 simplifyExpr (Sum '+' (Number 0.0) n) = simplifyExpr n
 simplifyExpr (Sum _ n (Number 0.0)) = simplifyExpr n
 simplifyExpr (Mul '*' (Number 1.0) n) = simplifyExpr n
@@ -39,6 +39,9 @@ eval (Number x) = x
 eval (Sum '+' x y) = eval x + eval y
 eval (Sum '-' x y) = eval x - eval y
 eval (Mul '*' x y) = eval x * eval y
+eval (Mul '/' x (Mul op y z)) = let n = eval y
+                                    w = if n == 0 then error "Div by zero" else eval x / eval y
+                                in eval (Mul op (Number w) z)
 eval (Mul '/' x y) = let n = eval y
                      in if n == 0 then error "Div by zero" else eval x / n
 eval (Mul '%' x y) = let n = eval y
