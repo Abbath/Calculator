@@ -4,14 +4,18 @@ import Data.Char
 import System.IO
 import qualified Text.Read as R
 import Data.Maybe
+import Data.List
 
 data Expr = Number Double
             | Sum Char Expr Expr
             | Mul Char Expr Expr
             | Pow Expr Expr
+            | Fun String Expr
             | UMinus Expr
             | Par Expr
             deriving Eq
+
+funs = ["sin(", "cos(", "tan(", "atan(", "log(", "exp(", "sqrt("]
 
 instance Show Expr where
     show = showExpr 0
@@ -22,6 +26,7 @@ showExpr n (Pow e1 e2) = replicate n ' ' ++ "Pow \n" ++ showExpr (n+1) e1 ++ "\n
 showExpr n (Number x ) =  replicate n ' ' ++ "Number " ++ show x
 showExpr n (Par e) = replicate n ' ' ++ "Par \n" ++ showExpr (n+1) e
 showExpr n (UMinus e) =  replicate n ' ' ++ "UMinus \n" ++ showExpr (n+1) e
+showExpr n (Fun f e) = replicate n ' ' ++ "Fun " ++ f ++ "\n" ++ showExpr (n+1) e
 
 simplify e = simplify' e e
     where simplify' e o = if simplifyExpr e == o then o else simplify' (simplifyExpr e) e
@@ -38,6 +43,7 @@ simplifyExpr e = case e of
     (Sum op e1 e2)              -> Sum op (simplifyExpr e1) (simplifyExpr e2)
     (Mul op e1 e2)              -> Mul op (simplifyExpr e1) (simplifyExpr e2)
     (Pow e1 e2)                 -> Pow (simplifyExpr e1) (simplifyExpr e2)
+    (Fun f e)                   -> Fun f (simplifyExpr e)
     x                           -> x
 
 eval :: Expr -> Double
@@ -65,6 +71,14 @@ eval e = case e of
    (Pow x y) -> eval x ** eval y
    (UMinus x)   -> -(eval x)
    (Par e)      -> eval e
+   (Fun f e)    -> case f of
+        "sin" -> sin (eval e)
+        "cos" -> cos (eval e)
+        "tan" -> tan (eval e)
+        "atan" -> atan (eval e)
+        "log"  -> log (eval e)
+        "exp"  -> exp (eval e)
+        "sqrt" -> sqrt (eval e)
 
 parseExpr s = let b = head s == '-'
                   ss = if b then tail s else s
@@ -94,10 +108,17 @@ parseNumber s |null s = error "Syntax error!"
               |checkNumber s =
                 let x = fst . head . (reads :: String -> [(Double, String)]) $ s
                 in Number x
+              |any (`isPrefixOf` s) funs = parseFun s
               |tryHead "parNum" s == '(' =
                  let ss = init . fst . takePar . tail $ s
                  in Par (parseExpr ss)
               |otherwise = parseExpr s
+
+parseFun s = case fromMaybe "" $ find (`isPrefixOf` s) funs of
+                "" -> error "I have no idea!"
+                x  -> let ss = init . fst . takePar . drop (length x) $ s
+                      in Fun (init x) (parseExpr ss)
+
 
 takePar s = takePar' 1 s []
 
@@ -126,6 +147,8 @@ main = do
     hFlush stdout
     x <- getLine
     if not (null x)
-    then print $ eval . parse $ x
+    then do let y = parse x
+            print y
+            print . eval $ y
     else putStrLn "Empty!"
     main
