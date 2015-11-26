@@ -43,6 +43,8 @@ simplifyExpr e = case e of
     (Sum op e1 e2)              -> Sum op (simplifyExpr e1) (simplifyExpr e2)
     (Mul op e1 e2)              -> Mul op (simplifyExpr e1) (simplifyExpr e2)
     (Pow e1 e2)                 -> Pow (simplifyExpr e1) (simplifyExpr e2)
+    (Fun "exp" (Fun "log" e))   -> simplifyExpr e
+    (Fun "log" (Fun "exp" e))   -> simplifyExpr e
     (Fun f e)                   -> Fun f (simplifyExpr e)
     x                           -> x
 
@@ -97,14 +99,14 @@ parseTerm s = let (s1, s2) = breakPar (`elem` "*/%") s
               in  Mul op e1 e2
 
 parsePow s = let (s1, s2) = breakPar (`elem` "^") s
-                 e1 = parseNumber s1
+                 e1 = parseToken s1
                  e2 = if null s2 then Number 1 else parseExpr . tail $ s2
              in  Pow e1 e2
 
 checkNumber s = let x = (reads :: String -> [(Double, String)]) s
                 in not (null x) && ("" == (snd . head $ x))
 
-parseNumber s |null s = error "Syntax error!"
+parseToken s  |null s = error "Syntax error!"
               |checkNumber s =
                 let x = fst . head . (reads :: String -> [(Double, String)]) $ s
                 in Number x
@@ -112,13 +114,12 @@ parseNumber s |null s = error "Syntax error!"
               |tryHead "parNum" s == '(' =
                  let ss = init . fst . takePar . tail $ s
                  in Par (parseExpr ss)
-              |otherwise = parseExpr s
+              |otherwise = error "Syntax error!"
 
 parseFun s = case fromMaybe "" $ find (`isPrefixOf` s) funs of
                 "" -> error "I have no idea!"
                 x  -> let ss = init . fst . takePar . drop (length x) $ s
                       in Fun (init x) (parseExpr ss)
-
 
 takePar s = takePar' 1 s []
 
