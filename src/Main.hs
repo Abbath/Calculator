@@ -7,7 +7,7 @@ import Data.List (isPrefixOf, find)
 
 data Operator = Plus | Minus | Mult | Div | Mod | Power deriving (Show, Eq)
 
-data Function = Sin | Cos | Tan | Atan | Log | Exp | Sqrt deriving (Show, Eq)
+data Function = Sin | Cos | Tan | Asin | Acos | Atan | Log | Exp | Sqrt deriving (Show, Eq)
 
 data Token = TNumber Double
            | TOp Operator
@@ -45,6 +45,8 @@ function f = case f of
     "sin" -> Sin
     "cos" -> Cos
     "tan" -> Tan
+    "asin"-> Asin
+    "acos"-> Acos
     "atan"-> Atan
     "log" -> Log
     "exp" -> Exp
@@ -74,7 +76,7 @@ tryNumber s = let x = (reads :: String -> [(Double, String)]) s
 readNumber s = let [(x,y)] = (reads :: String -> [(Double, String)]) s
                in (x,y)
 
-funs = ["sin(", "cos(", "tan(", "atan(", "log(", "exp(", "sqrt("]
+funs = ["sin(", "cos(", "asin(", "acos(", "tan(", "atan(", "log(", "exp(", "sqrt("]
 
 instance Show Expr where
     show = showExpr 0
@@ -96,22 +98,30 @@ simplify e = simplify' e e
     where simplify' e o = if simplifyExpr e == o then o else simplify' (simplifyExpr e) e
 
 simplifyExpr e = case e of
-    (Par e)                     -> Par (simplifyExpr e)
-    (UMinus (Pow e1 e2))        -> Pow (UMinus (simplifyExpr e1)) (simplifyExpr e2)
-    (UMinus e)                  -> UMinus (simplifyExpr e)
-    (Sum Minus (Number 0.0) n)  -> UMinus (simplifyExpr n)
-    (Sum Plus (Number 0.0) n)   -> simplifyExpr n
-    (Sum _ n (Number 0.0))      -> simplifyExpr n
-    (Prod Mult (Number 1.0) n)  -> simplifyExpr n
-    (Prod _ n (Number 1.0))     -> simplifyExpr n
-    (Pow n (Number 1.0))        -> simplifyExpr n
-    (Sum op e1 e2)              -> Sum op (simplifyExpr e1) (simplifyExpr e2)
-    (Prod op e1 e2)             -> Prod op (simplifyExpr e1) (simplifyExpr e2)
-    (Pow e1 e2)                 -> Pow (simplifyExpr e1) (simplifyExpr e2)
-    (Fun Exp (Fun Log e))       -> simplifyExpr e
-    (Fun Log (Fun Exp e))       -> simplifyExpr e
-    (Fun f e)                   -> Fun f (simplifyExpr e)
-    x                           -> x
+    (Par e)                         -> Par (simplifyExpr e)
+    (UMinus (Pow e1 e2))            -> Pow (UMinus (simplifyExpr e1)) (simplifyExpr e2)
+    (UMinus e)                      -> UMinus (simplifyExpr e)
+    (Sum Minus (Number 0.0) n)      -> UMinus (simplifyExpr n)
+    (Sum Plus (Number 0.0) n)       -> simplifyExpr n
+    (Sum _ n (Number 0.0))          -> simplifyExpr n
+    (Prod Mult (Number 1.0) n)      -> simplifyExpr n
+    (Prod _ n (Number 1.0))         -> simplifyExpr n
+    (Pow n (Number 1.0))            -> simplifyExpr n
+    (Sum op e1 e2)                  -> Sum op (simplifyExpr e1) (simplifyExpr e2)
+    (Prod op e1 e2)                 -> Prod op (simplifyExpr e1) (simplifyExpr e2)
+    (Pow (Fun Sqrt e) (Number 2.0)) -> simplifyExpr e
+    (Pow e1 e2)                     -> Pow (simplifyExpr e1) (simplifyExpr e2)
+    (Fun Exp (Fun Log e))           -> simplifyExpr e
+    (Fun Log (Fun Exp e))           -> simplifyExpr e
+    (Fun Asin (Fun Sin e))          -> simplifyExpr e
+    (Fun Sin (Fun Asin e))          -> simplifyExpr e
+    (Fun Acos (Fun Cos e))          -> simplifyExpr e
+    (Fun Cos (Fun Acos e))          -> simplifyExpr e
+    (Fun Atan (Fun Tan e))          -> simplifyExpr e
+    (Fun Tan (Fun Atan e))          -> simplifyExpr e
+    (Fun Sqrt (Pow e (Number 2.0))) -> simplifyExpr e
+    (Fun f e)                       -> Fun f (simplifyExpr e)
+    x                               -> x
 
 eval :: Expr -> Double
 eval e = case e of
@@ -120,16 +130,8 @@ eval e = case e of
    (Sum Minus x (Sum op y z))   -> eval $ Sum op (Sum Minus x y) z
    (Sum Minus x y)              -> eval x - eval y
    (Prod Mult x y)              -> eval x * eval y
-   (Prod Div x (Prod op y z))   ->
-        let n = eval y
-            w = if n == 0 then error "Div by zero" else eval x / eval y
-        in eval (Prod op (Number w) z)
-   (Prod Mod x (Prod op y z)) ->
-        let n = eval y
-            w = if n == 0
-                then error "Div by zero"
-                else fromIntegral $ mod (floor . eval $ x) (floor n)
-        in eval (Prod op (Number w) z)
+   (Prod Div x (Prod op y z))   -> eval $ Prod op (Prod Div x y) z
+   (Prod Mod x (Prod op y z))   -> eval $ Prod op (Prod Mod x y) z
    (Prod Div x y) -> let n = eval y
                     in if n == 0 then error "Div by zero" else eval x / n
    (Prod Mod x y) -> let n = eval y
@@ -143,6 +145,8 @@ eval e = case e of
         Sin  -> sin (eval e)
         Cos  -> cos (eval e)
         Tan  -> tan (eval e)
+        Asin -> asin (eval e)
+        Acos -> acos (eval e)
         Atan -> atan (eval e)
         Log  -> log (eval e)
         Exp  -> exp (eval e)
