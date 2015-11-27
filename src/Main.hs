@@ -34,12 +34,15 @@ operator c = case c of
     '%' -> Mod
     '^' -> Power
 
+isOp (TOp _) = True
+isOp _ = False
+
 unOp (TOp op) = op
 
 checkOps t = if snd . foldl f (TEnd, True) $ t
              then t
              else error "Two operators in a row"
-             where f (old, res) new  = (new, if old == new then res && False else res && True)
+             where f (old, res) new  = (new, if isOp new && old == new then res && False else res && True)
 
 function f = case f of
     "sin" -> Sin
@@ -114,11 +117,8 @@ simplifyExpr e = case e of
     (Fun Exp (Fun Log e))           -> simplifyExpr e
     (Fun Log (Fun Exp e))           -> simplifyExpr e
     (Fun Asin (Fun Sin e))          -> simplifyExpr e
-    (Fun Sin (Fun Asin e))          -> simplifyExpr e
     (Fun Acos (Fun Cos e))          -> simplifyExpr e
-    (Fun Cos (Fun Acos e))          -> simplifyExpr e
     (Fun Atan (Fun Tan e))          -> simplifyExpr e
-    (Fun Tan (Fun Atan e))          -> simplifyExpr e
     (Fun Sqrt (Pow e (Number 2.0))) -> simplifyExpr e
     (Fun f e)                       -> Fun f (simplifyExpr e)
     x                               -> x
@@ -141,6 +141,7 @@ eval e = case e of
    (Pow x y)  -> eval x ** eval y
    (UMinus x) -> -(eval x)
    (Par e)    -> eval e
+   (Fun Atan (Prod Div e1 e2)) -> atan2 (eval e1) (eval e2)
    (Fun f e)  -> case f of
         Sin  -> sin (eval e)
         Cos  -> cos (eval e)
