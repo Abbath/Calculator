@@ -36,6 +36,11 @@ operator c = case c of
 
 unOp (TOp op) = op
 
+checkOps t = if snd . foldl f (TEnd, True) $ t
+             then t
+             else error "Two operators in a row"
+             where f (old, res) new  = (new, if old == new then res && False else res && True)
+
 function f = case f of
     "sin" -> Sin
     "cos" -> Cos
@@ -44,6 +49,7 @@ function f = case f of
     "log" -> Log
     "exp" -> Exp
     "sqrt"-> Sqrt
+    _     -> error "Bad function name!"
 
 tokenize [] = []
 tokenize s@(x:xs)
@@ -60,15 +66,7 @@ tryFun s = any (\x -> init x `isPrefixOf` s) funs
 readFun s =
     let ss = fromMaybe "bad(" $ find (`isPrefixOf` s) funs
         rest = drop (length ss - 1) s
-    in case init ss of
-         "bad"  -> error "No such function!"
-         "sin"  -> (Sin, rest)
-         "cos"  -> (Cos, rest)
-         "tan"  -> (Tan, rest)
-         "atan" -> (Atan,rest)
-         "log"  -> (Log, rest)
-         "exp"  -> (Exp, rest)
-         "sqrt" -> (Sqrt,rest)
+    in (function . init $ ss, rest)
 
 tryNumber s = let x = (reads :: String -> [(Double, String)]) s
               in not . null $ x
@@ -101,6 +99,7 @@ simplifyExpr e = case e of
     (Par e)                     -> Par (simplifyExpr e)
     (UMinus (Pow e1 e2))        -> Pow (UMinus (simplifyExpr e1)) (simplifyExpr e2)
     (UMinus e)                  -> UMinus (simplifyExpr e)
+    (Sum Minus (Number 0.0) n)  -> UMinus (simplifyExpr n)
     (Sum Plus (Number 0.0) n)   -> simplifyExpr n
     (Sum _ n (Number 0.0))      -> simplifyExpr n
     (Prod Mult (Number 1.0) n)  -> simplifyExpr n
@@ -141,22 +140,19 @@ eval e = case e of
    (UMinus x) -> -(eval x)
    (Par e)    -> eval e
    (Fun f e)  -> case f of
-        Sin -> sin (eval e)
-        Cos -> cos (eval e)
-        Tan -> tan (eval e)
+        Sin  -> sin (eval e)
+        Cos  -> cos (eval e)
+        Tan  -> tan (eval e)
         Atan -> atan (eval e)
         Log  -> log (eval e)
         Exp  -> exp (eval e)
         Sqrt -> sqrt (eval e)
 
-parseExpr s = let b = head s == TOp Minus
-                  c = head s == TOp Plus
-                  ss = if b || c then tail s else s
-                  (s1, s2) = breakPar (`elem` [TOp Plus, TOp Minus]) ss
-                  e1 = parseTerm s1
+parseExpr s = let (s1, s2) = breakPar (`elem` [TOp Plus, TOp Minus]) s
+                  e1 = if null s1 then Number 0 else parseTerm s1
                   op = if null s2 then Plus else unOp $ tryHead "Missing second term" s2
                   e2 = if null s2 then Number 0 else parseExpr . tail $ s2
-              in Sum op (if b then UMinus e1 else e1) e2
+              in Sum op e1 e2
 
 parseTerm s = let (s1, s2) = breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
                   e1 = parsePow s1
@@ -165,21 +161,21 @@ parseTerm s = let (s1, s2) = breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
               in Prod op e1 e2
 
 parsePow s = let (s1, s2) = breakPar (`elem` [TOp Power]) s
-                 e1 = parseTToken s1
+                 e1 = parseToken s1
                  e2 = if null s2 then Number 1 else parseExpr . tail $ s2
              in if (not . null $ s2) && (null . tail $ s2)
                 then error "Missing exponent"
                 else Pow e1 e2
 
-parseTToken [] = error "Syntax error"
-parseTToken [TNumber n] = Number n
-parseTToken (TFun f: TLPar : rest) =
+parseToken [] = error "Syntax error"
+parseToken [TNumber n] = Number n
+parseToken (TFun f: TLPar : rest) =
     let ss = init . fst . takePar $ rest
     in Fun f (parseExpr ss)
-parseTToken (TLPar : rest) =
+parseToken (TLPar : rest) =
     let ss = init . fst . takePar $ rest
     in Par (parseExpr ss)
-parseTToken x = error "Syntax error!"
+parseToken x = error "Syntax error!"
 
 takePar s = takePar' 1 s []
 
@@ -187,9 +183,9 @@ takePar' n [] acc = if n == 0 then (reverse acc,[]) else error $ "Parentheses mi
 takePar' n (x:xs) acc = if n == 0
                        then (reverse acc, x:xs)
                        else case x of
-                           TRPar   -> takePar' (n-1) xs (x:acc)
-                           TLPar   -> takePar' (n+1) xs (x:acc)
-                           _       -> takePar' n xs (x:acc)
+                           TRPar -> takePar' (n-1) xs (x:acc)
+                           TLPar -> takePar' (n+1) xs (x:acc)
+                           _     -> takePar' n xs (x:acc)
 
 breakPar _ xs@[]        =  (xs, xs)
 breakPar p xs@(x:xs')
@@ -201,7 +197,7 @@ breakPar p xs@(x:xs')
 
 tryHead s l = if null l then error s else head l
 
-parse = simplify . parseExpr
+parse = simplify . parseExpr . checkOps
 
 main = do
     putStr "> "
