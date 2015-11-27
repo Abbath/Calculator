@@ -39,7 +39,7 @@ checkOps :: [Token] -> [Token]
 checkOps t = if snd . foldl f (TEnd, True) $ t
              then t
              else error "Two operators in a row"
-             where f (old, res) new  = (new, if isOp new && old == new then res && False else res && True)
+             where f (old, res) new  = (new, res && not (isOp new && old == new))
                    isOp (TOp Assign) = False
                    isOp (TOp _) = True
                    isOp _ = False
@@ -63,9 +63,9 @@ tokenize s@(x:xs)
     |x == '(' = TLPar : tokenize xs
     |x == ')' = TRPar : tokenize xs
     |isSpace x = tokenize xs
+    |tryFun s = let (f, rest) = readFun s in TFun f : tokenize rest
     |tryIdentifier s = let (i, rest) = readIdentifier s in TIdent i : tokenize rest
     |tryNumber s = let (n, rest) = readNumber s in TNumber n : tokenize rest
-    |tryFun s = let (f, rest) = readFun s in TFun f : tokenize rest
     |otherwise = error $ "Cannot tokenize " ++ s
     where
         tryIdentifier (x:xs) = isAlpha x || x == '_'
@@ -135,15 +135,16 @@ simplifyExpr e = case e of
 
 eval :: Map String Double -> Expr -> (Double, Map String Double)
 eval m e = case e of
-   (Asgn s e)                   -> let (r,_) = eval m e in (r, M.insert s r m)
-   (Id s)                       -> (fromMaybe (error "No such variable!") (M.lookup s m :: Maybe Double),m)
-   (Number x)                   -> (x,m)
-   (Sum Plus x y)               -> eval' (+) x y
-   (Sum Minus x (Sum op y z))   -> eval m $ Sum op (Sum Minus x y) z
-   (Sum Minus x y)              -> eval' (-) x y
-   (Prod Mult x y)              -> eval' (*) x y
-   (Prod Div x (Prod op y z))   -> eval m $ Prod op (Prod Div x y) z
-   (Prod Mod x (Prod op y z))   -> eval m $ Prod op (Prod Mod x y) z
+   (Asgn s e) | s `elem` ["pi","e"] -> error $ "Can not change constant value " ++ s
+   (Asgn s e)                       -> let (r,_) = eval m e in (r, M.insert s r m)
+   (Id s)                           -> (fromMaybe (error "No such variable!") (M.lookup s m :: Maybe Double),m)
+   (Number x)                       -> (x,m)
+   (Sum Plus x y)                   -> eval' (+) x y
+   (Sum Minus x (Sum op y z))       -> eval m $ Sum op (Sum Minus x y) z
+   (Sum Minus x y)                  -> eval' (-) x y
+   (Prod Mult x y)                  -> eval' (*) x y
+   (Prod Div x (Prod op y z))       -> eval m $ Prod op (Prod Div x y) z
+   (Prod Mod x (Prod op y z))       -> eval m $ Prod op (Prod Mod x y) z
    (Prod Div x y) -> let (n,_) = eval m y
                     in if n == 0 then error "Div by zero" else (fst (eval m x) / n, m)
    (Prod Mod x y) -> let (n,_) = eval m y
