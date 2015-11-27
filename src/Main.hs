@@ -70,7 +70,7 @@ tokenize s@(x:xs)
     where
         tryIdentifier (x:xs) = isAlpha x || x == '_'
         readIdentifier = break (\x -> not (isAlpha x || isDigit x || (x == '_')))
-        tryFun s = any (\x -> init x `isPrefixOf` s) funs
+        tryFun s = any (`isPrefixOf` s) funs
         readFun s =
             let ss = fromJust $ find (`isPrefixOf` s) funs
                 rest = drop (length ss - 1) s
@@ -111,7 +111,7 @@ simplifyExpr e = case e of
     (Par (Par e))                           -> Par (simplifyExpr e)
     (Par e)                                 -> Par (simplifyExpr e)
     (UMinus (Par (UMinus e)))               -> Par (simplifyExpr e)
-    (UMinus (Pow e1 e2))                    -> Pow (UMinus (simplifyExpr e1)) (simplifyExpr e2)
+    --(UMinus (Pow e1 e2))                    -> Pow (UMinus (simplifyExpr e1)) (simplifyExpr e2)
     (UMinus e)                              -> UMinus (simplifyExpr e)
     (Sum Minus (Number 0.0) (Sum op e1 e2)) -> Sum op (simplifyExpr . UMinus $ e1) (simplifyExpr e2)
     (Sum Minus (Number 0.0) n)              -> UMinus (simplifyExpr n)
@@ -135,7 +135,7 @@ simplifyExpr e = case e of
 
 eval :: Map String Double -> Expr -> (Double, Map String Double)
 eval m e = case e of
-   (Asgn s e) | s `elem` ["pi","e"] -> error $ "Can not change constant value " ++ s
+   (Asgn s _) | s `elem` ["pi","e"] -> error $ "Can not change constant value " ++ s
    (Asgn s e)                       -> let (r,_) = eval m e in (r, M.insert s r m)
    (Id s)                           -> (fromMaybe (error "No such variable!") (M.lookup s m :: Maybe Double),m)
    (Number x)                       -> (x,m)
@@ -151,11 +151,12 @@ eval m e = case e of
                     in if n == 0
                     then error "Div by zero"
                     else (fromIntegral $ mod (floor . fst $ eval m x) (floor n), m)
-   (Pow x y)  -> eval' (**) x y
-   (UMinus x) -> let (n,_) = eval m x in (-n,m)
-   (Par e)    -> eval m e
-   (Fun Atan (Prod Div e1 e2)) -> eval' atan2 e1 e2
-   (Fun f e)  -> ((fromMaybe id $ lookup f fns) (fst $ eval m e),m)
+   (Pow x y)                    -> eval' (**) x y
+   (UMinus (Pow x y))           -> eval m $ Pow (UMinus x) y
+   (UMinus x)                   -> let (n,_) = eval m x in (-n,m)
+   (Par e)                      -> eval m e
+   (Fun Atan (Prod Div e1 e2))  -> eval' atan2 e1 e2
+   (Fun f e)                    -> ((fromMaybe id $ lookup f fns) (fst $ eval m e),m)
    where
     fns = [(Sin,sin), (Cos,cos), (Tan,tan), (Asin,asin), (Acos,acos), (Atan, atan), (Log,log), (Exp,exp), (Sqrt,sqrt)]
     eval' f x y =
