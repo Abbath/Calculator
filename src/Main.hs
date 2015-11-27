@@ -20,13 +20,18 @@ funs = ["sin(", "cos(", "tan(", "atan(", "log(", "exp(", "sqrt("]
 instance Show Expr where
     show = showExpr 0
 
-showExpr n (Sum op e1 e2) = replicate n ' ' ++ "Sum " ++ [op] ++ "\n" ++ showExpr (n+1) e1 ++ "\n" ++ showExpr (n+1) e2
-showExpr n (Mul op e1 e2) = replicate n ' ' ++ "Mul " ++ [op] ++ "\n" ++ showExpr (n+1) e1 ++ "\n" ++ showExpr (n+1) e2
-showExpr n (Pow e1 e2) = replicate n ' ' ++ "Pow \n" ++ showExpr (n+1) e1 ++ "\n" ++ showExpr (n+1) e2
-showExpr n (Number x ) =  replicate n ' ' ++ "Number " ++ show x
-showExpr n (Par e) = replicate n ' ' ++ "Par \n" ++ showExpr (n+1) e
-showExpr n (UMinus e) =  replicate n ' ' ++ "UMinus \n" ++ showExpr (n+1) e
-showExpr n (Fun f e) = replicate n ' ' ++ "Fun " ++ f ++ "\n" ++ showExpr (n+1) e
+showExpr n e =
+    let suf = case e of
+            (Sum op e1 e2)  -> pref ++ "Sum " ++ [op] ++ "\n" ++ s e1 ++ "\n" ++ s e2
+            (Mul op e1 e2)  -> pref ++ "Mul " ++ [op] ++ "\n" ++ s e1 ++ "\n" ++ s e2
+            (Pow e1 e2)     -> pref ++ "Pow \n" ++ s e1 ++ "\n" ++ s e2
+            (Number x )     -> pref ++ "Number " ++ show x
+            (Par e)         -> pref ++ "Par \n" ++ s e
+            (UMinus e)      -> pref ++ "UMinus \n" ++ s e
+            (Fun f e)       -> pref ++ "Fun " ++ f ++ "\n" ++ s e
+        pref = replicate n ' '
+    in pref ++ suf
+    where s = showExpr (n+1)
 
 simplify e = simplify' e e
     where simplify' e o = if simplifyExpr e == o then o else simplify' (simplifyExpr e) e
@@ -52,6 +57,7 @@ eval :: Expr -> Double
 eval e = case e of
    (Number x)       -> x
    (Sum '+' x y)    -> eval x + eval y
+   (Sum '-' x (Sum op y z)) -> eval $ Sum op (Sum '-' x y) z
    (Sum '-' x y)    -> eval x - eval y
    (Mul '*' x y)    -> eval x * eval y
    (Mul '/' x (Mul op y z)) ->
@@ -87,10 +93,8 @@ parseExpr s = let b = head s == '-'
                   (s1, s2) = breakPar (`elem` "+-") ss
                   e1 = parseTerm s1
                   op = if null s2 then '+' else tryHead "parExp" s2
-                  e2 = if null s2 then Number 0 else case op of
-                     '+' -> parseExpr . tail $ s2
-                     '-' -> parseExpr . ('-':) . tail $ s2
-              in Sum '+' (if b then UMinus e1 else e1) e2
+                  e2 = if null s2 then Number 0 else parseExpr . tail $ s2
+              in Sum op (if b then UMinus e1 else e1) e2
 
 parseTerm s = let (s1, s2) = breakPar (`elem` "*/%") s
                   e1 = parsePow s1
