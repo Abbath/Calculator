@@ -60,23 +60,16 @@ tokenize s@(x:xs)
     |tryNumber s = let (n, rest) = readNumber s in TNumber n : tokenize rest
     |tryFun s = let (f, rest) = readFun s in TFun f : tokenize rest
     |otherwise = error $ "Cannot tokenize " ++ s
-
-tryFun :: String -> Bool
-tryFun s = any (\x -> init x `isPrefixOf` s) funs
-
-readFun :: String -> (Function, String)
-readFun s =
-    let ss = fromJust $ find (`isPrefixOf` s) funs
-        rest = drop (length ss - 1) s
-    in (function . init $ ss, rest)
-
-tryNumber :: String -> Bool
-tryNumber s = let x = (reads :: String -> [(Double, String)]) s
-              in not . null $ x
-
-readNumber :: String -> (Double, String)
-readNumber s = let [(x,y)] = (reads :: String -> [(Double, String)]) s
-               in (x,y)
+    where
+        tryFun s = any (\x -> init x `isPrefixOf` s) funs
+        readFun s =
+            let ss = fromJust $ find (`isPrefixOf` s) funs
+                rest = drop (length ss - 1) s
+            in (function . init $ ss, rest)
+        tryNumber s = let x = (reads :: String -> [(Double, String)]) s
+                      in not . null $ x
+        readNumber s = let [(x,y)] = (reads :: String -> [(Double, String)]) s
+                       in (x,y)
 
 funs :: [String]
 funs = ["sin(", "cos(", "asin(", "acos(", "tan(", "atan(", "log(", "exp(", "sqrt("]
@@ -209,8 +202,7 @@ parse = preprocess . parseExpr . checkOps
 
 main :: IO ()
 main = do
-    putStr "> "
-    hFlush stdout
+    putStr "> " >> hFlush stdout
     x <- getLine
     if not (null x)
     then do let y = tokenize x
