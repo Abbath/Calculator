@@ -1,11 +1,13 @@
 module Main where
 
-import Data.Char (isSpace)
+import Data.Char (isSpace, isAlpha, isDigit)
 import System.IO (hFlush, stdout)
 import Data.Maybe (fromMaybe, fromJust)
 import Data.List (isPrefixOf, find)
+import Data.Map (Map)
+import qualified Data.Map as M
 
-data Operator = Plus | Minus | Mult | Div | Mod | Power deriving (Show, Eq)
+data Operator = Assign | Plus | Minus | Mult | Div | Mod | Power deriving (Show, Eq)
 
 data Function = Sin | Cos | Tan | Asin | Acos | Atan | Log | Exp | Sqrt deriving (Show, Eq)
 
@@ -14,27 +16,31 @@ data Token = TNumber Double
            | TLPar
            | TRPar
            | TFun Function
+           | TIdent String
            | TEnd
            deriving (Show, Eq)
 
 data Expr = Number Double
+          | Asgn String Expr
           | Sum Operator Expr Expr
           | Prod Operator Expr Expr
           | Pow Expr Expr
           | Fun Function Expr
           | UMinus Expr
           | Par Expr
+          | Id String
           deriving Eq
 
 operator :: Char -> Operator
 operator c = fromJust $ lookup c ops
-    where ops = [('+',Plus), ('-',Minus), ('*',Mult), ('/',Div), ('%',Mod), ('^',Power)]
+    where ops = [('=',Assign), ('+',Plus), ('-',Minus), ('*',Mult), ('/',Div), ('%',Mod), ('^',Power)]
 
 checkOps :: [Token] -> [Token]
 checkOps t = if snd . foldl f (TEnd, True) $ t
              then t
              else error "Two operators in a row"
              where f (old, res) new  = (new, if isOp new && old == new then res && False else res && True)
+                   isOp (TOp Assign) = False
                    isOp (TOp _) = True
                    isOp _ = False
 
@@ -53,14 +59,17 @@ function f = case f of
 tokenize :: String -> [Token]
 tokenize [] = []
 tokenize s@(x:xs)
-    |x `elem` "+-*/%^" = TOp (operator x) : tokenize xs
+    |x `elem` "+-*/%^=" = TOp (operator x) : tokenize xs
     |x == '(' = TLPar : tokenize xs
     |x == ')' = TRPar : tokenize xs
     |isSpace x = tokenize xs
+    |tryIdentifier s = let (i, rest) = readIdentifier s in TIdent i : tokenize rest
     |tryNumber s = let (n, rest) = readNumber s in TNumber n : tokenize rest
     |tryFun s = let (f, rest) = readFun s in TFun f : tokenize rest
     |otherwise = error $ "Cannot tokenize " ++ s
     where
+        tryIdentifier (x:xs) = isAlpha x || x == '_'
+        readIdentifier = break (\x -> not (isAlpha x || isDigit x || (x == '_')))
         tryFun s = any (\x -> init x `isPrefixOf` s) funs
         readFun s =
             let ss = fromJust $ find (`isPrefixOf` s) funs
@@ -80,6 +89,7 @@ instance Show Expr where
 showExpr :: Int -> Expr -> String
 showExpr n e =
     let suf = case e of
+            (Asgn i e)      -> "Assign " ++ i ++ "\n" ++ s e
             (Sum op e1 e2)  -> "Sum " ++ show op ++ "\n" ++ s e1 ++ "\n" ++ s e2
             (Prod op e1 e2) -> "Prod " ++ show op ++ "\n" ++ s e1 ++ "\n" ++ s e2
             (Pow e1 e2)     -> "Pow \n" ++ s e1 ++ "\n" ++ s e2
@@ -87,6 +97,7 @@ showExpr n e =
             (Par e)         -> "Par \n" ++ s e
             (UMinus e)      -> "UMinus \n" ++ s e
             (Fun f e)       -> "Fun " ++ show f ++ "\n" ++ s e
+            (Id s)          -> "Id " ++ s
     in replicate n ' ' ++ suf
     where s = showExpr (n+1)
 
@@ -96,6 +107,7 @@ preprocess e = simplify' e e
 
 simplifyExpr :: Expr -> Expr
 simplifyExpr e = case e of
+    (Asgn s e)                              -> Asgn s (simplifyExpr e)
     (Par (Par e))                           -> Par (simplifyExpr e)
     (Par e)                                 -> Par (simplifyExpr e)
     (UMinus (Par (UMinus e)))               -> Par (simplifyExpr e)
@@ -121,28 +133,38 @@ simplifyExpr e = case e of
     (Fun f e)                               -> Fun f (simplifyExpr e)
     x                                       -> x
 
-eval :: Expr -> Double
-eval e = case e of
-   (Number x)                   -> x
-   (Sum Plus x y)               -> eval x + eval y
-   (Sum Minus x (Sum op y z))   -> eval $ Sum op (Sum Minus x y) z
-   (Sum Minus x y)              -> eval x - eval y
-   (Prod Mult x y)              -> eval x * eval y
-   (Prod Div x (Prod op y z))   -> eval $ Prod op (Prod Div x y) z
-   (Prod Mod x (Prod op y z))   -> eval $ Prod op (Prod Mod x y) z
-   (Prod Div x y) -> let n = eval y
-                    in if n == 0 then error "Div by zero" else eval x / n
-   (Prod Mod x y) -> let n = eval y
+eval :: Map String Double -> Expr -> (Double, Map String Double)
+eval m e = case e of
+   (Asgn s e)                   -> let (r,_) = eval m e in (r, M.insert s r m)
+   (Id s)                       -> (fromMaybe (error "No such variable!") (M.lookup s m :: Maybe Double),m)
+   (Number x)                   -> (x,m)
+   (Sum Plus x y)               -> eval' (+) x y
+   (Sum Minus x (Sum op y z))   -> eval m $ Sum op (Sum Minus x y) z
+   (Sum Minus x y)              -> eval' (-) x y
+   (Prod Mult x y)              -> eval' (*) x y
+   (Prod Div x (Prod op y z))   -> eval m $ Prod op (Prod Div x y) z
+   (Prod Mod x (Prod op y z))   -> eval m $ Prod op (Prod Mod x y) z
+   (Prod Div x y) -> let (n,_) = eval m y
+                    in if n == 0 then error "Div by zero" else (fst (eval m x) / n, m)
+   (Prod Mod x y) -> let (n,_) = eval m y
                     in if n == 0
                     then error "Div by zero"
-                    else fromIntegral $ mod (floor . eval $ x) (floor n)
-   (Pow x y)  -> eval x ** eval y
-   (UMinus x) -> -(eval x)
-   (Par e)    -> eval e
-   (Fun Atan (Prod Div e1 e2)) -> atan2 (eval e1) (eval e2)
-   (Fun f e)  -> (fromMaybe id $ lookup f fns) (eval e)
+                    else (fromIntegral $ mod (floor . fst $ eval m x) (floor n), m)
+   (Pow x y)  -> eval' (**) x y
+   (UMinus x) -> let (n,_) = eval m x in (-n,m)
+   (Par e)    -> eval m e
+   (Fun Atan (Prod Div e1 e2)) -> eval' atan2 e1 e2
+   (Fun f e)  -> ((fromMaybe id $ lookup f fns) (fst $ eval m e),m)
    where
     fns = [(Sin,sin), (Cos,cos), (Tan,tan), (Asin,asin), (Acos,acos), (Atan, atan), (Log,log), (Exp,exp), (Sqrt,sqrt)]
+    eval' f x y =
+        let (t1,_) = eval m x
+            (t2,_) = eval m y
+        in (f t1 t2, m)
+
+parseAssign :: [Token] -> Expr
+parseAssign (TIdent s : TOp Assign : rest) = Asgn s (parseExpr rest)
+parseAssign s = parseExpr s
 
 parseExpr :: [Token] -> Expr
 parseExpr s = let (s1, s2) = breakPar (`elem` [TOp Plus, TOp Minus]) s
@@ -169,10 +191,11 @@ parsePow s = let (s1, s2) = breakPar (`elem` [TOp Power]) s
 parseToken :: [Token] -> Expr
 parseToken s = case s of
     [] -> error "Syntax error"
+    [TIdent s]  -> Id s
     [TNumber n] -> Number n
     (TFun f: TLPar : rest) -> Fun f $ ps rest
     (TLPar : rest) -> Par $ ps rest
-    _ -> error "Syntax error!"
+    x -> error $ "Syntax error!" ++ show x
     where ps = parseExpr . init . fst . takePar
 
 takePar :: [Token] -> ([Token], [Token])
@@ -198,17 +221,27 @@ tryHead :: String -> [a] -> a
 tryHead s l = if null l then error s else head l
 
 parse :: [Token] -> Expr
-parse = preprocess . parseExpr . checkOps
+parse = preprocess . parseAssign . checkOps
 
-main :: IO ()
-main = do
+loop :: Map String Double -> IO()
+loop m = do
     putStr "> " >> hFlush stdout
     x <- getLine
     if not (null x)
-    then do let y = tokenize x
-            let z = parse y
-            print y
-            print z
-            print . eval $ z
-    else putStrLn "Empty!"
-    main
+    then do
+        let y = tokenize x
+        let z = parse y
+        let (res, m1) = eval m z
+        print y
+        print z
+        print res
+        loop m1
+    else do
+        putStrLn "Empty!"
+        loop m
+
+defVar :: Map String Double
+defVar = M.fromList [("pi",pi), ("e",exp 1)]
+
+main :: IO ()
+main = loop defVar
