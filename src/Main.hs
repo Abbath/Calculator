@@ -111,7 +111,7 @@ simplifyExpr e = case e of
     (Par (Par e))                           -> Par (simplifyExpr e)
     (Par e)                                 -> Par (simplifyExpr e)
     (UMinus (Par (UMinus e)))               -> Par (simplifyExpr e)
-    --(UMinus (Pow e1 e2))                    -> Pow (UMinus (simplifyExpr e1)) (simplifyExpr e2)
+    (UMinus (Pow e1 e2))                    -> Pow (UMinus (simplifyExpr e1)) (simplifyExpr e2)
     (UMinus e)                              -> UMinus (simplifyExpr e)
     (Sum Minus (Number 0.0) (Sum op e1 e2)) -> Sum op (simplifyExpr . UMinus $ e1) (simplifyExpr e2)
     (Sum Minus (Number 0.0) n)              -> UMinus (simplifyExpr n)
@@ -135,7 +135,7 @@ simplifyExpr e = case e of
 
 eval :: Map String Double -> Expr -> (Double, Map String Double)
 eval m e = case e of
-   (Asgn s _) | s `elem` ["pi","e"] -> error $ "Can not change constant value " ++ s
+   (Asgn s _) | s `elem` ["pi","e","_"] -> error $ "Can not change constant value " ++ s
    (Asgn s e)                       -> let (r,_) = eval m e in (r, M.insert s r m)
    (Id s)                           -> (fromMaybe (error "No such variable!") (M.lookup s m :: Maybe Double),m)
    (Number x)                       -> (x,m)
@@ -237,13 +237,13 @@ loop m = do
         print y
         print z
         print res
-        loop m1
+        loop (M.insert "_" res m1)
     else do
         putStrLn "Empty!"
         loop m
 
 defVar :: Map String Double
-defVar = M.fromList [("pi",pi), ("e",exp 1)]
+defVar = M.fromList [("pi",pi), ("e",exp 1), ("_", 0.0)]
 
 main :: IO ()
 main = loop defVar
