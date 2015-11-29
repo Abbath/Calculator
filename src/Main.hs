@@ -5,6 +5,7 @@ import System.IO (hFlush, stdout)
 import Data.Maybe (fromMaybe, fromJust)
 import Data.List (isPrefixOf, find)
 import Data.Map (Map)
+import Control.Arrow (first)
 import qualified Data.Map as M
 
 data Operator = Assign | Plus | Minus | Mult | Div | Mod | Power deriving (Show, Eq)
@@ -30,6 +31,11 @@ data Expr = Number Double
           | Par Expr
           | Id String
           deriving Eq
+
+checkEither inp f = let t = inp
+                    in case t of
+                        Left err -> Left err
+                        Right r -> Right (f r)
 
 operator :: Char -> Operator
 operator c = fromJust $ lookup c ops
@@ -68,10 +74,7 @@ tokenize s@(x:xs)
     |tryNumber s = let (n, rest) = readNumber s in f (TNumber n) rest
     |otherwise = Left $ "Cannot tokenize " ++ s
     where
-        f out inp = let t = tokenize inp
-                    in case t of
-                        Left _ -> t
-                        Right r -> Right (out : r)
+        f out inp = checkEither (tokenize inp) ((:) out)
         tryIdentifier (x:xs) = isAlpha x || x == '_'
         readIdentifier = break (\x -> not (isAlpha x || isDigit x || (x == '_')))
         tryFun s = any (`isPrefixOf` s) funs
@@ -169,11 +172,7 @@ eval m e = case e of
         in (f t1 t2, m)
 
 parseAssign :: [Token] -> Either String Expr
-parseAssign (TIdent s : TOp Assign : rest) =
-    let t = parseExpr rest
-    in case t of
-        Right e -> Right $ Asgn s e
-        Left err -> t
+parseAssign (TIdent s : TOp Assign : rest) = checkEither (parseExpr rest) (Asgn s)
 parseAssign s = parseExpr s
 
 parseExpr :: [Token] -> Either String Expr
@@ -230,14 +229,8 @@ parseToken s = case s of
     [] -> Left "Syntax error"
     [TIdent s]  -> Right $ Id s
     [TNumber n] -> Right $ Number n
-    (TFun f: TLPar : rest) -> let t = ps rest
-                              in case t of
-                                Left err -> t
-                                Right r -> Right $ Fun f r
-    (TLPar : rest) -> let t = ps rest
-                      in case t of
-                        Left err -> t
-                        Right r -> Right $ Par r
+    (TFun f: TLPar : rest) -> checkEither (ps rest) (Fun f)
+    (TLPar : rest) -> checkEither (ps rest) Par
     x -> Left $ "Syntax error!" ++ show x
     where ps ss = let t = takePar ss
                   in case t of
@@ -268,19 +261,13 @@ breakPar p xs@(x:xs')
                                             Right rr -> let (y, z) = rr
                                                         in Right ([x] ++ a ++ y, z)
            | p x        = Right ([],xs)
-           | otherwise  = let t = breakPar p xs'
-                          in case t of
-                            Left err -> t
-                            Right (ys, zs) -> Right (x:ys,zs)
+           | otherwise  = checkEither (breakPar p xs') (first ((:) x))
 
 tryHead :: String -> [Token] -> Either String Token
 tryHead s l = if length l < 2 then Left s else Right $ head l
 
 parse :: [Token] -> Either String Expr
-parse s = let t = checkOps s >>= parseAssign
-          in case t of
-            Left err -> Left err
-            Right r -> Right . preprocess $ r
+parse s = checkEither (checkOps s >>= parseAssign) preprocess
 
 loop :: Map String Double -> IO()
 loop m = do
