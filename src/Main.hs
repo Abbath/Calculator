@@ -168,69 +168,119 @@ eval m e = case e of
             (t2,_) = eval m y
         in (f t1 t2, m)
 
-parseAssign :: [Token] -> Expr
-parseAssign (TIdent s : TOp Assign : rest) = Asgn s (parseExpr rest)
+parseAssign :: [Token] -> Either String Expr
+parseAssign (TIdent s : TOp Assign : rest) =
+    let t = parseExpr rest
+    in case t of
+        Right e -> Right $ Asgn s e
+        Left err -> t
 parseAssign s = parseExpr s
 
-parseExpr :: [Token] -> Expr
-parseExpr s = let (s1, s2) = breakPar (`elem` [TOp Plus, TOp Minus]) s
-                  e1 = if null s1 then Number 0 else parseTerm s1
-                  op = if null s2 then Plus else (\(TOp op) -> op) $ tryHead "Missing second term" s2
-                  e2 = if null s2 then Number 0 else parseExpr . tail $ s2
-              in Sum op e1 e2
+parseExpr :: [Token] -> Either String Expr
+parseExpr s = let t = breakPar (`elem` [TOp Plus, TOp Minus]) s
+              in case t of
+                Left err -> Left err
+                Right r ->
+                    let (s1, s2) = r
+                        e1 = if null s1 then Right $ Number 0 else parseTerm s1
+                        op = if null s2 then Right Plus else case tryHead "Missing second term" s2 of
+                          Left err -> Left err
+                          Right o -> Right $ (\(TOp op) -> op) o
+                        e2 = if null s2 then Right $ Number 0 else parseExpr . tail $ s2
+                    in case (e1, op, e2) of
+                      (Left err, _, _) -> Left err
+                      (_, Left err, _) -> Left err
+                      (_, _, Left err) -> Left err
+                      (Right a, Right b, Right c) -> Right $ Sum b a c
 
-parseTerm :: [Token] -> Expr
-parseTerm s = let (s1, s2) = breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
-                  e1 = parsePow s1
-                  op = if null s2 then Mult else (\(TOp op) -> op) $ tryHead "Missing second factor" s2
-                  e2 = if null s2 then Number 1 else parseExpr . tail $ s2
-              in Prod op e1 e2
+parseTerm :: [Token] -> Either String Expr
+parseTerm s = let t = breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
+              in case t of
+                Left err -> Left err
+                Right r ->
+                    let (s1, s2) = r
+                        e1 = parsePow s1
+                        op = if null s2 then Right Mult else case tryHead "Missing second factor" s2 of
+                          Left err -> Left err
+                          Right o -> Right $ (\(TOp op) -> op) o
+                        e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
+                    in case (e1, op, e2) of
+                      (Left err, _, _) -> Left err
+                      (_, Left err, _) -> Left err
+                      (_, _, Left err) -> Left err
+                      (Right a, Right b, Right c) -> Right $ Prod b a c
 
-parsePow :: [Token] -> Expr
-parsePow s = let (s1, s2) = breakPar (`elem` [TOp Power]) s
-                 e1 = parseToken s1
-                 e2 = if null s2 then Number 1 else parseExpr . tail $ s2
-             in if (not . null $ s2) && (null . tail $ s2)
-                then error "Missing exponent"
-                else Pow e1 e2
+parsePow :: [Token] -> Either String Expr
+parsePow s = let t = breakPar (`elem` [TOp Power]) s
+             in case t of
+                Left err -> Left err
+                Right r ->
+                    let (s1, s2) = r
+                        e1 = parseToken s1
+                        e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
+                    in if (not . null $ s2) && (null . tail $ s2)
+                       then Left "Missing exponent"
+                       else case (e1, e2) of
+                           (Left err, _) -> Left err
+                           (_, Left err) -> Left err
+                           (Right a, Right b) -> Right $ Pow a b
 
-parseToken :: [Token] -> Expr
+parseToken :: [Token] -> Either String Expr
 parseToken s = case s of
-    [] -> error "Syntax error"
-    [TIdent s]  -> Id s
-    [TNumber n] -> Number n
-    (TFun f: TLPar : rest) -> Fun f $ ps rest
-    (TLPar : rest) -> Par $ ps rest
-    x -> error $ "Syntax error!" ++ show x
-    where ps = parseExpr . init . fst . takePar
+    [] -> Left "Syntax error"
+    [TIdent s]  -> Right $ Id s
+    [TNumber n] -> Right $ Number n
+    (TFun f: TLPar : rest) -> let t = ps rest
+                              in case t of
+                                Left err -> t
+                                Right r -> Right $ Fun f r
+    (TLPar : rest) -> let t = ps rest
+                      in case t of
+                        Left err -> t
+                        Right r -> Right $ Par r
+    x -> Left $ "Syntax error!" ++ show x
+    where ps ss = let t = takePar ss
+                  in case t of
+                    Left err -> Left err
+                    Right r -> parseExpr . init . fst $ r
 
-takePar :: [Token] -> ([Token], [Token])
+takePar :: [Token] -> Either String ([Token], [Token])
 takePar = takePar' 1 [] where
-    takePar' 0 acc s = (reverse acc, s)
-    takePar' n acc [] = error $ "Parentheses mismatch!" ++ show n
+    takePar' 0 acc s = Right (reverse acc, s)
+    takePar' n acc [] = Left $ "Parentheses mismatch!" ++ show n
     takePar' n acc (x:xs) = case x of
         TRPar -> tp (n-1)
         TLPar -> tp (n+1)
         _     -> tp n
         where tp m = takePar' m (x:acc) xs
 
-breakPar :: (Token -> Bool) -> [Token] -> ([Token], [Token])
-breakPar _ []           = ([], [])
-breakPar p xs@(x:xs')
-           | x == TLPar = let (a, b) = takePar xs'
-                              (y, z) = breakPar p b
-                          in ([x] ++ a ++ y, z)
-           | p x        = ([],xs)
-           | otherwise  = let (ys,zs) = breakPar p xs' in (x:ys,zs)
 
-tryHead :: String -> [a] -> a
-tryHead s l = if null l then error s else head l
+breakPar :: (Token -> Bool) -> [Token] -> Either String ([Token], [Token])
+breakPar _ []           = Right ([], [])
+breakPar p xs@(x:xs')
+           | x == TLPar = let t = takePar xs'
+                          in case t of
+                            Left err -> t
+                            Right r -> let tt = breakPar p b
+                                           (a,b) = r
+                                       in case tt of
+                                            Left err -> t
+                                            Right rr -> let (y, z) = rr
+                                                        in Right ([x] ++ a ++ y, z)
+           | p x        = Right ([],xs)
+           | otherwise  = let t = breakPar p xs'
+                          in case t of
+                            Left err -> t
+                            Right (ys, zs) -> Right (x:ys,zs)
+
+tryHead :: String -> [Token] -> Either String Token
+tryHead s l = if length l < 2 then Left s else Right $ head l
 
 parse :: [Token] -> Either String Expr
-parse s = let t = checkOps s
+parse s = let t = checkOps s >>= parseAssign
           in case t of
             Left err -> Left err
-            Right r -> Right . preprocess . parseAssign $ r
+            Right r -> Right . preprocess $ r
 
 loop :: Map String Double -> IO()
 loop m = do
@@ -238,19 +288,15 @@ loop m = do
     x <- getLine
     if not (null x)
     then do
-        let t = tokenize x
-        let y = case t of
-                 Left err -> error err
-                 Right r -> r
-        let tt = parse y
-        let z = case tt of
-                 Left err -> error err
-                 Right r -> r
-        let (res, m1) = eval m z
-        print y
-        print z
-        print res
-        loop (M.insert "_" res m1)
+        let t = tokenize x >>= parse
+        case t of
+           Left err -> do
+            putStrLn err
+            loop m
+           Right r -> do
+            let (res, m1) = eval m r
+            print res
+            loop (M.insert "_" res m1)
     else do
         putStrLn "Empty!"
         loop m
