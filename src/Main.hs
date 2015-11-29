@@ -35,10 +35,10 @@ operator :: Char -> Operator
 operator c = fromJust $ lookup c ops
     where ops = [('=',Assign), ('+',Plus), ('-',Minus), ('*',Mult), ('/',Div), ('%',Mod), ('^',Power)]
 
-checkOps :: [Token] -> [Token]
+checkOps :: [Token] -> Either String [Token]
 checkOps t = if snd . foldl f (TEnd, True) $ t
-             then t
-             else error "Two operators in a row"
+             then Right t
+             else Left "Two operators in a row"
              where f (old, res) new  = (new, res && not (isOp new && old == new))
                    isOp (TOp Assign) = False
                    isOp (TOp _) = True
@@ -56,18 +56,22 @@ function f = case f of
     "exp" -> Exp
     "sqrt"-> Sqrt
 
-tokenize :: String -> [Token]
-tokenize [] = []
+tokenize :: String -> Either String [Token]
+tokenize [] = Right []
 tokenize s@(x:xs)
-    |x `elem` "+-*/%^=" = TOp (operator x) : tokenize xs
-    |x == '(' = TLPar : tokenize xs
-    |x == ')' = TRPar : tokenize xs
+    |x `elem` "+-*/%^=" = f (TOp (operator x)) xs
+    |x == '(' = f TLPar xs
+    |x == ')' = f TRPar xs
     |isSpace x = tokenize xs
-    |tryFun s = let (f, rest) = readFun s in TFun f : tokenize rest
-    |tryIdentifier s = let (i, rest) = readIdentifier s in TIdent i : tokenize rest
-    |tryNumber s = let (n, rest) = readNumber s in TNumber n : tokenize rest
-    |otherwise = error $ "Cannot tokenize " ++ s
+    |tryFun s = let (fun, rest) = readFun s in f (TFun fun) rest
+    |tryIdentifier s = let (i, rest) = readIdentifier s in f (TIdent i)  rest
+    |tryNumber s = let (n, rest) = readNumber s in f (TNumber n) rest
+    |otherwise = Left $ "Cannot tokenize " ++ s
     where
+        f out inp = let t = tokenize inp
+                    in case t of
+                        Left _ -> t
+                        Right r -> Right (out : r)
         tryIdentifier (x:xs) = isAlpha x || x == '_'
         readIdentifier = break (\x -> not (isAlpha x || isDigit x || (x == '_')))
         tryFun s = any (`isPrefixOf` s) funs
@@ -222,8 +226,11 @@ breakPar p xs@(x:xs')
 tryHead :: String -> [a] -> a
 tryHead s l = if null l then error s else head l
 
-parse :: [Token] -> Expr
-parse = preprocess . parseAssign . checkOps
+parse :: [Token] -> Either String Expr
+parse s = let t = checkOps s
+          in case t of
+            Left err -> Left err
+            Right r -> Right . preprocess . parseAssign $ r
 
 loop :: Map String Double -> IO()
 loop m = do
@@ -231,8 +238,14 @@ loop m = do
     x <- getLine
     if not (null x)
     then do
-        let y = tokenize x
-        let z = parse y
+        let t = tokenize x
+        let y = case t of
+                 Left err -> error err
+                 Right r -> r
+        let tt = parse y
+        let z = case tt of
+                 Left err -> error err
+                 Right r -> r
         let (res, m1) = eval m z
         print y
         print z
