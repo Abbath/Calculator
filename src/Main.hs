@@ -176,38 +176,27 @@ parseAssign (TIdent s : TOp Assign : rest) = checkEither (parseExpr rest) (Asgn 
 parseAssign s = parseExpr s
 
 parseExpr :: [Token] -> Either String Expr
-parseExpr s = let t = breakPar (`elem` [TOp Plus, TOp Minus]) s
-              in case t of
-                Left err -> Left err
-                Right r ->
-                    let (s1, s2) = r
-                        e1 = if null s1 then Right $ Number 0 else parseTerm s1
-                        op = if null s2 then Right Plus else case tryHead "Missing second term" s2 of
-                          Left err -> Left err
-                          Right o -> Right $ (\(TOp op) -> op) o
-                        e2 = if null s2 then Right $ Number 0 else parseExpr . tail $ s2
-                    in case (e1, op, e2) of
-                      (Left err, _, _) -> Left err
-                      (_, Left err, _) -> Left err
-                      (_, _, Left err) -> Left err
-                      (Right a, Right b, Right c) -> Right $ Sum b a c
+parseExpr s = do
+    t <- breakPar (`elem` [TOp Plus, TOp Minus]) s
+    let (s1, s2) = t
+    let e1 = if null s1 then Right $ Number 0 else parseTerm s1
+    let op = if null s2 then Right Plus else checkEither (tryHead "Missing second term" s2) (\(TOp op) -> op)
+    let e2 = if null s2 then Right $ Number 0 else parseExpr . tail $ s2
+    a <- e1
+    b <- op
+    c <- e2
+    return $ Sum b a c
 
 parseTerm :: [Token] -> Either String Expr
-parseTerm s = let t = breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
-              in case t of
-                Left err -> Left err
-                Right r ->
-                    let (s1, s2) = r
-                        e1 = parsePow s1
-                        op = if null s2 then Right Mult else case tryHead "Missing second factor" s2 of
-                          Left err -> Left err
-                          Right o -> Right $ (\(TOp op) -> op) o
-                        e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
-                    in case (e1, op, e2) of
-                      (Left err, _, _) -> Left err
-                      (_, Left err, _) -> Left err
-                      (_, _, Left err) -> Left err
-                      (Right a, Right b, Right c) -> Right $ Prod b a c
+parseTerm s = do
+    t <- breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
+    let (s1, s2) = t
+    e1 <- parsePow s1
+    let op = if null s2 then Right Mult else checkEither (tryHead "Missing second factor" s2) (\(TOp op) -> op)
+    let e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
+    a <- op
+    b <- e2
+    return $ Prod a e1 b
 
 parsePow :: [Token] -> Either String Expr
 parsePow s = let t = breakPar (`elem` [TOp Power]) s
@@ -251,15 +240,10 @@ takePar = takePar' 1 [] where
 breakPar :: (Token -> Bool) -> [Token] -> Either String ([Token], [Token])
 breakPar _ []           = Right ([], [])
 breakPar p xs@(x:xs')
-           | x == TLPar = let t = takePar xs'
-                          in case t of
-                            Left err -> t
-                            Right r -> let tt = breakPar p b
-                                           (a,b) = r
-                                       in case tt of
-                                            Left err -> t
-                                            Right rr -> let (y, z) = rr
-                                                        in Right ([x] ++ a ++ y, z)
+           | x == TLPar = do
+            (a,b) <- takePar xs'
+            (y,z) <- breakPar p b
+            return ([x] ++ a ++ y, z)
            | p x        = Right ([],xs)
            | otherwise  = checkEither (breakPar p xs') (first ((:) x))
 
