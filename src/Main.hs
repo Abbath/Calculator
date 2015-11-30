@@ -32,10 +32,9 @@ data Expr = Number Double
           | Id String
           deriving Eq
 
-checkEither inp f = let t = inp
-                    in case t of
-                        Left err -> Left err
-                        Right r -> Right (f r)
+checkEither inp f = do
+    t <- inp
+    return $ f t
 
 operator :: Char -> Operator
 operator c = fromJust $ lookup c ops
@@ -140,36 +139,42 @@ simplifyExpr e = case e of
     (Fun f e)                               -> Fun f (simplifyExpr e)
     x                                       -> x
 
-eval :: Map String Double -> Expr -> (Double, Map String Double)
+eval :: Map String Double -> Expr -> Either String (Double, Map String Double)
 eval m e = case e of
-   (Asgn s _) | s `elem` ["pi","e","_"] -> error $ "Can not change constant value " ++ s
-   (Asgn s e)                       -> let (r,_) = eval m e in (r, M.insert s r m)
-   (Id s)                           -> (fromMaybe (error "No such variable!") (M.lookup s m :: Maybe Double),m)
-   (Number x)                       -> (x,m)
+   (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value " ++ s
+   (Asgn s e)                       -> do {(r,_) <- eval m e; return (r, M.insert s r m)}
+   (Id s)                           -> mte "No such variable!" (M.lookup s m :: Maybe Double,m)
+   (Number x)                       -> return (x,m)
    (Sum Plus x y)                   -> eval' (+) x y
    (Sum Minus x (Sum op y z))       -> eval m $ Sum op (Sum Minus x y) z
    (Sum Minus x y)                  -> eval' (-) x y
    (Prod Mult x y)                  -> eval' (*) x y
    (Prod Div x (Prod op y z))       -> eval m $ Prod op (Prod Div x y) z
    (Prod Mod x (Prod op y z))       -> eval m $ Prod op (Prod Mod x y) z
-   (Prod Div x y) -> let (n,_) = eval m y
-                    in if n == 0 then error "Div by zero" else (fst (eval m x) / n, m)
-   (Prod Mod x y) -> let (n,_) = eval m y
-                    in if n == 0
-                    then error "Div by zero"
-                    else (fromIntegral $ mod (floor . fst $ eval m x) (floor n), m)
+   (Prod Div x y) -> do (n,_) <- eval m y
+                        (n1,_) <- eval m x
+                        if n == 0 then Left "Div by zero" else return (n1 / n, m)
+   (Prod Mod x y) -> do (n,_) <- eval m y
+                        (n1,_) <- eval m x
+                        if n == 0
+                        then Left "Div by zero"
+                        else return (fromIntegral $ mod (floor n1) (floor n), m)
    (Pow x y)                    -> eval' (**) x y
    (UMinus (Pow x y))           -> eval m $ Pow (UMinus x) y
-   (UMinus x)                   -> let (n,_) = eval m x in (-n,m)
+   (UMinus x)                   -> do {(n,_) <- eval m x; return (-n,m)}
    (Par e)                      -> eval m e
    (Fun Atan (Prod Div e1 e2))  -> eval' atan2 e1 e2
-   (Fun f e)                    -> ((fromMaybe id $ lookup f fns) (fst $ eval m e),m)
+   (Fun f e)                    -> do
+        (n,_) <- eval m e
+        return ((fromMaybe id $ lookup f fns) n,m)
    where
+    mte _ (Just x, m) = Right (x,m)
+    mte s (Nothing,m) = Left s
     fns = [(Sin,sin), (Cos,cos), (Tan,tan), (Asin,asin), (Acos,acos), (Atan, atan), (Log,log), (Exp,exp), (Sqrt,sqrt)]
-    eval' f x y =
-        let (t1,_) = eval m x
-            (t2,_) = eval m y
-        in (f t1 t2, m)
+    eval' f x y = do
+        (t1,_) <- eval m x
+        (t2,_) <- eval m y
+        return (f t1 t2, m)
 
 parseAssign :: [Token] -> Either String Expr
 parseAssign (TIdent s : TOp Assign : rest) = checkEither (parseExpr rest) (Asgn s)
@@ -199,19 +204,16 @@ parseTerm s = do
     return $ Prod a e1 b
 
 parsePow :: [Token] -> Either String Expr
-parsePow s = let t = breakPar (`elem` [TOp Power]) s
-             in case t of
-                Left err -> Left err
-                Right r ->
-                    let (s1, s2) = r
-                        e1 = parseToken s1
-                        e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
-                    in if (not . null $ s2) && (null . tail $ s2)
-                       then Left "Missing exponent"
-                       else case (e1, e2) of
-                           (Left err, _) -> Left err
-                           (_, Left err) -> Left err
-                           (Right a, Right b) -> Right $ Pow a b
+parsePow s = do
+    t <- breakPar (`elem` [TOp Power]) s
+    let (s1, s2) = t
+    e1 <- parseToken s1
+    let e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
+    if (not . null $ s2) && (null . tail $ s2)
+    then Left "Missing exponent"
+    else do
+        a <- e2
+        return $ Pow e1 a
 
 parseToken :: [Token] -> Either String Expr
 parseToken s = case s of
@@ -259,15 +261,14 @@ loop m = do
     x <- getLine
     if not (null x)
     then do
-        let t = tokenize x >>= parse
+        let t = tokenize x >>= parse >>= eval m
         case t of
            Left err -> do
             putStrLn err
             loop m
-           Right r -> do
-            let (res, m1) = eval m r
-            print res
-            loop (M.insert "_" res m1)
+           Right (r,m1) -> do
+            print r
+            loop (M.insert "_" r m1)
     else do
         putStrLn "Empty!"
         loop m
