@@ -129,22 +129,27 @@ substitute s ex = case ex of
     where st = substitute s
           wrk e1 e2 ret = do { s1 <- st e1; s2 <- st e2; return $ ret s1 s2}
 
-localize :: [String] -> Expr -> Expr
-localize [] e = e
-localize (x:xs) (Id i) = if i == x then Id ('$':i) else localize xs (Id i)
-localize s ex = case ex of
-    (Sum op e1 e2) -> Sum op (st e1) (st e2)
-    (Prod op e1 e2) -> Prod op (st e1) (st e2)
-    (Pow e1 e2) -> Pow (st e1) (st e2)
-    (Par e) -> Par (st e)
-    (Fun f e) -> Fun f (st e)
-    (UMinus e) -> UMinus (st e)
-    (FunCall n e) -> FunCall n (map st e)
-    e -> e
-    where st = localize s
+localize :: (String,Int) -> [String] -> Expr -> Either String Expr
+localize (n,a) [] e = return e
+localize (n,a) (x:xs) (Id i) = if i == x then return $ Id ('$':i) else localize (n,a) xs (Id i)
+localize (n,a) s ex = case ex of
+    (Sum op e1 e2) -> wrk e1 e2 $ Sum op
+    (Prod op e1 e2) -> wrk e1 e2 $ Prod op
+    (Pow e1 e2) -> wrk e1 e2 Pow
+    (Par e) -> do { ss <- st e ; return $ Par ss}
+    (Fun f e) -> do { ss <- st e ; return $ Fun f ss}
+    (UMinus e) -> do { ss <- st e ; return $ UMinus ss}
+    (FunCall nm e) -> if nm == n && a == length e
+        then Left "Recursion is not supported yet"
+        else do
+            ss <- mapM st e
+            return $ FunCall nm ss
+    e -> return e
+    where st = localize (n,a) s
+          wrk e1 e2 ret = do { s1 <- st e1; s2 <- st e2; return $ ret s1 s2}
 
-catchVar :: Map String Double -> Expr -> Either String Expr
-catchVar m ex = case ex of
+catchVar :: (Map String Double, Map (String, Int) ([String],Expr)) -> Expr -> Either String Expr
+catchVar (m,m1) ex = case ex of
     (Id i@('$':_)) -> return $ Id i
     (Id i) ->
         case M.lookup i m :: Maybe Double of
@@ -156,9 +161,14 @@ catchVar m ex = case ex of
     (Par e) -> do { ss <- st e ; return $ Par ss}
     (Fun f e) -> do { ss <- st e ; return $ Fun f ss}
     (UMinus e) -> do { ss <- st e ; return $ UMinus ss}
-    (FunCall n e) -> do {ss <- mapM st e; return $ FunCall n ss}
+    (FunCall n e) ->
+        if M.member (n,length e) m1
+        then do
+            ss <- mapM st e
+            return $ FunCall n ss
+        else Left $ "No such function " ++ n ++ "/" ++ show (length e)
     e -> return e
-    where st = catchVar m
+    where st = catchVar (m,m1)
           wrk e1 e2 ret = do { s1 <- st e1; s2 <- st e2; return $ ret s1 s2}
 
 preprocess :: Expr -> Expr
@@ -200,7 +210,7 @@ eval (m,m1) e = case e of
    (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value " ++ s
    (Asgn s e)                       -> do {(r,_,_) <- eval (m,m1) e; return (r, M.insert s r m, m1)}
    (UDF n s e)                      -> do
-        newe <- catchVar m . localize s $ e
+        newe <- localize (n,length s) s e >>= catchVar (m,m1)
         return (fromIntegral $ M.size m1,m, M.insert (n, length s) (map ((:) '$') s, newe) m1)
    (FunCall name e)                 ->
         case (M.lookup (name, length e) m1 :: Maybe ([String],Expr)) of
@@ -208,7 +218,7 @@ eval (m,m1) e = case e of
                 expr1 <- substitute (al, e) expr
                 (a,_,_) <- eval (m,m1) expr1
                 return (a, m, m1)
-            Nothing -> Left $ "No such function " ++ name ++ "/" ++ show (length e)
+            Nothing -> Left $ "No such function! " ++ name ++ "/" ++ show (length e)
    (Id s)                           -> mte ("No such variable! " ++ s) (M.lookup s m :: Maybe Double,m,m1)
    (Number x)                       -> return (x,m,m1)
    (Sum Plus x y)                   -> eval' (+) x y
