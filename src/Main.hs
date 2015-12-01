@@ -124,6 +124,7 @@ substitute s ex = case ex of
     (Par e) -> do { ss <- st e ; return $ Par ss}
     (Fun f e) -> do { ss <- st e ; return $ Fun f ss}
     (UMinus e) -> do { ss <- st e ; return $ UMinus ss}
+    (FunCall n e) -> do {ss <- mapM st e; return $ FunCall n ss}
     e -> return e
     where st = substitute s
           wrk e1 e2 ret = do { s1 <- st e1; s2 <- st e2; return $ ret s1 s2}
@@ -138,6 +139,7 @@ localize s ex = case ex of
     (Par e) -> Par (st e)
     (Fun f e) -> Fun f (st e)
     (UMinus e) -> UMinus (st e)
+    (FunCall n e) -> FunCall n (map st e)
     e -> e
     where st = localize s
 
@@ -154,6 +156,7 @@ catchVar m ex = case ex of
     (Par e) -> do { ss <- st e ; return $ Par ss}
     (Fun f e) -> do { ss <- st e ; return $ Fun f ss}
     (UMinus e) -> do { ss <- st e ; return $ UMinus ss}
+    (FunCall n e) -> do {ss <- mapM st e; return $ FunCall n ss}
     e -> return e
     where st = catchVar m
           wrk e1 e2 ret = do { s1 <- st e1; s2 <- st e2; return $ ret s1 s2}
