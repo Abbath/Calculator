@@ -141,6 +141,23 @@ localize s ex = case ex of
     e -> e
     where st = localize s
 
+catchVar :: Map String Double -> Expr -> Either String Expr
+catchVar m ex = case ex of
+    (Id i@('$':_)) -> return $ Id i
+    (Id i) ->
+        case M.lookup i m :: Maybe Double of
+            Just n -> return $ Number n
+            Nothing -> Left $ "No such variable! " ++ i
+    (Sum op e1 e2) -> wrk e1 e2 $ Sum op
+    (Prod op e1 e2) -> wrk e1 e2 $ Prod op
+    (Pow e1 e2) -> wrk e1 e2 Pow
+    (Par e) -> do { ss <- st e ; return $ Par ss}
+    (Fun f e) -> do { ss <- st e ; return $ Fun f ss}
+    (UMinus e) -> do { ss <- st e ; return $ UMinus ss}
+    e -> return e
+    where st = catchVar m
+          wrk e1 e2 ret = do { s1 <- st e1; s2 <- st e2; return $ ret s1 s2}
+
 preprocess :: Expr -> Expr
 preprocess e = simplify' e e
     where simplify' e o = if simplifyExpr e == o then o else simplify' (simplifyExpr e) e
@@ -175,18 +192,20 @@ simplifyExpr e = case e of
     (FunCall name e)                        -> FunCall name (map simplifyExpr e)
     x                                       -> x
 
-eval :: (Map String Double, Map String ([String],Expr)) -> Expr -> Either String (Double, Map String Double, Map String ([String],Expr))
+eval :: (Map String Double, Map (String, Int) ([String],Expr)) -> Expr -> Either String (Double, Map String Double, Map (String,Int) ([String],Expr))
 eval (m,m1) e = case e of
    (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value " ++ s
    (Asgn s e)                       -> do {(r,_,_) <- eval (m,m1) e; return (r, M.insert s r m, m1)}
-   (UDF n s e)                      -> return (fromIntegral $ M.size m1,m, M.insert n (map ((:) '$') s, localize s e) m1)
+   (UDF n s e)                      -> do
+        newe <- catchVar m . localize s $ e
+        return (fromIntegral $ M.size m1,m, M.insert (n, length s) (map ((:) '$') s, newe) m1)
    (FunCall name e)                 ->
-        case (M.lookup name m1 :: Maybe ([String],Expr)) of
+        case (M.lookup (name, length e) m1 :: Maybe ([String],Expr)) of
             Just (al, expr) -> do
                 expr1 <- substitute (al, e) expr
                 (a,_,_) <- eval (m,m1) expr1
                 return (a, m, m1)
-            Nothing -> Left $ "No such function " ++ name
+            Nothing -> Left $ "No such function " ++ name ++ "/" ++ show (length e)
    (Id s)                           -> mte ("No such variable! " ++ s) (M.lookup s m :: Maybe Double,m,m1)
    (Number x)                       -> return (x,m,m1)
    (Sum Plus x y)                   -> eval' (+) x y
@@ -334,7 +353,7 @@ tryHead s l = if length l < 2 then Left s else Right $ head l
 parse :: [Token] -> Either String Expr
 parse s = checkEither (checkOps s >>= parseAssign) preprocess
 
-loop :: (Map String Double,Map String ([String],Expr)) -> IO()
+loop :: (Map String Double,Map (String,Int) ([String],Expr)) -> IO()
 loop (m,mm) = do
     putStr "> " >> hFlush stdout
     x <- getLine
