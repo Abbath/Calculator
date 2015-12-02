@@ -183,9 +183,6 @@ simplifyExpr e = case e of
     (Pow e1 e2)                             -> Pow (simplifyExpr e1) (simplifyExpr e2)
     (Fun Exp (Fun Log e))                   -> simplifyExpr e
     (Fun Log (Fun Exp e))                   -> simplifyExpr e
-    (Fun Asin (Fun Sin e))                  -> simplifyExpr e
-    (Fun Acos (Fun Cos e))                  -> simplifyExpr e
-    (Fun Atan (Fun Tan e))                  -> simplifyExpr e
     (Fun Sqrt (Pow e (Number 2.0)))         -> simplifyExpr e
     (Fun f e)                               -> Fun f (simplifyExpr e)
     (FunCall name e)                        -> FunCall name (map simplifyExpr e)
