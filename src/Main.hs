@@ -113,40 +113,37 @@ showExpr n e =
     in replicate n ' ' ++ suf
     where s = showExpr (n+1)
 
+goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
+goInside f e = case e of
+    (Sum op e1 e2) -> wrk e1 e2 $ Sum op
+    (Prod op e1 e2) -> wrk e1 e2 $ Prod op
+    (Pow e1 e2) -> wrk e1 e2 Pow
+    (Par e) -> do { ss <- f e ; return $ Par ss}
+    (Fun fun e) -> do { ss <- f e ; return $ Fun fun ss}
+    (UMinus e) -> do { ss <- f e ; return $ UMinus ss}
+    e -> return e
+    where wrk e1 e2 ret = do { s1 <- f e1; s2 <- f e2; return $ ret s1 s2}
+
 substitute :: ([String], [Expr]) -> Expr -> Either String Expr
 substitute ([],[]) e = return e
 substitute (x,y) _ | length x /= length y = Left "Bad argument number"
 substitute (x:xs, y:ys) (Id i) = if i == x then return y else substitute (xs, ys) (Id i)
 substitute s ex = case ex of
-    (Sum op e1 e2) -> wrk e1 e2 $ Sum op
-    (Prod op e1 e2) -> wrk e1 e2 $ Prod op
-    (Pow e1 e2) -> wrk e1 e2 Pow
-    (Par e) -> do { ss <- st e ; return $ Par ss}
-    (Fun f e) -> do { ss <- st e ; return $ Fun f ss}
-    (UMinus e) -> do { ss <- st e ; return $ UMinus ss}
     (FunCall n e) -> do {ss <- mapM st e; return $ FunCall n ss}
-    e -> return e
+    e -> goInside st e
     where st = substitute s
-          wrk e1 e2 ret = do { s1 <- st e1; s2 <- st e2; return $ ret s1 s2}
 
 localize :: (String,Int) -> [String] -> Expr -> Either String Expr
 localize (n,a) [] e = return e
 localize (n,a) (x:xs) (Id i) = if i == x then return $ Id ('$':i) else localize (n,a) xs (Id i)
 localize (n,a) s ex = case ex of
-    (Sum op e1 e2) -> wrk e1 e2 $ Sum op
-    (Prod op e1 e2) -> wrk e1 e2 $ Prod op
-    (Pow e1 e2) -> wrk e1 e2 Pow
-    (Par e) -> do { ss <- st e ; return $ Par ss}
-    (Fun f e) -> do { ss <- st e ; return $ Fun f ss}
-    (UMinus e) -> do { ss <- st e ; return $ UMinus ss}
     (FunCall nm e) -> if nm == n && a == length e
         then Left "Recursion is not supported yet"
         else do
             ss <- mapM st e
             return $ FunCall nm ss
-    e -> return e
+    e -> goInside st e
     where st = localize (n,a) s
-          wrk e1 e2 ret = do { s1 <- st e1; s2 <- st e2; return $ ret s1 s2}
 
 catchVar :: (Map String Double, Map (String, Int) ([String],Expr)) -> Expr -> Either String Expr
 catchVar (m,m1) ex = case ex of
@@ -155,21 +152,14 @@ catchVar (m,m1) ex = case ex of
         case M.lookup i m :: Maybe Double of
             Just n -> return $ Number n
             Nothing -> Left $ "No such variable! " ++ i
-    (Sum op e1 e2) -> wrk e1 e2 $ Sum op
-    (Prod op e1 e2) -> wrk e1 e2 $ Prod op
-    (Pow e1 e2) -> wrk e1 e2 Pow
-    (Par e) -> do { ss <- st e ; return $ Par ss}
-    (Fun f e) -> do { ss <- st e ; return $ Fun f ss}
-    (UMinus e) -> do { ss <- st e ; return $ UMinus ss}
     (FunCall n e) ->
         if M.member (n,length e) m1
         then do
             ss <- mapM st e
             return $ FunCall n ss
         else Left $ "No such function " ++ n ++ "/" ++ show (length e)
-    e -> return e
+    e -> goInside st e
     where st = catchVar (m,m1)
-          wrk e1 e2 ret = do { s1 <- st e1; s2 <- st e2; return $ ret s1 s2}
 
 preprocess :: Expr -> Expr
 preprocess e = simplify' e e
