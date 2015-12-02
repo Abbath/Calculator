@@ -78,7 +78,7 @@ tokenize = fromJust . tokenize' where
     readIdentifier s <&> (\(i,rest) -> f (TIdent i) rest) <|>
     readNumber s <&> (\(n,rest) -> f (TNumber n ) rest) <|>
     Just (Left $ "Cannot tokenize " ++ s)
-    where f out inp = fmap ((:) out) (fromJust . tokenize' $ inp)
+    where f out inp = (out:) <$> (fromJust . tokenize' $ inp)
           oper x = if x `elem` map fst ops then Just x else Nothing
           match c x = if c == x then Just x else Nothing
           space x = if isSpace x then Just x else Nothing
@@ -139,9 +139,7 @@ localize (n,a) (x:xs) (Id i) = if i == x then return $ Id ('$':i) else localize 
 localize (n,a) s ex = case ex of
     (FunCall nm e) -> if nm == n && a == length e
         then Left "Recursion is not supported yet"
-        else do
-            ss <- mapM st e
-            return $ FunCall nm ss
+        else FunCall nm <$> mapM st e
     e -> goInside st e
     where st = localize (n,a) s
 
@@ -154,9 +152,7 @@ catchVar (m,m1) ex = case ex of
             Nothing -> Left $ "No such variable! " ++ i
     (FunCall n e) ->
         if M.member (n,length e) m1
-        then do
-            ss <- mapM st e
-            return $ FunCall n ss
+        then FunCall n <$> mapM st e
         else Left $ "No such function " ++ n ++ "/" ++ show (length e)
     e -> goInside st e
     where st = catchVar (m,m1)
@@ -201,7 +197,7 @@ eval (m,m1) e = case e of
    (Asgn s e)                       -> do {(r,_,_) <- eval (m,m1) e; return (r, M.insert s r m, m1)}
    (UDF n s e)                      -> do
         newe <- localize (n,length s) s e >>= catchVar (m,m1)
-        return (fromIntegral $ M.size m1,m, M.insert (n, length s) (map ((:) '$') s, newe) m1)
+        return (fromIntegral $ M.size m1,m, M.insert (n, length s) (map ('$':) s, newe) m1)
    (FunCall name e)                 ->
         case (M.lookup (name, length e) m1 :: Maybe ([String],Expr)) of
             Just (al, expr) -> do
@@ -248,9 +244,8 @@ parseAssign x@(TIdent _ : TLPar : TIdent _ : _ ) = do
     if null b then parseExpr x
     else do
         (name, args) <- parseFunDec a
-        ex <- parseExpr (tail b)
-        return $ UDF name args ex
-parseAssign (TIdent s : TOp Assign : rest) = fmap (Asgn s) (parseExpr rest)
+        UDF name args <$> parseExpr (tail b)
+parseAssign (TIdent s : TOp Assign : rest) = Asgn s <$> parseExpr rest
 parseAssign s = parseExpr s
 
 parseFunDec :: [Token] -> Either String (String, [String])
@@ -262,9 +257,7 @@ parseFunDec (TIdent name : TLPar : TIdent a : TComma : rest) = do
             [TIdent _] -> Left "Missing bracket!"
             [TIdent _, TComma] -> Left "Missing bracket!"
             [TIdent n, TRPar] -> return [n]
-            (TIdent n : TComma : rest) -> do
-                ni <- parseFunDec' rest
-                return (n:ni)
+            (TIdent n : TComma : rest) -> (n:) <$> parseFunDec' rest
             x -> Left $ "Bad parse " ++ show x
 
 parseExpr :: [Token] -> Either String Expr
@@ -272,23 +265,18 @@ parseExpr s = do
     t <- breakPar (`elem` [TOp Plus, TOp Minus]) s
     let (s1, s2) = t
     let e1 = if null s1 then Right $ Number 0 else parseTerm s1
-    let op = if null s2 then Right Plus else fmap (\(TOp op) -> op) (tryHead "Missing second term" s2)
+    let op = if null s2 then Right Plus else (\(TOp op) -> op) <$> tryHead "Missing second term" s2
     let e2 = if null s2 then Right $ Number 0 else parseExpr . tail $ s2
-    a <- e1
-    b <- op
-    c <- e2
-    return $ Sum b a c
+    Sum <$> op <*> e1 <*> e2
 
 parseTerm :: [Token] -> Either String Expr
 parseTerm s = do
     t <- breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
     let (s1, s2) = t
-    e1 <- parsePow s1
-    let op = if null s2 then Right Mult else fmap (\(TOp op) -> op) (tryHead "Missing second factor" s2)
+    let e1 = parsePow s1
+    let op = if null s2 then Right Mult else (\(TOp op) -> op) <$> tryHead "Missing second factor" s2
     let e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
-    a <- op
-    b <- e2
-    return $ Prod a e1 b
+    Prod <$> op <*> e1 <*> e2
 
 parsePow :: [Token] -> Either String Expr
 parsePow s = do
@@ -298,9 +286,7 @@ parsePow s = do
     let e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
     if (not . null $ s2) && (null . tail $ s2)
     then Left "Missing exponent"
-    else do
-        a <- e2
-        return $ Pow e1 a
+    else Pow e1 <$> e2
 
 parseToken :: [Token] -> Either String Expr
 parseToken s = case s of
@@ -308,8 +294,8 @@ parseToken s = case s of
     [TIdent s]  -> Right $ Id s
     (TIdent name : TLPar : rest) -> FunCall name <$> parseFuncall rest
     [TNumber n] -> Right $ Number n
-    (TFun f: TLPar : rest) -> fmap (Fun f) (ps rest)
-    (TLPar : rest) -> fmap Par (ps rest)
+    (TFun f: TLPar : rest) -> Fun f <$> ps rest
+    (TLPar : rest) -> Par <$> ps rest
     x -> Left $ "Syntax error! " ++ show x
     where ps ss = let t = takePar ss
                   in case t of
@@ -321,13 +307,8 @@ parseFuncall [TRPar] = return []
 parseFuncall s = do
     (s1, s2) <- breakPar (== TComma) s
     if null s2
-    then do
-        e <- if length s1 > 1 && last s1 == TRPar then parseExpr (init s1) else parseExpr s1
-        return [e]
-    else do
-        e <- parseExpr s1
-        t <- parseFuncall (tail s2)
-        return (e : t)
+    then (:[]) <$> if length s1 > 1 && last s1 == TRPar then parseExpr (init s1) else parseExpr s1
+    else (:) <$> parseExpr s1 <*> parseFuncall (tail s2)
 
 takePar :: [Token] -> Either String ([Token], [Token])
 takePar = takePar' 1 [] where
@@ -339,7 +320,6 @@ takePar = takePar' 1 [] where
         _     -> tp n
         where tp m = takePar' m (x:acc) xs
 
-
 breakPar :: (Token -> Bool) -> [Token] -> Either String ([Token], [Token])
 breakPar _ []           = Right ([], [])
 breakPar p xs@(x:xs')
@@ -348,13 +328,13 @@ breakPar p xs@(x:xs')
             (y,z) <- breakPar p b
             return ([x] ++ a ++ y, z)
            | p x        = Right ([],xs)
-           | otherwise  = fmap (first ((:) x)) (breakPar p xs')
+           | otherwise  = first (x:) <$> breakPar p xs'
 
 tryHead :: String -> [Token] -> Either String Token
 tryHead s l = if length l < 2 then Left s else Right $ head l
 
 parse :: [Token] -> Either String Expr
-parse s = fmap preprocess (checkOps s >>= parseAssign)
+parse s = preprocess <$> (checkOps s >>= parseAssign)
 
 loop :: (Map String Double,Map (String,Int) ([String],Expr)) -> IO()
 loop (m,mm) = do
