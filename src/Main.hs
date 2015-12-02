@@ -6,6 +6,7 @@ import Data.Maybe (fromMaybe, fromJust)
 import Data.List (isPrefixOf, find, intercalate, concatMap)
 import Data.Map (Map)
 import Control.Arrow (first)
+import Control.Applicative ((<|>))
 import qualified Data.Map as M
 
 data Operator = Assign | Plus | Minus | Mult | Div | Mod | Power deriving (Show, Eq)
@@ -35,13 +36,10 @@ data Expr = Number Double
           | Id String
           deriving Eq
 
-checkEither inp f = do
-    t <- inp
-    return $ f t
-
 operator :: Char -> Operator
 operator c = fromJust $ lookup c ops
-    where ops = [('=',Assign), ('+',Plus), ('-',Minus), ('*',Mult), ('/',Div), ('%',Mod), ('^',Power)]
+
+ops = [('=',Assign), ('+',Plus), ('-',Minus), ('*',Mult), ('/',Div), ('%',Mod), ('^',Power)]
 
 checkOps :: [Token] -> Either String [Token]
 checkOps t = if snd . foldl f (TEnd, True) $ t
@@ -64,31 +62,34 @@ function f = case f of
     "exp" -> Exp
     "sqrt"-> Sqrt
 
+infixl 4 <&>
+(<&>) = flip (<$>)
+
 tokenize :: String -> Either String [Token]
-tokenize [] = Right []
-tokenize s@(x:xs)
-    |x `elem` "+-*/%^=" = f (TOp (operator x)) xs
-    |x == '(' = f TLPar xs
-    |x == ')' = f TRPar xs
-    |x == ',' = f TComma xs
-    |isSpace x = tokenize xs
-    |tryFun s = let (fun, rest) = readFun s in f (TFun fun) rest
-    |tryIdentifier s = let (i, rest) = readIdentifier s in f (TIdent i)  rest
-    |tryNumber s = let (n, rest) = readNumber s in f (TNumber n) rest
-    |otherwise = Left $ "Cannot tokenize " ++ s
-    where
-        f out inp = checkEither (tokenize inp) ((:) out)
-        tryIdentifier (x:xs) = isAlpha x || x == '_'
-        readIdentifier = break (\x -> not (isAlpha x || isDigit x || (x == '_')))
-        tryFun s = any (`isPrefixOf` s) funs
-        readFun s =
-            let ss = fromJust $ find (`isPrefixOf` s) funs
-                rest = drop (length ss - 1) s
-            in (function . init $ ss, rest)
-        tryNumber s = let x = (reads :: String -> [(Double, String)]) s
-                      in not . null $ x
-        readNumber s = let [(x,y)] = (reads :: String -> [(Double, String)]) s
-                       in (x,y)
+tokenize = fromJust . tokenize' where
+ tokenize' [] = return $ Right []
+ tokenize' s@(x:xs) =
+    oper x <&> (\op -> f (TOp $ operator op) xs) <|>
+    match '(' x <&> (\_ -> f TLPar xs) <|>
+    match ')' x <&> (\_ -> f TRPar xs) <|>
+    match ',' x <&> (\_ -> f TComma xs) <|>
+    space x <&> (\_ -> fromJust $ tokenize' xs) <|>
+    readFun s <&> (\(fun, rest) -> f (TFun fun) rest) <|>
+    readIdentifier s <&> (\(i,rest) -> f (TIdent i) rest) <|>
+    readNumber s <&> (\(n,rest) -> f (TNumber n ) rest) <|>
+    Just (Left $ "Cannot tokenize " ++ s)
+    where f out inp = fmap ((:) out) (fromJust . tokenize' $ inp)
+          oper x = if x `elem` map fst ops then Just x else Nothing
+          match c x = if c == x then Just x else Nothing
+          space x = if isSpace x then Just x else Nothing
+          readFun s = do
+            ss <- find (`isPrefixOf` s) funs
+            return (function . init $ ss, drop (length ss - 1) s)
+          readIdentifier s@(x:_) = if isAlpha x || x == '_'
+            then Just $ break (\x -> not (isAlpha x || isDigit x || (x == '_'))) s
+            else Nothing
+          readNumber s = let x = (reads :: String -> [(Double, String)]) s
+                         in if null x then Nothing else Just $ head x
 
 funs :: [String]
 funs = ["sin(", "cos(", "asin(", "acos(", "tan(", "atan(", "log(", "exp(", "sqrt("]
@@ -115,21 +116,20 @@ showExpr n e =
 
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
 goInside f e = case e of
-    (Sum op e1 e2) -> wrk e1 e2 $ Sum op
-    (Prod op e1 e2) -> wrk e1 e2 $ Prod op
-    (Pow e1 e2) -> wrk e1 e2 Pow
-    (Par e) -> do { ss <- f e ; return $ Par ss}
-    (Fun fun e) -> do { ss <- f e ; return $ Fun fun ss}
-    (UMinus e) -> do { ss <- f e ; return $ UMinus ss}
+    (Sum op e1 e2) -> Sum op <$> f e1 <*> f e2
+    (Prod op e1 e2) -> Prod op <$> f e1 <*> f e2
+    (Pow e1 e2) -> Pow <$> f e1 <*> f e2
+    (Par e) -> Par <$> f e
+    (Fun fun e) -> Fun fun <$> f e
+    (UMinus e) -> UMinus <$> f e
     e -> return e
-    where wrk e1 e2 ret = do { s1 <- f e1; s2 <- f e2; return $ ret s1 s2}
 
 substitute :: ([String], [Expr]) -> Expr -> Either String Expr
 substitute ([],[]) e = return e
 substitute (x,y) _ | length x /= length y = Left "Bad argument number"
 substitute (x:xs, y:ys) (Id i) = if i == x then return y else substitute (xs, ys) (Id i)
 substitute s ex = case ex of
-    (FunCall n e) -> do {ss <- mapM st e; return $ FunCall n ss}
+    (FunCall n e) -> FunCall n <$> mapM st e
     e -> goInside st e
     where st = substitute s
 
@@ -250,7 +250,7 @@ parseAssign x@(TIdent _ : TLPar : TIdent _ : _ ) = do
         (name, args) <- parseFunDec a
         ex <- parseExpr (tail b)
         return $ UDF name args ex
-parseAssign (TIdent s : TOp Assign : rest) = checkEither (parseExpr rest) (Asgn s)
+parseAssign (TIdent s : TOp Assign : rest) = fmap (Asgn s) (parseExpr rest)
 parseAssign s = parseExpr s
 
 parseFunDec :: [Token] -> Either String (String, [String])
@@ -272,7 +272,7 @@ parseExpr s = do
     t <- breakPar (`elem` [TOp Plus, TOp Minus]) s
     let (s1, s2) = t
     let e1 = if null s1 then Right $ Number 0 else parseTerm s1
-    let op = if null s2 then Right Plus else checkEither (tryHead "Missing second term" s2) (\(TOp op) -> op)
+    let op = if null s2 then Right Plus else fmap (\(TOp op) -> op) (tryHead "Missing second term" s2)
     let e2 = if null s2 then Right $ Number 0 else parseExpr . tail $ s2
     a <- e1
     b <- op
@@ -284,7 +284,7 @@ parseTerm s = do
     t <- breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
     let (s1, s2) = t
     e1 <- parsePow s1
-    let op = if null s2 then Right Mult else checkEither (tryHead "Missing second factor" s2) (\(TOp op) -> op)
+    let op = if null s2 then Right Mult else fmap (\(TOp op) -> op) (tryHead "Missing second factor" s2)
     let e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
     a <- op
     b <- e2
@@ -306,10 +306,10 @@ parseToken :: [Token] -> Either String Expr
 parseToken s = case s of
     [] -> Left "Syntax error"
     [TIdent s]  -> Right $ Id s
-    (TIdent name : TLPar : rest) -> do { x <- parseFuncall rest; return $ FunCall name x}
+    (TIdent name : TLPar : rest) -> FunCall name <$> parseFuncall rest
     [TNumber n] -> Right $ Number n
-    (TFun f: TLPar : rest) -> checkEither (ps rest) (Fun f)
-    (TLPar : rest) -> checkEither (ps rest) Par
+    (TFun f: TLPar : rest) -> fmap (Fun f) (ps rest)
+    (TLPar : rest) -> fmap Par (ps rest)
     x -> Left $ "Syntax error! " ++ show x
     where ps ss = let t = takePar ss
                   in case t of
@@ -348,13 +348,13 @@ breakPar p xs@(x:xs')
             (y,z) <- breakPar p b
             return ([x] ++ a ++ y, z)
            | p x        = Right ([],xs)
-           | otherwise  = checkEither (breakPar p xs') (first ((:) x))
+           | otherwise  = fmap (first ((:) x)) (breakPar p xs')
 
 tryHead :: String -> [Token] -> Either String Token
 tryHead s l = if length l < 2 then Left s else Right $ head l
 
 parse :: [Token] -> Either String Expr
-parse s = checkEither (checkOps s >>= parseAssign) preprocess
+parse s = fmap preprocess (checkOps s >>= parseAssign)
 
 loop :: (Map String Double,Map (String,Int) ([String],Expr)) -> IO()
 loop (m,mm) = do
