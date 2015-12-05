@@ -1,6 +1,6 @@
 module Calculator.Evaluator (eval) where
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Calculator.Types (Expr(..), Operator(..), Function(..))
@@ -28,9 +28,7 @@ localize :: (String,Int) -> [String] -> Expr -> Either String Expr
 localize (n,a) [] e = return e
 localize (n,a) (x:xs) (Id i) = if i == x then return $ Id ('$':i) else localize (n,a) xs (Id i)
 localize (n,a) s ex = case ex of
-    (FunCall nm e) -> if nm == n && a == length e
-        then Left "Recursion is not supported yet"
-        else FunCall nm <$> mapM st e
+    (FunCall nm e) -> FunCall nm <$> mapM st e
     e -> goInside st e
     where st = localize (n,a) s
 
@@ -41,6 +39,8 @@ catchVar (m,m1) ex = case ex of
         case M.lookup i m :: Maybe Double of
             Just n -> return $ Number n
             Nothing -> Left $ "No such variable: " ++ i
+    (FunCall n e) | M.member n compFuns -> FunCall n <$> mapM st e
+    (FunCall "if" e) -> FunCall "if" <$> mapM st e
     (FunCall n e) ->
         if M.member (n,length e) m1
         then FunCall n <$> mapM st e
@@ -48,13 +48,28 @@ catchVar (m,m1) ex = case ex of
     e -> goInside st e
     where st = catchVar (m,m1)
 
+compFuns :: Map String (Double -> Double -> Bool)
+compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(==)), ("ne",(/=)), ("le",(<=)), ("ge",(>=))]
+
 eval :: (Map String Double, Map (String, Int) ([String],Expr)) -> Expr -> Either String (Double, Map String Double, Map (String,Int) ([String],Expr))
 eval (m,m1) e = case e of
    (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
-   (Asgn s e)                       -> do {(r,_,_) <- eval (m,m1) e; return (r, M.insert s r m, m1)}
-   (UDF n s e)                      -> do
+   (Asgn s e)                           -> do {(r,_,_) <- eval (m,m1) e; return (r, M.insert s r m, m1)}
+   (UDF n s e)                          -> do
         newe <- localize (n,length s) s e >>= catchVar (m,m1)
         return (fromIntegral $ M.size m1,m, M.insert (n, length s) (map ('$':) s, newe) m1)
+   (FunCall n [a,b]) | M.member n compFuns -> do
+    let fun = fromJust (M.lookup n compFuns :: Maybe (Double -> Double -> Bool))
+    (n,_,_) <- eval (m,m1) a
+    (n1,_,_) <- eval (m,m1) b
+    return $ if fun n n1
+        then (1, m, m1)
+        else (0, m, m1)
+   (FunCall "if" [a,b,c]) -> do
+    (cond,_,_) <- eval (m,m1) a
+    if cond /= 0
+    then eval (m,m1) b
+    else eval (m,m1) c
    (FunCall name e)                 ->
         case (M.lookup (name, length e) m1 :: Maybe ([String],Expr)) of
             Just (al, expr) -> do
@@ -89,7 +104,7 @@ eval (m,m1) e = case e of
    where
     mte _ (Just x, m,m1) = Right (x,m,m1)
     mte s (Nothing,_,_) = Left s
-    fns = [(Sin,sin), (Cos,cos), (Tan,tan), (Asin,asin), (Acos,acos), (Atan, atan), (Log,log), (Exp,exp), (Sqrt,sqrt)]
+    fns = [(Sin,sin), (Cos,cos), (Tan,tan), (Asin,asin), (Acos,acos), (Atan, atan), (Log,log), (Exp,exp), (Sqrt,sqrt), (Abs, abs)]
     eval' f x y = do
         (t1,_,_) <- eval (m,m1) x
         (t2,_,_) <- eval (m,m1) y

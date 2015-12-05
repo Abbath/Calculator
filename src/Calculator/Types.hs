@@ -4,7 +4,7 @@ import Data.List (intercalate)
 
 data Operator = Assign | Plus | Minus | Mult | Div | Mod | Power deriving (Show, Eq)
 
-data Function = Sin | Cos | Tan | Asin | Acos | Atan | Log | Exp | Sqrt deriving (Show, Eq)
+data Function = Sin | Cos | Tan | Asin | Acos | Atan | Log | Exp | Sqrt | Abs deriving (Show, Eq)
 
 data Token = TNumber Double
            | TOp Operator

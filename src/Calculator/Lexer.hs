@@ -22,6 +22,7 @@ function f = case f of
     "log" -> Log
     "exp" -> Exp
     "sqrt"-> Sqrt
+    "abs" -> Abs
 
 infixl 4 <&>
 (<&>) = flip (<$>)
@@ -53,4 +54,4 @@ tokenize = fromJust . tokenize' where
                          in if null x then Nothing else Just $ head x
 
 funs :: [String]
-funs = ["sin(", "cos(", "asin(", "acos(", "tan(", "atan(", "log(", "exp(", "sqrt("]
+funs = ["sin(", "cos(", "asin(", "acos(", "tan(", "atan(", "log(", "exp(", "sqrt(", "abs("]
