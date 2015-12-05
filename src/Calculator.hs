@@ -8,7 +8,7 @@ import Calculator.Lexer
 import Calculator.Parser
 import Calculator.Evaluator
 
-loop :: (Map String Double,Map (String,Int) ([String],Expr)) -> IO()
+loop :: (VarMap, FunMap) -> IO()
 loop (m,mm) = do
     putStr "> " >> hFlush stdout
     x <- getLine
