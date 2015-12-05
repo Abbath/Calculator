@@ -1,9 +1,12 @@
-module Calculator.Evaluator (eval) where
+module Calculator.Evaluator (eval, FunMap, VarMap) where
 
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Calculator.Types (Expr(..), Operator(..), Function(..))
+
+type FunMap = Map (String, Int) ([String],Expr)
+type VarMap = Map String Double
 
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
 goInside f e = case e of
@@ -32,7 +35,7 @@ localize (n,a) s ex = case ex of
     e -> goInside st e
     where st = localize (n,a) s
 
-catchVar :: (Map String Double, Map (String, Int) ([String],Expr)) -> Expr -> Either String Expr
+catchVar :: (VarMap, FunMap) -> Expr -> Either String Expr
 catchVar (m,m1) ex = case ex of
     (Id i@('$':_)) -> return $ Id i
     (Id i) ->
@@ -51,7 +54,7 @@ catchVar (m,m1) ex = case ex of
 compFuns :: Map String (Double -> Double -> Bool)
 compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(==)), ("ne",(/=)), ("le",(<=)), ("ge",(>=))]
 
-eval :: (Map String Double, Map (String, Int) ([String],Expr)) -> Expr -> Either String (Double, Map String Double, Map (String,Int) ([String],Expr))
+eval :: (VarMap, FunMap) -> Expr -> Either String (Double, VarMap, FunMap)
 eval (m,m1) e = case e of
    (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
    (Asgn s e)                           -> do {(r,_,_) <- eval (m,m1) e; return (r, M.insert s r m, m1)}
