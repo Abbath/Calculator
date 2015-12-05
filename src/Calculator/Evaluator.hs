@@ -3,7 +3,7 @@ module Calculator.Evaluator (eval) where
 import Data.Maybe (fromMaybe)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Calculator.Types
+import Calculator.Types (Expr(..), Operator(..), Function(..))
 
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
 goInside f e = case e of

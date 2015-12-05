@@ -1,4 +1,4 @@
-module Calculator.Types where
+module Calculator.Types (Expr(..), Token(..), Operator(..), Function(..)) where
 
 import Data.List (intercalate)
 

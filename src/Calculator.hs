@@ -12,7 +12,7 @@ loop :: (Map String Double,Map (String,Int) ([String],Expr)) -> IO()
 loop (m,mm) = do
     putStr "> " >> hFlush stdout
     x <- getLine
-    if not (null x)
+    if not $ null x
     then do
         let t = tokenize x >>= parse >>= eval (m, mm)
         case t of

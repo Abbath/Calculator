@@ -4,7 +4,7 @@ import Data.Maybe (fromJust)
 import Data.Char (isSpace, isAlpha, isDigit)
 import Data.List (isPrefixOf, find)
 import Control.Applicative ((<|>))
-import Calculator.Types
+import Calculator.Types (Token(..), Operator(..), Function(..))
 
 operator :: Char -> Operator
 operator c = fromJust $ lookup c ops
