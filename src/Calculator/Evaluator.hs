@@ -17,40 +17,40 @@ goInside f e = case e of
   (Pow e1 e2) -> Pow <$> f e1 <*> f e2
   (Par e) -> Par <$> f e
   (UMinus e) -> UMinus <$> f e
+  (FunCall n e) -> FunCall n <$> mapM f e
   e -> return e
 
 substitute :: ([String], [Expr]) -> Expr -> Either String Expr
 substitute ([],[]) e = return e
 substitute (x,y) _ | length x /= length y = Left "Bad argument number"
 substitute (x:xs, y:ys) (Id i) = if i == x then return y else substitute (xs, ys) (Id i)
-substitute s ex = case ex of
-  (FunCall n e) -> FunCall n <$> mapM st e
-  e -> goInside st e
-  where st = substitute s
+substitute (x:xs, Id fname:ys) (FunCall n e) = do
+  t <- mapM (substitute (x:xs, Id fname:ys)) e
+  if n == x
+  then return $ FunCall fname t
+  else substitute (xs, ys) (FunCall n t)
+substitute (x:xs, y:ys) fc@(FunCall n e) = substitute (xs, ys) fc
+substitute s ex = goInside (substitute s) ex
 
-localize :: (String,Int) -> [String] -> Expr -> Either String Expr
-localize (n,a) [] e = return e
-localize (n,a) (x:xs) (Id i) = if i == x then return $ Id ('$':i) else localize (n,a) xs (Id i)
-localize (n,a) s ex = case ex of
-  (FunCall nm e) -> FunCall nm <$> mapM st e
-  e -> goInside st e
-  where st = localize (n,a) s
+localize :: [String] -> Expr -> Either String Expr
+localize [] e = return e
+localize (x:xs) (Id i) = if i == x then return $ Id ('$':i) else localize xs (Id i)
+localize (x:xs) (FunCall nm e) = do
+  t <- mapM (localize (x:xs)) e
+  if nm == x
+  then return $ FunCall ('$':nm) t
+  else localize xs (FunCall nm t)
+localize s ex = goInside (localize s) ex
 
 catchVar :: Maps -> Expr -> Either String Expr
-catchVar (m,m1) ex = case ex of
+catchVar (m, m1) ex = case ex of
   (Id i@('$':_)) -> return $ Id i
   (Id i) ->
     case M.lookup i m :: Maybe Double of
       Just n -> return $ Number n
       Nothing -> Left $ "No such variable: " ++ i
-  (FunCall n e) | M.member n compFuns || M.member n mathFuns -> FunCall n <$> mapM st e
-  (FunCall "if" e) -> FunCall "if" <$> mapM st e
-  (FunCall n e) ->
-    if M.member (n,length e) m1
-    then FunCall n <$> mapM st e
-    else Left $ "No such function: " ++ n ++ "/" ++ show (length e)
   e -> goInside st e
-  where st = catchVar (m,m1)
+  where st = catchVar (m, m1)
 
 compFuns :: Map String (Double -> Double -> Bool)
 compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(==)), ("ne",(/=)), ("le",(<=)), ("ge",(>=))]
@@ -64,7 +64,7 @@ eval maps e = case e of
   (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
   (Asgn s e)                           -> do {(r,_) <- evm e; return (r, first (M.insert s r) maps)}
   (UDF n s e)                          -> do
-    newe <- localize (n,length s) s e >>= catchVar maps
+    newe <- localize s e >>= catchVar maps
     return (fromIntegral $ M.size (snd maps), second (M.insert (n, length s) (map ('$':) s, newe)) maps)
   (FunCall "atan" [Prod Div e1 e2])       -> eval' atan2 e1 e2
   (FunCall n [a])   | M.member n mathFuns -> do
@@ -89,7 +89,9 @@ eval maps e = case e of
         expr1 <- substitute (al, e) expr
         (a,_) <- evm expr1
         return $ mps a
-      Nothing -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
+      Nothing -> case name of
+        ('$':r) -> Left $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e)
+        _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
   (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (fst maps) :: Maybe Double)
   (Number x)                 -> return $ mps x
   (Sum Plus x y)             -> eval' (+) x y
