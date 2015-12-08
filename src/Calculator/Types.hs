@@ -26,20 +26,20 @@ data Expr = Number Double
           deriving Eq
 
 instance Show Expr where
-    show = showExpr 0
+  show = showExpr 0
 
 showExpr :: Int -> Expr -> String
 showExpr n e =
-    let suf = case e of
-            (UDF n a e)     -> n ++ "("++ intercalate ", " a ++ ")" ++ "\n" ++ s e
-            (Asgn i e)      -> "Assign " ++ i ++ "\n" ++ s e
-            (Sum op e1 e2)  -> "Sum " ++ show op ++ "\n" ++ s e1 ++ "\n" ++ s e2
-            (Prod op e1 e2) -> "Prod " ++ show op ++ "\n" ++ s e1 ++ "\n" ++ s e2
-            (Pow e1 e2)     -> "Pow \n" ++ s e1 ++ "\n" ++ s e2
-            (Number x )     -> "Number " ++ show x
-            (Par e)         -> "Par \n" ++ s e
-            (UMinus e)      -> "UMinus \n" ++ s e
-            (FunCall n e)   -> "FunCall " ++ n ++ "\n" ++ intercalate "\n" (map s e)
-            (Id s)          -> "Id " ++ s
-    in replicate n ' ' ++ suf
-    where s = showExpr (n+1)
+  let suf = case e of
+        (UDF n a e)     -> n ++ "("++ intercalate ", " a ++ ")" ++ "\n" ++ s e
+        (Asgn i e)      -> "Assign " ++ i ++ "\n" ++ s e
+        (Sum op e1 e2)  -> "Sum " ++ show op ++ "\n" ++ s e1 ++ "\n" ++ s e2
+        (Prod op e1 e2) -> "Prod " ++ show op ++ "\n" ++ s e1 ++ "\n" ++ s e2
+        (Pow e1 e2)     -> "Pow \n" ++ s e1 ++ "\n" ++ s e2
+        (Number x )     -> "Number " ++ show x
+        (Par e)         -> "Par \n" ++ s e
+        (UMinus e)      -> "UMinus \n" ++ s e
+        (FunCall n e)   -> "FunCall " ++ n ++ "\n" ++ intercalate "\n" (map s e)
+        (Id s)          -> "Id " ++ s
+  in replicate n ' ' ++ suf
+  where s = showExpr (n+1)
