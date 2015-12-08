@@ -1,4 +1,4 @@
-module Calculator.Evaluator (eval, FunMap, VarMap) where
+module Calculator.Evaluator (eval, FunMap, VarMap, Maps) where
 
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Map (Map)
@@ -37,8 +37,8 @@ substitute s ex = goInside (substitute s) ex
 localize :: [String] -> Expr -> Either String Expr
 localize [] e = return e
 localize (x:xs) (Id i) = if i == x then return $ Id ('$':i) else localize xs (Id i)
-localize (x:xs) (FunCall nm e) = do
-  t <- mapM (localize (x:xs)) e
+localize s@(x:xs) (FunCall nm e) = do
+  t <- mapM (localize s) e
   if nm == x
   then return $ FunCall ('$':nm) t
   else localize xs (FunCall nm t)
