@@ -17,5 +17,6 @@ Features
 * Variable `_` stores result of the previous calculation
 * A variable can be defined using syntax `<name> = <expression>`
 * A user defined function can be defined using syntax `<name>(<arg1>[,<arg2>[,<arg3>...]]) = <expression>`
+* A function can take other functions as arguments
 * Outer variables' values are captured inside user defined functions
 * A signature of the user defined function consists of a name and arity
