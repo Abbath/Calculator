@@ -24,12 +24,14 @@ substitute :: ([String], [Expr]) -> Expr -> Either String Expr
 substitute ([],[]) e = return e
 substitute (x,y) _ | length x /= length y = Left "Bad argument number"
 substitute (x:xs, y:ys) (Id i) = if i == x then return y else substitute (xs, ys) (Id i)
-substitute (x:xs, Id fname:ys) (FunCall n e) = do
-  t <- mapM (substitute (x:xs, Id fname:ys)) e
+substitute s@(x:xs, Id fname:ys) (FunCall n e) = do
+  t <- mapM (substitute s) e
   if n == x
   then return $ FunCall fname t
   else substitute (xs, ys) (FunCall n t)
-substitute (x:xs, y:ys) fc@(FunCall n e) = substitute (xs, ys) fc
+substitute s@(x:xs, y:ys) (FunCall n e) = do
+  t <- mapM (substitute s) e
+  substitute (xs, ys) (FunCall n t)
 substitute s ex = goInside (substitute s) ex
 
 localize :: [String] -> Expr -> Either String Expr
