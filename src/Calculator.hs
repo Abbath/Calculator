@@ -1,6 +1,8 @@
 module Calculator (evalLoop) where
 
 import System.IO (hFlush, stdout)
+import System.IO.Error (catchIOError, isEOFError)
+import System.Exit (exitSuccess, exitFailure)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Calculator.Types
@@ -11,7 +13,9 @@ import Calculator.Evaluator
 loop :: (VarMap, FunMap) -> IO()
 loop (m,mm) = do
   putStr "> " >> hFlush stdout
-  x <- getLine
+  x <- getLine `catchIOError` (\e -> if isEOFError e
+    then do {putStrLn "\nBye!"; exitSuccess}
+    else do {print e; exitFailure})
   if not $ null x
   then do
     let t = tokenize x >>= parse >>= eval (m, mm)
