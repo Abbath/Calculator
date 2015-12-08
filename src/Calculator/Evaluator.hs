@@ -23,7 +23,7 @@ goInside f e = case e of
 substitute :: ([String], [Expr]) -> Expr -> Either String Expr
 substitute ([],[]) e = return e
 substitute (x,y) _ | length x /= length y = Left "Bad argument number"
-substitute (x:xs, y:ys) (Id i) = if i == x then return y else substitute (xs, ys) (Id i)
+substitute (x:xs, y:ys) (Id i) = if i == x then return $ Par y else substitute (xs, ys) (Id i)
 substitute s@(x:xs, Id fname:ys) (FunCall n e) = do
   t <- mapM (substitute s) e
   if n == x
