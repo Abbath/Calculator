@@ -12,7 +12,7 @@ Features
 * If conditions with a following syntax `if(<cond_expression>,<expression1>,<expression2>)`
 * Lazy evaluation of function arguments
 * Condition functions `lt gt le ge eq ne`
-* Optimisations like `log(exp(x) = x`
+* Optimisations like `log(exp(x)) = x`
 * Automatic detection of division operation in `atan` argument
 * Variable `_` stores result of the previous calculation
 * A variable can be defined using syntax `<name> = <expression>`

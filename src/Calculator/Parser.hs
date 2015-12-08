@@ -34,12 +34,11 @@ simplifyExpr e = case e of
     (Pow n (Number 1.0))                    -> simplifyExpr n
     (Sum op e1 e2)                          -> Sum op (simplifyExpr e1) (simplifyExpr e2)
     (Prod op e1 e2)                         -> Prod op (simplifyExpr e1) (simplifyExpr e2)
-    (Pow (Fun Sqrt e) (Number 2.0))         -> simplifyExpr e
+    (Pow (FunCall "sqrt" [e]) (Number 2.0)) -> simplifyExpr e
     (Pow e1 e2)                             -> Pow (simplifyExpr e1) (simplifyExpr e2)
-    (Fun Exp (Fun Log e))                   -> simplifyExpr e
-    (Fun Log (Fun Exp e))                   -> simplifyExpr e
-    (Fun Sqrt (Pow e (Number 2.0)))         -> simplifyExpr e
-    (Fun f e)                               -> Fun f (simplifyExpr e)
+    (FunCall "exp" [FunCall "log" [e]])     -> simplifyExpr e
+    (FunCall "log" [FunCall "exp" [e]])     -> simplifyExpr e
+    (FunCall "sqrt" [Pow e (Number 2.0)])   -> simplifyExpr e
     (FunCall name e)                        -> FunCall name (map simplifyExpr e)
     x                                       -> x
 
@@ -78,13 +77,13 @@ parseTerm :: [Token] -> Either String Expr
 parseTerm s = do
     t <- breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
     let (s1, s2) = t
-    let e1 = parsePow s1
+    let e1 = parseFactor s1
     let op = if null s2 then Right Mult else (\(TOp op) -> op) <$> tryHead "Missing second factor" s2
     let e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
     Prod <$> op <*> e1 <*> e2
 
-parsePow :: [Token] -> Either String Expr
-parsePow s = do
+parseFactor :: [Token] -> Either String Expr
+parseFactor s = do
     t <- breakPar (`elem` [TOp Power]) s
     let (s1, s2) = t
     e1 <- parseToken s1
@@ -99,7 +98,6 @@ parseToken s = case s of
     [TIdent s]  -> Right $ Id s
     (TIdent name : TLPar : rest) -> FunCall name <$> parseFuncall rest
     [TNumber n] -> Right $ Number n
-    (TFun f: TLPar : rest) -> Fun f <$> ps rest
     (TLPar : rest) -> Par <$> ps rest
     x -> Left $ "Syntax error: " ++ show x
     where ps ss = let t = takePar ss

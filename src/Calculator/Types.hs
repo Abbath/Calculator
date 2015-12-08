@@ -1,16 +1,13 @@
-module Calculator.Types (Expr(..), Token(..), Operator(..), Function(..)) where
+module Calculator.Types (Expr(..), Token(..), Operator(..)) where
 
 import Data.List (intercalate)
 
 data Operator = Assign | Plus | Minus | Mult | Div | Mod | Power deriving (Show, Eq)
 
-data Function = Sin | Cos | Tan | Asin | Acos | Atan | Log | Exp | Sqrt | Abs deriving (Show, Eq)
-
 data Token = TNumber Double
            | TOp Operator
            | TLPar
            | TRPar
-           | TFun Function
            | TIdent String
            | TComma
            | TEnd
@@ -22,7 +19,6 @@ data Expr = Number Double
           | Sum Operator Expr Expr
           | Prod Operator Expr Expr
           | Pow Expr Expr
-          | Fun Function Expr
           | UMinus Expr
           | Par Expr
           | FunCall String [Expr]
@@ -43,7 +39,6 @@ showExpr n e =
             (Number x )     -> "Number " ++ show x
             (Par e)         -> "Par \n" ++ s e
             (UMinus e)      -> "UMinus \n" ++ s e
-            (Fun f e)       -> "Fun " ++ show f ++ "\n" ++ s e
             (FunCall n e)   -> "FunCall " ++ n ++ "\n" ++ intercalate "\n" (map s e)
             (Id s)          -> "Id " ++ s
     in replicate n ' ' ++ suf
