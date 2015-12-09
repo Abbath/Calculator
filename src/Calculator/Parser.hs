@@ -71,7 +71,7 @@ parseCmp :: [Token] -> Either String Expr
 parseCmp s = do
   t <- breakPar (`elem` [TOp Lt, TOp Gt, TOp Le, TOp Ge, TOp Eq, TOp Ne]) s
   let (s1, s2) = t
-  let e1 = parseExpr s1
+  let e1 = if null s1 then Left "Missing first expr to compare" else parseExpr s1
   if null s2
   then e1
   else do
@@ -92,7 +92,7 @@ parseTerm :: [Token] -> Either String Expr
 parseTerm s = do
   t <- breakPar (`elem` [TOp Mult, TOp Div, TOp Mod]) s
   let (s1, s2) = t
-  let e1 = parseFactor s1
+  let e1 = if null s1 then Left "Missing first factor" else parseFactor s1
   let op = if null s2 then Right Mult else (\(TOp op) -> op) <$> tryHead "Missing second factor" s2
   let e2 = if null s2 then Right $ Number 1 else parseCmp . tail $ s2
   Prod <$> op <*> e1 <*> e2
