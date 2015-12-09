@@ -125,9 +125,11 @@ parseFuncall :: [Token] -> Either String [Expr]
 parseFuncall [TRPar] = return []
 parseFuncall s = do
   (s1, s2) <- breakPar (== TComma) s
-  if null s2
-  then (:[]) <$> if length s1 > 1 && last s1 == TRPar then parseCmp (init s1) else parseCmp s1
-  else (:) <$> parseCmp s1 <*> parseFuncall (tail s2)
+  if s2 == [TComma, TRPar] || null s1 then Left "Missing function argument"
+  else
+    if null s2
+    then (:[]) <$> if length s1 > 1 && last s1 == TRPar then parseCmp (init s1) else parseCmp s1
+    else (:) <$> parseCmp s1 <*> parseFuncall (tail s2)
 
 takePar :: [Token] -> Either String ([Token], [Token])
 takePar = takePar' 1 [] where
