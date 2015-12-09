@@ -12,6 +12,7 @@ type Maps = (VarMap, FunMap)
 
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
 goInside f e = case e of
+  (Cmp op e1 e2) -> Cmp op <$> f e1 <*> f e2
   (Sum op e1 e2) -> Sum op <$> f e1 <*> f e2
   (Prod op e1 e2) -> Prod op <$> f e1 <*> f e2
   (Pow e1 e2) -> Pow <$> f e1 <*> f e2
@@ -54,8 +55,17 @@ catchVar (m, m1) ex = case ex of
   e -> goInside st e
   where st = catchVar (m, m1)
 
+cmpDoubles :: Double -> Double -> Bool
+cmpDoubles x y = abs(x-y) < 2*eps
+  where eps = 1e-16
+
 compFuns :: Map String (Double -> Double -> Bool)
-compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(==)), ("ne",(/=)), ("le",(<=)), ("ge",(>=))]
+compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",cmpDoubles)
+  ,("ne",\x y -> not $ cmpDoubles x y ), ("le",(<=)), ("ge",(>=))]
+
+compOps :: Map Operator (Double -> Double -> Bool)
+compOps = M.fromList [(Lt,(<)), (Gt,(>)), (Eq,cmpDoubles)
+  ,(Ne,\x y -> not $ cmpDoubles x y ), (Le,(<=)), (Ge,(>=))]
 
 mathFuns :: Map String (Double -> Double)
 mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
@@ -73,13 +83,7 @@ eval maps e = case e of
     let fun = fromJust (M.lookup n mathFuns :: Maybe (Double -> Double))
     (n,_) <- evm a
     return $ mps $ fun n
-  (FunCall n [a,b]) | M.member n compFuns -> do
-    let fun = fromJust (M.lookup n compFuns :: Maybe (Double -> Double -> Bool))
-    (n,_) <- evm a
-    (n1,_) <- evm b
-    return $ if fun n n1
-      then mps 1
-      else mps 0
+  (FunCall n [a,b]) | M.member n compFuns -> cmp n a b compFuns
   (FunCall "if" [a,b,c]) -> do
     (cond,_) <- evm a
     if cond /= 0
@@ -96,6 +100,7 @@ eval maps e = case e of
         _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
   (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (fst maps) :: Maybe Double)
   (Number x)                 -> return $ mps x
+  (Cmp op x y)               -> cmp op x y compOps
   (Sum Plus x y)             -> eval' (+) x y
   (Sum Minus x (Sum op y z)) -> evm $ Sum op (Sum Minus x y) z
   (Sum Minus x y)            -> eval' (-) x y
@@ -121,6 +126,13 @@ eval maps e = case e of
     mte s (Nothing, _) = Left s
     evm = eval maps
     mps x = (x, maps)
+    cmp op x y map = do
+      let fun = fromJust (M.lookup op map :: Maybe (Double -> Double -> Bool))
+      (n,_) <- evm x
+      (n1,_) <- evm y
+      return $ if fun n n1
+        then mps 1
+        else mps 0
     eval' f x y = do
       (t1,_) <- eval maps x
       (t2,_) <- eval maps y

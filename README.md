@@ -11,7 +11,8 @@ Features
 * Embedded functions `sin cos tan asin acos atan log exp sqrt abs`
 * If conditions with a following syntax `if(<cond_expression>,<expression1>,<expression2>)`
 * Lazy evaluation of function arguments
-* Condition functions `lt gt le ge eq ne`
+* Comparison functions `lt gt le ge eq ne`
+* Comparison operators `< > <= >= == /=`
 * Optimisations like `log(exp(x)) = x`
 * Automatic detection of division operation in `atan` argument
 * Variable `_` stores result of the previous calculation

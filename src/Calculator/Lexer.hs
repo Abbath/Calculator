@@ -6,10 +6,13 @@ import Data.List (isPrefixOf, find)
 import Control.Applicative ((<|>))
 import Calculator.Types (Token(..), Operator(..))
 
-operator :: Char -> Operator
-operator c = fromJust $ lookup c ops
+operator :: String -> Operator
+operator s = fromJust $ lookup s ops
 
-ops = [('=',Assign), ('+',Plus), ('-',Minus), ('*',Mult), ('/',Div), ('%',Mod), ('^',Power)]
+ops = longOps ++ shortOps
+  where
+  longOps = [("<=",Le), (">=",Ge), ("==",Eq), ("/=",Ne)]
+  shortOps = [("=",Assign), ("+",Plus), ("-",Minus), ("*",Mult), ("/",Div), ("%",Mod), ("^",Power), ("<",Lt), (">",Gt)]
 
 infixl 4 <&>
 (<&>) = flip (<$>)
@@ -18,7 +21,7 @@ tokenize :: String -> Either String [Token]
 tokenize = fromJust . tokenize' where
   tokenize' [] = return $ Right []
   tokenize' s@(x:xs) =
-    oper x <&> (\op -> f (TOp $ operator op) xs) <|>
+    oper s <&> (\op -> f (TOp $ operator op) (drop (length op) s)) <|>
     match '(' x <&> (\_ -> f TLPar xs) <|>
     match ')' x <&> (\_ -> f TRPar xs) <|>
     match ',' x <&> (\_ -> f TComma xs) <|>
@@ -28,7 +31,7 @@ tokenize = fromJust . tokenize' where
     Just (Left $ "Cannot tokenize: " ++ s)
     where
       f out inp = (out:) <$> (fromJust . tokenize' $ inp)
-      oper x = if x `elem` map fst ops then Just x else Nothing
+      oper s = find (`isPrefixOf` s) (map fst ops)
       match c x = if c == x then Just x else Nothing
       space x = if isSpace x then Just x else Nothing
       readIdentifier s@(x:_) = if isAlpha x || x == '_'

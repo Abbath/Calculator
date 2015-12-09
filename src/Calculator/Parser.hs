@@ -26,6 +26,7 @@ simplifyExpr e = case e of
   (UMinus (Par (UMinus e)))               -> Par (simplifyExpr e)
   (UMinus (Pow e1 e2))                    -> Pow (UMinus (simplifyExpr e1)) (simplifyExpr e2)
   (UMinus e)                              -> UMinus (simplifyExpr e)
+  (Cmp op e1 e2)                          -> Cmp op (simplifyExpr e1) (simplifyExpr e2)
   (Sum Minus (Number 0.0) (Sum op e1 e2)) -> Sum op (simplifyExpr . UMinus $ e1) (simplifyExpr e2)
   (Sum Minus (Number 0.0) n)              -> UMinus (simplifyExpr n)
   (Sum Plus (Number 0.0) n)               -> simplifyExpr n
@@ -46,12 +47,12 @@ simplifyExpr e = case e of
 parseAssign :: [Token] -> Either String Expr
 parseAssign x@(TIdent _ : TLPar : TIdent _ : _ ) = do
   (a,b) <- breakPar (== TOp Assign) x
-  if null b then parseExpr x
+  if null b then parseCmp x
   else do
     (name, args) <- parseFunDec a
-    UDF name args <$> parseExpr (tail b)
-parseAssign (TIdent s : TOp Assign : rest) = Asgn s <$> parseExpr rest
-parseAssign s = parseExpr s
+    UDF name args <$> parseCmp (tail b)
+parseAssign (TIdent s : TOp Assign : rest) = Asgn s <$> parseCmp rest
+parseAssign s = parseCmp s
 
 parseFunDec :: [Token] -> Either String (String, [String])
 parseFunDec [TIdent name, TLPar, TIdent a, TRPar] = return (name, [a])
@@ -66,13 +67,25 @@ parseFunDec (TIdent name : TLPar : TIdent a : TComma : rest) = do
     (TIdent n : TComma : rest) -> (n:) <$> parseFunDec' rest
     x -> Left $ "Bad parse: " ++ show x
 
+parseCmp :: [Token] -> Either String Expr
+parseCmp s = do
+  t <- breakPar (`elem` [TOp Lt, TOp Gt, TOp Le, TOp Ge, TOp Eq, TOp Ne]) s
+  let (s1, s2) = t
+  let e1 = parseExpr s1
+  if null s2
+  then e1
+  else do
+    let op = (\(TOp op) -> op) <$> tryHead "Missing second expr to compare" s2
+    let e2 = parseCmp . tail $ s2
+    Cmp <$> op <*> e1 <*> e2
+
 parseExpr :: [Token] -> Either String Expr
 parseExpr s = do
   t <- breakPar (`elem` [TOp Plus, TOp Minus]) s
   let (s1, s2) = t
   let e1 = if null s1 then Right $ Number 0 else parseTerm s1
   let op = if null s2 then Right Plus else (\(TOp op) -> op) <$> tryHead "Missing second term" s2
-  let e2 = if null s2 then Right $ Number 0 else parseExpr . tail $ s2
+  let e2 = if null s2 then Right $ Number 0 else parseCmp . tail $ s2
   Sum <$> op <*> e1 <*> e2
 
 parseTerm :: [Token] -> Either String Expr
@@ -81,7 +94,7 @@ parseTerm s = do
   let (s1, s2) = t
   let e1 = parseFactor s1
   let op = if null s2 then Right Mult else (\(TOp op) -> op) <$> tryHead "Missing second factor" s2
-  let e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
+  let e2 = if null s2 then Right $ Number 1 else parseCmp . tail $ s2
   Prod <$> op <*> e1 <*> e2
 
 parseFactor :: [Token] -> Either String Expr
@@ -89,7 +102,7 @@ parseFactor s = do
   t <- breakPar (`elem` [TOp Power]) s
   let (s1, s2) = t
   e1 <- parseToken s1
-  let e2 = if null s2 then Right $ Number 1 else parseExpr . tail $ s2
+  let e2 = if null s2 then Right $ Number 1 else parseCmp . tail $ s2
   if (not . null $ s2) && (null . tail $ s2)
   then Left "Missing exponent"
   else Pow e1 <$> e2
@@ -106,15 +119,15 @@ parseToken s = case s of
     ps ss = let t = takePar ss
      in case t of
        Left err -> Left err
-       Right r -> parseExpr . init . fst $ r
+       Right r -> parseCmp . init . fst $ r
 
 parseFuncall :: [Token] -> Either String [Expr]
 parseFuncall [TRPar] = return []
 parseFuncall s = do
   (s1, s2) <- breakPar (== TComma) s
   if null s2
-  then (:[]) <$> if length s1 > 1 && last s1 == TRPar then parseExpr (init s1) else parseExpr s1
-  else (:) <$> parseExpr s1 <*> parseFuncall (tail s2)
+  then (:[]) <$> if length s1 > 1 && last s1 == TRPar then parseCmp (init s1) else parseCmp s1
+  else (:) <$> parseCmp s1 <*> parseFuncall (tail s2)
 
 takePar :: [Token] -> Either String ([Token], [Token])
 takePar = takePar' 1 [] where
