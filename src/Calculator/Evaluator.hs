@@ -4,10 +4,11 @@ import Data.Maybe (fromMaybe, fromJust)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Control.Arrow (first, second)
-import Calculator.Types (Expr(..), Operator(..))
+import Calculator.Types (Expr(..))
 
-type FunMap = Map (String, Int) ([String],Expr)
+type FunMap = Map (String, Int) ([String], Expr)
 type VarMap = Map String Double
+type OpMap = Map String ((String, String), Expr)
 type Maps = (VarMap, FunMap)
 
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
@@ -60,10 +61,6 @@ compFuns :: Map String (Double -> Double -> Bool)
 compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",cmpDoubles)
   ,("ne",\x y -> not $ cmpDoubles x y ), ("le",(<=)), ("ge",(>=))]
 
-compOps :: Map Operator (Double -> Double -> Bool)
-compOps = M.fromList [(Lt,(<)), (Gt,(>)), (Eq,cmpDoubles)
-  ,(Ne,\x y -> not $ cmpDoubles x y ), (Le,(<=)), (Ge,(>=))]
-
 compOpsStr :: Map String (Double -> Double -> Bool)
 compOpsStr = M.fromList [("<",(<)), (">",(>)), ("==",cmpDoubles)
   ,("/=",\x y -> not $ cmpDoubles x y ), ("<=",(<=)), (">=",(>=))]
@@ -108,8 +105,8 @@ eval maps e = case e of
   (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (fst maps) :: Maybe Double)
   (Number x)                 -> return $ mps x
   (OpCall "-" x (OpCall op y z)) | op `elem` ["+","-"] -> evm $ OpCall op (OpCall "-" x y) z
-  (OpCall "/" x (OpCall op y z)) | op `elem` ["*","/", "%"]-> evm $ OpCall op (OpCall "/" x y) z
-  (OpCall "%" x (OpCall op y z)) | op `elem` ["*","/", "%"]-> evm $ OpCall op (OpCall "%" x y) z
+  (OpCall op1 x (OpCall op2 y z))| op1 `elem` ["/", "%"] && op2 `elem` ["*","/", "%"] ->
+    evm $ OpCall op2 (OpCall op1 x y) z
   (OpCall "/" x y) -> do
     (n,_) <- evm y
     (n1,_) <- evm x

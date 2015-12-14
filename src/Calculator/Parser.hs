@@ -11,14 +11,14 @@ checkOps t = if snd . foldl f (TEnd, True) $ t
   else Left "Two operators in a row"
   where
     f (old, res) new  = (new, res && not (isOp new && old == new))
-    isOp (TStrOp "=") = False
-    isOp (TStrOp _) = True
+    isOp (TOp "=") = False
+    isOp (TOp _) = True
     isOp _ = False
 
 priorities :: Map Token Int
-priorities = M.fromList [(TStrOp "=", 0), (TStrOp "==", 1), (TStrOp "<=", 1), (TStrOp ">=", 1), (TStrOp "/=", 1)
-  ,(TStrOp "<", 1), (TStrOp ">", 1), (TStrOp "+", 2), (TStrOp "-", 2), (TStrOp "*", 3), (TStrOp "/", 3), (TStrOp "%", 3)
-  ,(TStrOp "^", 4)]
+priorities = M.fromList [(TOp "=", 0), (TOp "==", 1), (TOp "<=", 1), (TOp ">=", 1), (TOp "/=", 1)
+  ,(TOp "<", 1), (TOp ">", 1), (TOp "+", 2), (TOp "-", 2), (TOp "*", 3), (TOp "/", 3), (TOp "%", 3)
+  ,(TOp "^", 4)]
 
 takeWithPriorities :: Int -> [Token]
 takeWithPriorities n = map fst . M.toList $ M.filter (== n) priorities
@@ -54,12 +54,12 @@ simplifyExpr e = case e of
 
 parseOp :: Int -> [Token] -> Either String Expr
 parseOp 0 x@(TIdent _ : TLPar : TIdent _ : _ ) = do
-            (a,b) <- breakPar (== TStrOp "=") x
+            (a,b) <- breakPar (== TOp "=") x
             if null b then parseOp 1 x
             else do
               (name, args) <- parseFunDec a
               UDF name args <$> parseOp 1 (tail b)
-parseOp 0 (TIdent s : TStrOp "=" : rest) = Asgn s <$> parseOp 1 rest
+parseOp 0 (TIdent s : TOp "=" : rest) = Asgn s <$> parseOp 1 rest
 parseOp 0 s = parseOp 1 s
 parseOp 1 s = do
   t <- breakPar (`elem` takeWithPriorities 1) s
@@ -68,28 +68,28 @@ parseOp 1 s = do
   if null s2
   then e1
   else do
-    let op = (\(TStrOp op) -> op) <$> tryHead "Missing second arg" s2
+    let op = (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
     let e2 = parseOp 1 . tail $ s2
     OpCall <$> op <*> e1 <*> e2
 parseOp 2 s = do
   t <- breakPar (`elem` takeWithPriorities 2) s
   let (s1, s2) = t
   let e1 = if null s1 then Right $ Number 0 else parseOp 3 s1
-  let op = if null s2 then Right "+" else (\(TStrOp op) -> op) <$> tryHead "Missing second term" s2
+  let op = if null s2 then Right "+" else (\(TOp op) -> op) <$> tryHead "Missing second term" s2
   let e2 = if null s2 then Right $ Number 0 else parseOp 1 . tail $ s2
   OpCall <$> op <*> e1 <*> e2
 parseOp 3 s = do
   t <- breakPar (`elem` takeWithPriorities 3) s
   let (s1, s2) = t
   let e1 = if null s1 then Left "Missing first arg" else parseOp 4 s1
-  let op = if null s2 then Right "*" else (\(TStrOp op) -> op) <$> tryHead "Missing second arg" s2
+  let op = if null s2 then Right "*" else (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
   let e2 = if null s2 then Right $ Number 1 else parseOp 1 . tail $ s2
   OpCall <$> op <*> e1 <*> e2
 parseOp 4 s = do
   t <- breakPar (`elem` takeWithPriorities 4) s
   let (s1, s2) = t
   let e1 = if null s1 then Left "Missing first arg" else parseToken s1
-  let op = if null s2 then Right "^" else (\(TStrOp op) -> op) <$> tryHead "Missing second arg" s2
+  let op = if null s2 then Right "^" else (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
   let e2 = if null s2 then Right $ Number 1 else parseOp 1 . tail $ s2
   OpCall <$> op <*> e1 <*> e2
 parseOp n _ = Left $ "Bad priority" ++ show n

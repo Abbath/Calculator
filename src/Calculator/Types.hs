@@ -1,16 +1,12 @@
-module Calculator.Types (Expr(..), Token(..), Operator(..)) where
+module Calculator.Types (Expr(..), Token(..)) where
 
 import Data.List (intercalate)
 
-data Operator = Assign | Plus | Minus | Mult | Div | Mod | Power
- | Lt | Gt | Le | Ge | Eq | Ne deriving (Show, Eq, Ord)
-
 data Token = TNumber Double
-           | TOp Operator
            | TLPar
            | TRPar
            | TIdent String
-           | TStrOp String
+           | TOp String
            | TComma
            | TEnd
            deriving (Show, Eq, Ord)

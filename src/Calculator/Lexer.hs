@@ -4,7 +4,7 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Char (isSpace, isAlpha, isDigit)
 import Data.List (isPrefixOf, find)
 import Control.Applicative ((<|>))
-import Calculator.Types (Token(..), Operator(..))
+import Calculator.Types (Token(..))
 import Safe (headMay)
 
 opSymbols = "+-/*%^!~&|=><"
@@ -21,7 +21,7 @@ tokenize s@(x:xs) = fromMaybe (Left ("Cannot tokenize: " ++ s)) $
     match ')' x <&> (\_ -> f TRPar xs) <|>
     match ',' x <&> (\_ -> f TComma xs) <|>
     space x <&> (\_ -> tokenize xs) <|>
-    readOperator s <&> (\op -> f (TStrOp op) (drop (length op) s)) <|>
+    readOperator s <&> (\op -> f (TOp op) (drop (length op) s)) <|>
     readIdentifier s <&> (\(i,rest) -> f (TIdent i) rest) <|>
     readNumber s <&> (\(n,rest) -> f (TNumber n ) rest)
   where
