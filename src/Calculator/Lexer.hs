@@ -1,6 +1,6 @@
 module Calculator.Lexer (tokenize) where
 
-import Data.Maybe (fromMaybe, catMaybes)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Char (isSpace, isAlpha, isDigit)
 import Data.List (isPrefixOf, find)
 import Control.Applicative ((<|>))
@@ -29,7 +29,7 @@ tokenize s@(x:xs) = fromMaybe (Left ("Cannot tokenize: " ++ s)) $
     f out inp = (out:) <$> tokenize inp
     oper s =
         let mayOper (opStr, op) = if opStr `isPrefixOf` s then Just (opStr, op) else Nothing
-        in headMay (catMaybes (map mayOper ops))
+        in headMay $ mapMaybe mayOper ops
     match c x = if c == x then Just x else Nothing
     space x = if isSpace x then Just x else Nothing
     readIdentifier s@(x:_) = if isAlpha x || x == '_'
