@@ -13,11 +13,12 @@ data Token = TNumber Double
            | TStrOp String
            | TComma
            | TEnd
-           deriving (Show, Eq)
+           deriving (Show, Eq, Ord)
 
 data Expr = Number Double
           | Asgn String Expr
           | UDF String [String] Expr
+          | UDO String Int (String, String) Expr
           | Cmp Operator Expr Expr
           | Sum Operator Expr Expr
           | OpCall String Expr Expr

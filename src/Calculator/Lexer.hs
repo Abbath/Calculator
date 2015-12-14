@@ -22,6 +22,7 @@ infixl 4 <&>
 tokenize :: String -> Either String [Token]
 tokenize [] = Right []
 tokenize s@(x:xs) = fromMaybe (Left ("Cannot tokenize: " ++ s)) $
+    readOperator s <&> (\op -> f (TStrOp op) (drop (length op) s)) <|>
     oper s <&> (\(opStr, op) -> f (TOp op) (drop (length opStr) s)) <|>
     match '(' x <&> (\_ -> f TLPar xs) <|>
     match ')' x <&> (\_ -> f TRPar xs) <|>

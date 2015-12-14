@@ -67,9 +67,19 @@ compOps :: Map Operator (Double -> Double -> Bool)
 compOps = M.fromList [(Lt,(<)), (Gt,(>)), (Eq,cmpDoubles)
   ,(Ne,\x y -> not $ cmpDoubles x y ), (Le,(<=)), (Ge,(>=))]
 
+compOpsStr :: Map String (Double -> Double -> Bool)
+compOpsStr = M.fromList [("<",(<)), (">",(>)), ("==",cmpDoubles)
+  ,("/=",\x y -> not $ cmpDoubles x y ), ("<=",(<=)), (">=",(>=))]
+
 mathFuns :: Map String (Double -> Double)
 mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
         ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs)]
+
+fmod :: Double -> Double -> Double
+fmod x y = fromIntegral $ mod (floor x) (floor y)
+
+mathOps :: Map String (Double -> Double -> Double)
+mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",(**))]
 
 eval :: Maps -> Expr -> Either String (Double, Maps)
 eval maps e = case e of
@@ -100,6 +110,8 @@ eval maps e = case e of
         _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
   (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (fst maps) :: Maybe Double)
   (Number x)                 -> return $ mps x
+  (OpCall op x y) | M.member op compOpsStr -> cmp op x y compOpsStr
+  (OpCall op x y) | M.member op mathOps -> eval' (fromJust $ M.lookup op mathOps) x y
   (Cmp op x y)               -> cmp op x y compOps
   (Sum Plus x y)             -> eval' (+) x y
   (Sum Minus x (Sum op y z)) -> evm $ Sum op (Sum Minus x y) z

@@ -2,6 +2,8 @@ module Calculator.Parser (parse) where
 
 import Calculator.Types
 import Control.Arrow (first)
+import Data.Map (Map)
+import qualified Data.Map as M
 
 checkOps :: [Token] -> Either String [Token]
 checkOps t = if snd . foldl f (TEnd, True) $ t
@@ -9,9 +11,17 @@ checkOps t = if snd . foldl f (TEnd, True) $ t
   else Left "Two operators in a row"
   where
     f (old, res) new  = (new, res && not (isOp new && old == new))
-    isOp (TOp Assign) = False
-    isOp (TOp _) = True
+    isOp (TStrOp "=") = False
+    isOp (TStrOp _) = True
     isOp _ = False
+
+priorities :: Map Token Int
+priorities = M.fromList [(TStrOp "=", 0), (TStrOp "==", 1), (TStrOp "<=", 1), (TStrOp ">=", 1), (TStrOp "/=", 1)
+  ,(TStrOp "<", 1), (TStrOp ">", 1), (TStrOp "+", 2), (TStrOp "-", 2), (TStrOp "*", 3), (TStrOp "/", 3), (TStrOp "%", 3)
+  ,(TStrOp "^", 4)]
+
+takeWithPriorities :: Int -> [Token]
+takeWithPriorities n = map fst . M.toList $ M.filter (== n) priorities
 
 preprocess :: Expr -> Expr
 preprocess e = simplify' e e
@@ -26,6 +36,7 @@ simplifyExpr e = case e of
   (UMinus (Par (UMinus e)))               -> Par (simplifyExpr e)
   (UMinus (Pow e1 e2))                    -> Pow (UMinus (simplifyExpr e1)) (simplifyExpr e2)
   (UMinus e)                              -> UMinus (simplifyExpr e)
+  (OpCall op e1 e2)                       -> OpCall op (simplifyExpr e1) (simplifyExpr e2)
   (Cmp op e1 e2)                          -> Cmp op (simplifyExpr e1) (simplifyExpr e2)
   (Sum Minus (Number 0.0) (Sum op e1 e2)) -> Sum op (simplifyExpr . UMinus $ e1) (simplifyExpr e2)
   (Sum Minus (Number 0.0) n)              -> UMinus (simplifyExpr n)
@@ -43,6 +54,48 @@ simplifyExpr e = case e of
   (FunCall "sqrt" [Pow e (Number 2.0)])   -> simplifyExpr e
   (FunCall name e)                        -> FunCall name (map simplifyExpr e)
   x                                       -> x
+
+parseOp :: Int -> [Token] -> Either String Expr
+parseOp 0 x@(TIdent _ : TLPar : TIdent _ : _ ) = do
+            (a,b) <- breakPar (== TStrOp "=") x
+            if null b then parseOp 1 x
+            else do
+              (name, args) <- parseFunDec a
+              UDF name args <$> parseOp 1 (tail b)
+parseOp 0 (TIdent s : TStrOp "=" : rest) = Asgn s <$> parseOp 1 rest
+parseOp 0 s = parseOp 1 s
+parseOp 1 s = do
+  t <- breakPar (`elem` takeWithPriorities 1) s
+  let (s1, s2) = t
+  let e1 = if null s1 then Left "Missing first arg" else parseOp 2 s1
+  if null s2
+  then e1
+  else do
+    let op = (\(TStrOp op) -> op) <$> tryHead "Missing second arg" s2
+    let e2 = parseOp 1 . tail $ s2
+    OpCall <$> op <*> e1 <*> e2
+parseOp 2 s = do
+  t <- breakPar (`elem` takeWithPriorities 2) s
+  let (s1, s2) = t
+  let e1 = if null s1 then Right $ Number 0 else parseOp 3 s1
+  let op = if null s2 then Right "+" else (\(TStrOp op) -> op) <$> tryHead "Missing second term" s2
+  let e2 = if null s2 then Right $ Number 0 else parseOp 1 . tail $ s2
+  OpCall <$> op <*> e1 <*> e2
+parseOp 3 s = do
+  t <- breakPar (`elem` takeWithPriorities 3) s
+  let (s1, s2) = t
+  let e1 = if null s1 then Left "Missing first arg" else parseOp 4 s1
+  let op = if null s2 then Right "*" else (\(TStrOp op) -> op) <$> tryHead "Missing second arg" s2
+  let e2 = if null s2 then Right $ Number 1 else parseOp 1 . tail $ s2
+  OpCall <$> op <*> e1 <*> e2
+parseOp 4 s = do
+  t <- breakPar (`elem` takeWithPriorities 4) s
+  let (s1, s2) = t
+  let e1 = if null s1 then Left "Missing first arg" else parseToken s1
+  let op = if null s2 then Right "^" else (\(TStrOp op) -> op) <$> tryHead "Missing second arg" s2
+  let e2 = if null s2 then Right $ Number 1 else parseOp 1 . tail $ s2
+  OpCall <$> op <*> e1 <*> e2
+parseOp n _ = Left $ "Bad priority" ++ show n
 
 parseAssign :: [Token] -> Either String Expr
 parseAssign x@(TIdent _ : TLPar : TIdent _ : _ ) = do
@@ -119,7 +172,7 @@ parseToken s = case s of
     ps ss = let t = takePar ss
      in case t of
        Left err -> Left err
-       Right r -> parseCmp . init . fst $ r
+       Right r -> parseOp 1 . init . fst $ r
 
 parseFuncall :: [Token] -> Either String [Expr]
 parseFuncall [TRPar] = return []
@@ -128,8 +181,8 @@ parseFuncall s = do
   if s2 == [TComma, TRPar] || null s1 then Left "Missing function argument"
   else
     if null s2
-    then (:[]) <$> if length s1 > 1 && last s1 == TRPar then parseCmp (init s1) else parseCmp s1
-    else (:) <$> parseCmp s1 <*> parseFuncall (tail s2)
+    then (:[]) <$> if length s1 > 1 && last s1 == TRPar then parseOp 1 (init s1) else parseOp 1 s1
+    else (:) <$> parseOp 1 s1 <*> parseFuncall (tail s2)
 
 takePar :: [Token] -> Either String ([Token], [Token])
 takePar = takePar' 1 [] where
@@ -155,4 +208,4 @@ tryHead :: String -> [Token] -> Either String Token
 tryHead s l = if length l < 2 then Left s else Right $ head l
 
 parse :: [Token] -> Either String Expr
-parse s = preprocess <$> (checkOps s >>= parseAssign)
+parse s = preprocess <$> (checkOps s >>= parseOp 0)
