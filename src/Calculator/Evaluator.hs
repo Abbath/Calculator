@@ -37,17 +37,17 @@ substitute s ex = goInside (substitute s) ex
 
 localize :: [String] -> Expr -> Either String Expr
 localize [] e = return e
-localize (x:xs) (Id i) = if i == x then return $ Id ('$':i) else localize xs (Id i)
+localize (x:xs) (Id i) = if i == x then return $ Id ('@':i) else localize xs (Id i)
 localize s@(x:xs) (FunCall nm e) = do
   t <- mapM (localize s) e
   if nm == x
-  then return $ FunCall ('$':nm) t
+  then return $ FunCall ('@':nm) t
   else localize xs (FunCall nm t)
 localize s ex = goInside (localize s) ex
 
 catchVar :: Maps -> Expr -> Either String Expr
 catchVar (m, m1) ex = case ex of
-  (Id i@('$':_)) -> return $ Id i
+  (Id i@('@':_)) -> return $ Id i
   (Id i) ->
     case M.lookup i m :: Maybe Double of
       Just n -> return $ Number n
@@ -77,7 +77,7 @@ eval maps e = case e of
   (Asgn s e)                           -> do {(r,_) <- evm e; return (r, first (M.insert s r) maps)}
   (UDF n s e)                          -> do
     newe <- localize s e >>= catchVar maps
-    return (fromIntegral $ M.size (snd maps), second (M.insert (n, length s) (map ('$':) s, newe)) maps)
+    return (fromIntegral $ M.size (snd maps), second (M.insert (n, length s) (map ('@':) s, newe)) maps)
   (FunCall "atan" [Prod Div e1 e2])       -> eval' atan2 e1 e2
   (FunCall n [a])   | M.member n mathFuns -> do
     let fun = fromJust (M.lookup n mathFuns :: Maybe (Double -> Double))
@@ -96,7 +96,7 @@ eval maps e = case e of
         (a,_) <- evm expr1
         return $ mps a
       Nothing -> case name of
-        ('$':r) -> Left $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e)
+        ('@':r) -> Left $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e)
         _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
   (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (fst maps) :: Maybe Double)
   (Number x)                 -> return $ mps x

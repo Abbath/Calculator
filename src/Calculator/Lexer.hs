@@ -7,6 +7,10 @@ import Control.Applicative ((<|>))
 import Calculator.Types (Token(..), Operator(..))
 import Safe (headMay)
 
+opSymbols = "+-/*%^!~&|=><"
+
+isOp = (`elem` opSymbols)
+
 ops = longOps ++ shortOps
   where
   longOps = [("<=",Le), (">=",Ge), ("==",Eq), ("/=",Ne)]
@@ -32,6 +36,8 @@ tokenize s@(x:xs) = fromMaybe (Left ("Cannot tokenize: " ++ s)) $
         in headMay $ mapMaybe mayOper ops
     match c x = if c == x then Just x else Nothing
     space x = if isSpace x then Just x else Nothing
+    readOperator s = let s1 = takeWhile isOp s
+      in if null s1 then Nothing else Just s1
     readIdentifier s@(x:_) = if isAlpha x || x == '_'
       then Just $ break (\x -> not (isAlpha x || isDigit x || (x == '_'))) s
       else Nothing

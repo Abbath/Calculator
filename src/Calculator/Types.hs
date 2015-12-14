@@ -10,6 +10,7 @@ data Token = TNumber Double
            | TLPar
            | TRPar
            | TIdent String
+           | TStrOp String
            | TComma
            | TEnd
            deriving (Show, Eq)
@@ -19,6 +20,7 @@ data Expr = Number Double
           | UDF String [String] Expr
           | Cmp Operator Expr Expr
           | Sum Operator Expr Expr
+          | OpCall String Expr Expr
           | Prod Operator Expr Expr
           | Pow Expr Expr
           | UMinus Expr
