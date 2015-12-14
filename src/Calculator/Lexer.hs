@@ -11,30 +11,21 @@ opSymbols = "+-/*%^!~&|=><"
 
 isOp = (`elem` opSymbols)
 
-ops = longOps ++ shortOps
-  where
-  longOps = [("<=",Le), (">=",Ge), ("==",Eq), ("/=",Ne)]
-  shortOps = [("=",Assign), ("+",Plus), ("-",Minus), ("*",Mult), ("/",Div), ("%",Mod), ("^",Power), ("<",Lt), (">",Gt)]
-
 infixl 4 <&>
 (<&>) = flip (<$>)
 
 tokenize :: String -> Either String [Token]
 tokenize [] = Right []
 tokenize s@(x:xs) = fromMaybe (Left ("Cannot tokenize: " ++ s)) $
-    readOperator s <&> (\op -> f (TStrOp op) (drop (length op) s)) <|>
-    oper s <&> (\(opStr, op) -> f (TOp op) (drop (length opStr) s)) <|>
     match '(' x <&> (\_ -> f TLPar xs) <|>
     match ')' x <&> (\_ -> f TRPar xs) <|>
     match ',' x <&> (\_ -> f TComma xs) <|>
     space x <&> (\_ -> tokenize xs) <|>
+    readOperator s <&> (\op -> f (TStrOp op) (drop (length op) s)) <|>
     readIdentifier s <&> (\(i,rest) -> f (TIdent i) rest) <|>
     readNumber s <&> (\(n,rest) -> f (TNumber n ) rest)
   where
     f out inp = (out:) <$> tokenize inp
-    oper s =
-        let mayOper (opStr, op) = if opStr `isPrefixOf` s then Just (opStr, op) else Nothing
-        in headMay $ mapMaybe mayOper ops
     match c x = if c == x then Just x else Nothing
     space x = if isSpace x then Just x else Nothing
     readOperator s = let s1 = takeWhile isOp s

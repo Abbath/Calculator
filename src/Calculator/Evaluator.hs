@@ -12,10 +12,7 @@ type Maps = (VarMap, FunMap)
 
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
 goInside f e = case e of
-  (Cmp op e1 e2) -> Cmp op <$> f e1 <*> f e2
-  (Sum op e1 e2) -> Sum op <$> f e1 <*> f e2
-  (Prod op e1 e2) -> Prod op <$> f e1 <*> f e2
-  (Pow e1 e2) -> Pow <$> f e1 <*> f e2
+  (OpCall op e1 e2) -> OpCall op <$> f e1 <*> f e2
   (Par e) -> Par <$> f e
   (UMinus e) -> UMinus <$> f e
   (FunCall n e) -> FunCall n <$> mapM f e
@@ -88,7 +85,7 @@ eval maps e = case e of
   (UDF n s e)                          -> do
     newe <- localize s e >>= catchVar maps
     return (fromIntegral $ M.size (snd maps), second (M.insert (n, length s) (map ('@':) s, newe)) maps)
-  (FunCall "atan" [Prod Div e1 e2])       -> eval' atan2 e1 e2
+  (FunCall "atan" [OpCall "/" e1 e2])       -> eval' atan2 e1 e2
   (FunCall n [a])   | M.member n mathFuns -> do
     let fun = fromJust (M.lookup n mathFuns :: Maybe (Double -> Double))
     (n,_) <- evm a
@@ -110,27 +107,22 @@ eval maps e = case e of
         _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
   (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (fst maps) :: Maybe Double)
   (Number x)                 -> return $ mps x
-  (OpCall op x y) | M.member op compOpsStr -> cmp op x y compOpsStr
-  (OpCall op x y) | M.member op mathOps -> eval' (fromJust $ M.lookup op mathOps) x y
-  (Cmp op x y)               -> cmp op x y compOps
-  (Sum Plus x y)             -> eval' (+) x y
-  (Sum Minus x (Sum op y z)) -> evm $ Sum op (Sum Minus x y) z
-  (Sum Minus x y)            -> eval' (-) x y
-  (Prod Mult x y)            -> eval' (*) x y
-  (Prod Div x (Prod op y z)) -> evm $ Prod op (Prod Div x y) z
-  (Prod Mod x (Prod op y z)) -> evm $ Prod op (Prod Mod x y) z
-  (Prod Div x y) -> do
+  (OpCall "-" x (OpCall op y z)) | op `elem` ["+","-"] -> evm $ OpCall op (OpCall "-" x y) z
+  (OpCall "/" x (OpCall op y z)) | op `elem` ["*","/", "%"]-> evm $ OpCall op (OpCall "/" x y) z
+  (OpCall "%" x (OpCall op y z)) | op `elem` ["*","/", "%"]-> evm $ OpCall op (OpCall "%" x y) z
+  (OpCall "/" x y) -> do
     (n,_) <- evm y
     (n1,_) <- evm x
     if n == 0 then Left "Div by zero" else return $ mps (n1 / n)
-  (Prod Mod x y) -> do
+  (OpCall "%" x y) -> do
     (n,_) <- evm y
     (n1,_) <- evm x
     if n == 0
     then Left "Div by zero"
     else return $ mps (fromIntegral $ mod (floor n1) (floor n))
-  (Pow x y)          -> eval' (**) x y
-  (UMinus (Pow x y)) -> evm $ Pow (UMinus x) y
+  (OpCall op x y) | M.member op compOpsStr -> cmp op x y compOpsStr
+  (OpCall op x y) | M.member op mathOps -> eval' (fromJust $ M.lookup op mathOps) x y
+  (UMinus (OpCall "^" x y)) -> evm $ OpCall "^" (UMinus x) y
   (UMinus x)         -> do {(n,_) <- evm x; return $ mps (-n)}
   (Par e)            -> evm e
   where
