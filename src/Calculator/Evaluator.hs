@@ -1,4 +1,4 @@
-module Calculator.Evaluator (eval, FunMap, VarMap, OpMap, Maps(..)) where
+module Calculator.Evaluator (eval, getPriorities, FunMap, VarMap, OpMap, Maps(..)) where
 
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Map.Strict (Map)
@@ -81,11 +81,6 @@ getPriorities om = let lst = M.toList om
                        ps = M.fromList $ map (\(s,((p,_),_)) -> (s,p)) lst
                    in ps
 
-priorities :: Map String Int
-priorities = M.fromList [("=", 0), ("==", 1), ("<=", 1), (">=", 1), ("/=", 1)
-  ,("<", 1), (">", 1), ("+", 2), ("-", 2), ("*", 3), ("/", 3), ("%", 3)
-  ,("^", 4)]
-
 eval :: Maps -> Expr -> Either String (Double, Maps)
 eval maps e = case e of
   (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
@@ -122,9 +117,25 @@ eval maps e = case e of
         _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
   (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Double)
   (Number x)                 -> return $ mps x
-  (OpCall "-" x (OpCall op y z)) | op `elem` ["+","-"] -> evm $ OpCall op (OpCall "-" x y) z
-  (OpCall op1 x (OpCall op2 y z))| op1 `elem` ["/", "%"] && op2 `elem` ["*","/", "%"] ->
-    evm $ OpCall op2 (OpCall op1 x y) z
+  (OpCall op1 x s@(OpCall op2 y z)) -> do
+    let pr = getPriorities (maps^._3)
+    let a = M.lookup op1 pr
+    let b = M.lookup op2 pr
+    if a == b
+    then case a of
+      Nothing -> Left $ "No such operators: " ++ op1 ++ " " ++ op2
+      Just n -> do
+        let ((_, asc1), _) = (maps^._3) M.! op1
+        let ((_, asc2), _) = (maps^._3) M.! op2
+        case (asc1, asc1) of
+         (L, L) -> evm $ OpCall op2 (OpCall op1 x y) z
+         (R, R) -> do
+          (tmp,_) <- evm s
+          evm $ OpCall op1 x (Number tmp)
+         otherwise -> Left "Operators with different associativity"
+    else do
+      (tmp,_) <- evm s
+      evm $ OpCall op1 x (Number tmp)
   (OpCall "/" x y) -> do
     (n,_) <- evm y
     (n1,_) <- evm x
@@ -137,23 +148,6 @@ eval maps e = case e of
     else return $ mps (fromIntegral $ mod (floor n1) (floor n))
   (OpCall op x y) | M.member op compOps -> cmp op x y compOps
   (OpCall op x y) | M.member op mathOps -> eval' ( mathOps M.! op) x y
-  (OpCall op1 x s@(OpCall op2 y z)) -> do
-    let pr = M.union priorities $ getPriorities (maps^._3)
-    let a = M.lookup op1 pr
-    let b = M.lookup op2 pr
-    if a == b
-    then case a of
-      Nothing -> Left $ "No such operators: " ++ op1 ++ " " ++ op2
-      Just n -> do
-        let ((_, asc1), _) = (maps^._3) M.! op1
-        let ((_, asc2), _) = (maps^._3) M.! op2
-        if asc1 == L && asc2 == L then evm $ OpCall op2 (OpCall op1 x y) z
-        else do
-          (tmp,_) <- evm s
-          evm $ OpCall op1 x (Number tmp)
-    else do
-      (tmp,_) <- evm s
-      evm $ OpCall op1 x (Number tmp)
   (OpCall op x y)  ->
     case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc),Expr)) of
         Just ((_,asc), expr) -> do

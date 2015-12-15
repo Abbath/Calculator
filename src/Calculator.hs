@@ -7,15 +7,18 @@ import Data.Map.Strict (Map)
 import Control.Lens
 import Control.Lens.Tuple (_1,_2,_3)
 import qualified Data.Map.Strict as M
-import Calculator.Types (Expr(..), Token(..))
+import Calculator.Types (Expr(..), Token(..), Assoc(..))
 import Calculator.Lexer
 import Calculator.Parser
 import Calculator.Evaluator
 
-getPriorities :: OpMap -> Map String Int
-getPriorities om = let lst = M.toList om
-                       ps = M.fromList $ map (\(s,((p,_),_)) -> (s,p)) lst
-                   in ps
+opMap :: OpMap
+opMap = M.fromList [("=", f 0 R)
+  , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("/=", f 1 L), ("<", f 1 L), (">", f 1 L)
+  , ("+", f 2 L), ("-", f 2 L)
+  , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)
+  , ("^", f 4 R)]
+  where f p a = ((p, a), Number 0)
 
 loop :: Maps -> IO()
 loop maps = do
@@ -28,7 +31,6 @@ loop maps = do
     let t = tokenize x >>= parse (getPriorities $ maps^._3) >>= eval maps
     case t of
       Left err -> do
-        print $ maps^._3
         putStrLn err
         loop maps
       Right (r, m) -> do
@@ -41,4 +43,4 @@ loop maps = do
 defVar :: VarMap
 defVar = M.fromList [("pi",pi), ("e",exp 1), ("_",0.0)]
 
-evalLoop = loop (defVar, M.empty, M.empty)
+evalLoop = loop (defVar, M.empty, opMap)
