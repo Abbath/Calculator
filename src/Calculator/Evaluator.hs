@@ -89,12 +89,13 @@ eval maps e = case e of
     newe <- localize s e >>= catchVar (maps^._1)
     let newmap = M.insert (n, length s) (map ('@':) s, newe) $ maps^._2
     return (fromIntegral $ M.size (maps^._2), maps & _2 .~ newmap)
-  (UDO n p a e )                       ->
-    if p < 1 || p > 4 then Left $ "Bad priority: " ++ show p
-    else do
-      newe <- localize ["x","y"] e >>= catchVar (maps^._1)
-      let newmap = M.insert n ((p, a), newe) (maps^._3)
-      return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
+  (UDO n p a e )
+    | M.member n mathOps || M.member n compOps || n == "=" -> Left $ "Can not redefine embedded operator: " ++ n
+    | p < 1 || p > 4 ->  Left $ "Bad priority: " ++ show p
+    |otherwise -> do
+        newe <- localize ["x","y"] e >>= catchVar (maps^._1)
+        let newmap = M.insert n ((p, a), newe) (maps^._3)
+        return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
   (FunCall "atan" [OpCall "/" e1 e2])       -> eval' atan2 e1 e2
   (FunCall n [a])   | M.member n mathFuns -> do
     let fun = mathFuns M.! n
