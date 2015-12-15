@@ -1,15 +1,16 @@
-module Calculator.Evaluator (eval, FunMap, VarMap, Maps) where
+module Calculator.Evaluator (eval, FunMap, VarMap, OpMap, Maps(..)) where
 
 import Data.Maybe (fromMaybe, fromJust)
-import Data.Map (Map)
-import qualified Data.Map as M
-import Control.Arrow (first, second)
-import Calculator.Types (Expr(..))
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+import Calculator.Types (Expr(..), Assoc(..))
+import Control.Lens
+import Control.Lens.Tuple (_1,_2,_3)
 
 type FunMap = Map (String, Int) ([String], Expr)
 type VarMap = Map String Double
-type OpMap = Map String ((String, String), Expr)
-type Maps = (VarMap, FunMap)
+type OpMap = Map String ((Int, Assoc), Expr)
+type Maps = (VarMap, FunMap, OpMap)
 
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
 goInside f e = case e of
@@ -43,15 +44,15 @@ localize s@(x:xs) (FunCall nm e) = do
   else localize xs (FunCall nm t)
 localize s ex = goInside (localize s) ex
 
-catchVar :: Maps -> Expr -> Either String Expr
-catchVar (m, m1) ex = case ex of
+catchVar :: VarMap -> Expr -> Either String Expr
+catchVar m ex = case ex of
   (Id i@('@':_)) -> return $ Id i
   (Id i) ->
     case M.lookup i m :: Maybe Double of
       Just n -> return $ Number n
       Nothing -> Left $ "No such variable: " ++ i
   e -> goInside st e
-  where st = catchVar (m, m1)
+  where st = catchVar m
 
 cmpDoubles :: Double -> Double -> Bool
 cmpDoubles x y = abs(x-y) < 2*eps
@@ -61,8 +62,8 @@ compFuns :: Map String (Double -> Double -> Bool)
 compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",cmpDoubles)
   ,("ne",\x y -> not $ cmpDoubles x y ), ("le",(<=)), ("ge",(>=))]
 
-compOpsStr :: Map String (Double -> Double -> Bool)
-compOpsStr = M.fromList [("<",(<)), (">",(>)), ("==",cmpDoubles)
+compOps :: Map String (Double -> Double -> Bool)
+compOps = M.fromList [("<",(<)), (">",(>)), ("==",cmpDoubles)
   ,("/=",\x y -> not $ cmpDoubles x y ), ("<=",(<=)), (">=",(>=))]
 
 mathFuns :: Map String (Double -> Double)
@@ -75,16 +76,33 @@ fmod x y = fromIntegral $ mod (floor x) (floor y)
 mathOps :: Map String (Double -> Double -> Double)
 mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",(**))]
 
+getPriorities :: OpMap -> Map String Int
+getPriorities om = let lst = M.toList om
+                       ps = M.fromList $ map (\(s,((p,_),_)) -> (s,p)) lst
+                   in ps
+
+priorities :: Map String Int
+priorities = M.fromList [("=", 0), ("==", 1), ("<=", 1), (">=", 1), ("/=", 1)
+  ,("<", 1), (">", 1), ("+", 2), ("-", 2), ("*", 3), ("/", 3), ("%", 3)
+  ,("^", 4)]
+
 eval :: Maps -> Expr -> Either String (Double, Maps)
 eval maps e = case e of
   (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
-  (Asgn s e)                           -> do {(r,_) <- evm e; return (r, first (M.insert s r) maps)}
+  (Asgn s e)                           -> do {(r,_) <- evm e; return (r, maps & _1 %~ M.insert s r)}
   (UDF n s e)                          -> do
-    newe <- localize s e >>= catchVar maps
-    return (fromIntegral $ M.size (snd maps), second (M.insert (n, length s) (map ('@':) s, newe)) maps)
+    newe <- localize s e >>= catchVar (maps^._1)
+    let newmap = M.insert (n, length s) (map ('@':) s, newe) $ maps^._2
+    return (fromIntegral $ M.size (maps^._2), maps & _2 .~ newmap)
+  (UDO n p a e )                       ->
+    if p < 1 || p > 4 then Left $ "Bad priority: " ++ show p
+    else do
+      newe <- localize ["x","y"] e >>= catchVar (maps^._1)
+      let newmap = M.insert n ((p, a), newe) (maps^._3)
+      return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
   (FunCall "atan" [OpCall "/" e1 e2])       -> eval' atan2 e1 e2
   (FunCall n [a])   | M.member n mathFuns -> do
-    let fun = fromJust (M.lookup n mathFuns :: Maybe (Double -> Double))
+    let fun = mathFuns M.! n
     (n,_) <- evm a
     return $ mps $ fun n
   (FunCall n [a,b]) | M.member n compFuns -> cmp n a b compFuns
@@ -94,7 +112,7 @@ eval maps e = case e of
     then evm b
     else evm c
   (FunCall name e) ->
-    case (M.lookup (name, length e) (snd maps) :: Maybe ([String],Expr)) of
+    case (M.lookup (name, length e) (maps^._2) :: Maybe ([String],Expr)) of
       Just (al, expr) -> do
         expr1 <- substitute (al, e) expr
         (a,_) <- evm expr1
@@ -102,7 +120,7 @@ eval maps e = case e of
       Nothing -> case name of
         ('@':r) -> Left $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e)
         _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
-  (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (fst maps) :: Maybe Double)
+  (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Double)
   (Number x)                 -> return $ mps x
   (OpCall "-" x (OpCall op y z)) | op `elem` ["+","-"] -> evm $ OpCall op (OpCall "-" x y) z
   (OpCall op1 x (OpCall op2 y z))| op1 `elem` ["/", "%"] && op2 `elem` ["*","/", "%"] ->
@@ -117,8 +135,34 @@ eval maps e = case e of
     if n == 0
     then Left "Div by zero"
     else return $ mps (fromIntegral $ mod (floor n1) (floor n))
-  (OpCall op x y) | M.member op compOpsStr -> cmp op x y compOpsStr
-  (OpCall op x y) | M.member op mathOps -> eval' (fromJust $ M.lookup op mathOps) x y
+  (OpCall op x y) | M.member op compOps -> cmp op x y compOps
+  (OpCall op x y) | M.member op mathOps -> eval' ( mathOps M.! op) x y
+  (OpCall op1 x s@(OpCall op2 y z)) -> do
+    let pr = M.union priorities $ getPriorities (maps^._3)
+    let a = M.lookup op1 pr
+    let b = M.lookup op2 pr
+    if a == b
+    then case a of
+      Nothing -> Left $ "No such operators: " ++ op1 ++ " " ++ op2
+      Just n -> do
+        let ((_, asc1), _) = (maps^._3) M.! op1
+        let ((_, asc2), _) = (maps^._3) M.! op2
+        if asc1 == L && asc2 == L then evm $ OpCall op2 (OpCall op1 x y) z
+        else do
+          (tmp,_) <- evm s
+          evm $ OpCall op1 x (Number tmp)
+    else do
+      (tmp,_) <- evm s
+      evm $ OpCall op1 x (Number tmp)
+  (OpCall op x y)  ->
+    case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc),Expr)) of
+        Just ((_,asc), expr) -> do
+          expr1 <- substitute (["@x", "@y"], [x,y]) expr
+          (a,_) <- evm expr1
+          return $ mps a
+        Nothing -> case op of
+          ('@':r) -> Left $ "Expression instead of function name: " ++ r ++ "/2"
+          _ -> Left $ "No such operator: " ++ op ++ "/2"
   (UMinus (OpCall "^" x y)) -> evm $ OpCall "^" (UMinus x) y
   (UMinus x)         -> do {(n,_) <- evm x; return $ mps (-n)}
   (Par e)            -> evm e
@@ -128,7 +172,7 @@ eval maps e = case e of
     evm = eval maps
     mps x = (x, maps)
     cmp op x y map = do
-      let fun = fromJust (M.lookup op map :: Maybe (Double -> Double -> Bool))
+      let fun = map M.! op
       (n,_) <- evm x
       (n1,_) <- evm y
       return $ if fun n n1
