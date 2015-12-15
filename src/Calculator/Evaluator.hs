@@ -127,7 +127,7 @@ eval maps e = case e of
       Just n -> do
         let ((_, asc1), _) = (maps^._3) M.! op1
         let ((_, asc2), _) = (maps^._3) M.! op2
-        case (asc1, asc1) of
+        case (asc1, asc2) of
          (L, L) -> evm $ OpCall op2 (OpCall op1 x y) z
          (R, R) -> do
           (tmp,_) <- evm s
