@@ -57,6 +57,17 @@ simplifyExpr e = case e of
   (FunCall name e)                        -> FunCall name (map simplifyExpr e)
   x                                       -> x
 
+stringify :: [Token] -> String
+stringify [] = []
+stringify (x:xs) = str x ++ stringify xs
+  where
+  str (TNumber n) = " "++show n++" "
+  str TLPar = "("
+  str TRPar = ")"
+  str (TIdent s) = " "++s++" "
+  str (TOp s) = " "++s++" "
+  str (TComma) = ", "
+
 type ParseReader = ReaderT (Map String Int) (Except String) Expr
 
 parseOp :: Int -> [Token] -> ParseReader
@@ -107,7 +118,7 @@ parseOp 4 s = do
   let op = if null s2 then return "^" else lift $ (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
   let e2 = if null s2 then return $ Number 1 else parseOp 1 . tail $ s2
   OpCall <$> op <*> e1 <*> e2
-parseOp n _ = throwError $ "Bad priority" ++ show n
+parseOp n _ = throwError $ "Bad priority: " ++ show n
 
 parseFunDec :: [Token] -> Except String (String, [String])
 parseFunDec [TIdent name, TLPar, TIdent a, TRPar] = return (name, [a])
@@ -120,7 +131,8 @@ parseFunDec (TIdent name : TLPar : TIdent a : TComma : rest) = do
     [TIdent _, TComma] -> throwError "Missing bracket"
     [TIdent n, TRPar] -> return [n]
     (TIdent n : TComma : rest) -> (n:) <$> parseFunDec' rest
-    x -> throwError $ "Bad parse: " ++ show x
+    x -> throwError $ "Syntax error: " ++ stringify x
+parseFunDec s = throwError $ "Syntax error: " ++ stringify s
 
 parseToken :: [Token] -> ParseReader
 parseToken s = case s of
@@ -129,7 +141,7 @@ parseToken s = case s of
   (TIdent name : TLPar : rest) -> FunCall name <$> parseFuncall rest
   [TNumber n] -> return $ Number n
   (TLPar : rest) -> Par <$> ps rest
-  x -> throwError $ "Syntax error: " ++ show x
+  x -> throwError $ "Syntax error: " ++ stringify x
   where
     ps ss = let t = runExcept $ takePar ss
      in case t of

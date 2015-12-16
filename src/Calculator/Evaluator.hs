@@ -116,8 +116,8 @@ eval maps e = case e of
       Nothing -> case name of
         ('@':r) -> Left $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e)
         _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
-  (Id s)                     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Double)
-  (Number x)                 -> return $ mps x
+  (Id s)     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Double)
+  (Number x) -> return $ mps x
   (OpCall op1 x s@(OpCall op2 y z)) -> do
     let pr = getPriorities (maps^._3)
     let a = M.lookup op1 pr
@@ -129,11 +129,11 @@ eval maps e = case e of
         let ((_, asc1), _) = (maps^._3) M.! op1
         let ((_, asc2), _) = (maps^._3) M.! op2
         case (asc1, asc2) of
-         (L, L) -> evm $ OpCall op2 (OpCall op1 x y) z
-         (R, R) -> do
-          (tmp,_) <- evm s
-          evm $ OpCall op1 x (Number tmp)
-         otherwise -> Left "Operators with different associativity"
+          (L, L) -> evm $ OpCall op2 (OpCall op1 x y) z
+          (R, R) -> do
+            (tmp,_) <- evm s
+            evm $ OpCall op1 x (Number tmp)
+          otherwise -> Left "Operators with different associativity"
     else do
       (tmp,_) <- evm s
       evm $ OpCall op1 x (Number tmp)
@@ -151,13 +151,13 @@ eval maps e = case e of
   (OpCall op x y) | M.member op mathOps -> eval' ( mathOps M.! op) x y
   (OpCall op x y)  ->
     case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc),Expr)) of
-        Just ((_,asc), expr) -> do
-          expr1 <- substitute (["@x", "@y"], [x,y]) expr
-          (a,_) <- evm expr1
-          return $ mps a
-        Nothing -> case op of
-          ('@':r) -> Left $ "Expression instead of function name: " ++ r ++ "/2"
-          _ -> Left $ "No such operator: " ++ op ++ "/2"
+      Just ((_,asc), expr) -> do
+        expr1 <- substitute (["@x", "@y"], [x,y]) expr
+        (a,_) <- evm expr1
+        return $ mps a
+      Nothing -> case op of
+        ('@':r) -> Left $ "Expression instead of function name: " ++ r ++ "/2"
+        _ -> Left $ "No such operator: " ++ op ++ "/2"
   (UMinus (OpCall "^" x y)) -> evm $ OpCall "^" (UMinus x) y
   (UMinus x)         -> do {(n,_) <- evm x; return $ mps (-n)}
   (Par e)            -> evm e
