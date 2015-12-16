@@ -1,9 +1,12 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Calculator.Parser (parse) where
 
 import Calculator.Types
 import Control.Arrow (first)
 import Data.Map.Strict (Map)
 import Control.Monad.Reader
+import Control.Monad.Except
 import qualified Data.Map.Strict as M
 
 checkOps :: [Token] -> Either String [Token]
@@ -54,12 +57,12 @@ simplifyExpr e = case e of
   (FunCall name e)                        -> FunCall name (map simplifyExpr e)
   x                                       -> x
 
-type ParseReader = ReaderT (Map String Int) (Either String) Expr
+type ParseReader = ReaderT (Map String Int) (Except String) Expr
 
 parseOp :: Int -> [Token] -> ParseReader
 parseOp 0 x@(TOp op : TLPar : TNumber p : TComma : TNumber a : TRPar : TOp "=" : _) = do
   (_,s2) <- lift $ breakPar (== TOp "=") x
-  if length s2 == 1  then lift $ Left "Empty operator definition"
+  if length s2 == 1  then throwError "Empty operator definition"
   else UDO op (floor p) (if a == 0 then L else R) <$> parseOp 1 (tail s2)
 parseOp 0 x@(TIdent _ : TLPar : TIdent _ : _ ) = do
   (a,b) <- lift $ breakPar (== TOp "=") x
@@ -73,7 +76,7 @@ parseOp 1 s = do
   m <- ask
   t <- lift $ breakPar (`elem` takeWithPriorities 1 m) s
   let (s1, s2) = t
-  let e1 = if null s1 then lift $ Left "Missing first arg" else parseOp 2 s1
+  let e1 = if null s1 then throwError "Missing first arg" else parseOp 2 s1
   if null s2
   then e1
   else do
@@ -84,89 +87,89 @@ parseOp 2 s = do
   m <- ask
   t <- lift $ breakPar (`elem` takeWithPriorities 2 m) s
   let (s1, s2) = t
-  let e1 = if null s1 then lift $ Right $ Number 0 else parseOp 3 s1
-  let op = if null s2 then lift $ Right "+" else lift $ (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
-  let e2 = if null s2 then lift $ Right $ Number 0 else parseOp 1 . tail $ s2
+  let e1 = if null s1 then return $ Number 0 else parseOp 3 s1
+  let op = if null s2 then return "+" else lift $ (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
+  let e2 = if null s2 then return $ Number 0 else parseOp 1 . tail $ s2
   OpCall <$> op <*> e1 <*> e2
 parseOp 3 s = do
   m <- ask
   t <- lift $ breakPar (`elem` takeWithPriorities 3 m) s
   let (s1, s2) = t
-  let e1 = if null s1 then lift $ Left "Missing first arg" else parseOp 4 s1
-  let op = if null s2 then lift $ Right "*" else lift $ (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
-  let e2 = if null s2 then lift $ Right $ Number 1 else parseOp 1 . tail $ s2
+  let e1 = if null s1 then throwError "Missing first arg" else parseOp 4 s1
+  let op = if null s2 then return "*" else lift $ (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
+  let e2 = if null s2 then return $ Number 1 else parseOp 1 . tail $ s2
   OpCall <$> op <*> e1 <*> e2
 parseOp 4 s = do
   m <- ask
   t <- lift $ breakPar (`elem` takeWithPriorities 4 m) s
   let (s1, s2) = t
-  let e1 = if null s1 then lift $ Left "Missing first arg" else parseToken s1
-  let op = if null s2 then lift $ Right "^" else lift $ (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
-  let e2 = if null s2 then lift $ Right $ Number 1 else parseOp 1 . tail $ s2
+  let e1 = if null s1 then throwError "Missing first arg" else parseToken s1
+  let op = if null s2 then return "^" else lift $ (\(TOp op) -> op) <$> tryHead "Missing second arg" s2
+  let e2 = if null s2 then return $ Number 1 else parseOp 1 . tail $ s2
   OpCall <$> op <*> e1 <*> e2
-parseOp n _ = lift $ Left $ "Bad priority" ++ show n
+parseOp n _ = throwError $ "Bad priority" ++ show n
 
-parseFunDec :: [Token] -> Either String (String, [String])
+parseFunDec :: [Token] -> Except String (String, [String])
 parseFunDec [TIdent name, TLPar, TIdent a, TRPar] = return (name, [a])
 parseFunDec (TIdent name : TLPar : TIdent a : TComma : rest) = do
   x <- parseFunDec' rest
   return (name, a:x)
   where
   parseFunDec' y = case y of
-    [TIdent _] -> Left "Missing bracket"
-    [TIdent _, TComma] -> Left "Missing bracket"
+    [TIdent _] -> throwError "Missing bracket"
+    [TIdent _, TComma] -> throwError "Missing bracket"
     [TIdent n, TRPar] -> return [n]
     (TIdent n : TComma : rest) -> (n:) <$> parseFunDec' rest
-    x -> Left $ "Bad parse: " ++ show x
+    x -> throwError $ "Bad parse: " ++ show x
 
 parseToken :: [Token] -> ParseReader
 parseToken s = case s of
-  [] -> lift $ Left "Syntax error"
-  [TIdent s]  -> lift $ Right $ Id s
+  [] -> throwError "Syntax error"
+  [TIdent s]  -> return $ Id s
   (TIdent name : TLPar : rest) -> FunCall name <$> parseFuncall rest
-  [TNumber n] -> lift $ Right $ Number n
+  [TNumber n] -> return $ Number n
   (TLPar : rest) -> Par <$> ps rest
-  x -> lift $ Left $ "Syntax error: " ++ show x
+  x -> throwError $ "Syntax error: " ++ show x
   where
-    ps ss = let t = takePar ss
+    ps ss = let t = runExcept $ takePar ss
      in case t of
-       Left err -> lift $ Left err
+       Left err -> throwError err
        Right r -> parseOp 1 . init . fst $ r
 
-parseFuncall ::  [Token] -> ReaderT (Map String Int) (Either String) [Expr]
+parseFuncall ::  [Token] -> ReaderT (Map String Int) (Except String) [Expr]
 parseFuncall [TRPar] = return []
 parseFuncall s = do
   (s1, s2) <- lift $ breakPar (== TComma) s
-  if s2 == [TComma, TRPar] || null s1 then lift $ Left "Missing function argument"
+  if s2 == [TComma, TRPar] || null s1 then throwError "Missing function argument"
   else
     if null s2
     then (:[]) <$> if length s1 > 1 && last s1 == TRPar then parseOp 1 (init s1) else parseOp 1 s1
     else (:) <$> parseOp 1 s1 <*> parseFuncall (tail s2)
 
-takePar :: [Token] -> Either String ([Token], [Token])
+takePar :: [Token] -> Except String ([Token], [Token])
 takePar = takePar' 1 [] where
-  takePar' 0 acc s = Right (reverse acc, s)
-  takePar' n acc [] = Left $ "Parentheses mismatch: " ++ show n
+  takePar' 0 acc s = return (reverse acc, s)
+  takePar' n acc [] = throwError $ "Parentheses mismatch: " ++ show n
   takePar' n acc (x:xs) = case x of
     TRPar -> tp (n-1)
     TLPar -> tp (n+1)
     _     -> tp n
     where tp m = takePar' m (x:acc) xs
 
-breakPar :: (Token -> Bool) -> [Token] -> Either String ([Token], [Token])
-breakPar _ []  = Right ([], [])
+breakPar :: (Token -> Bool) -> [Token] -> Except String ([Token], [Token])
+breakPar _ []  = return ([], [])
 breakPar p xs@(x:xs')
   | x == TLPar = do
    (a,b) <- takePar xs'
    (y,z) <- breakPar p b
    return ([x] ++ a ++ y, z)
-  | p x        = Right ([],xs)
+  | p x        = return ([],xs)
   | otherwise  = first (x:) <$> breakPar p xs'
 
-tryHead :: String -> [Token] -> Either String Token
-tryHead s l = if length l < 2 then Left s else Right $ head l
+tryHead :: String -> [Token] -> Except String Token
+tryHead s l = if length l < 2 then throwError s else return $ head l
 
 parse :: Map String Int -> [Token] -> Either String Expr
 parse m s = do
   s1 <- checkOps s
-  preprocess <$> runReaderT (parseOp 0 s1) m
+  preprocess <$> runExcept (runReaderT (parseOp 0 s1) m)
