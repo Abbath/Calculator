@@ -5,7 +5,6 @@ import Data.Char (isSpace, isAlpha, isDigit)
 import Data.List (isPrefixOf, find)
 import Control.Applicative ((<|>))
 import Calculator.Types (Token(..))
-import Safe (headMay)
 
 opSymbols = "+-/*%^!~&|=><"
 
@@ -16,7 +15,7 @@ infixl 4 <&>
 
 tokenize :: String -> Either String [Token]
 tokenize [] = Right []
-tokenize s@(x:xs) = fromMaybe (Left ("Cannot tokenize: " ++ s)) $
+tokenize s@(x:xs) = fromMaybe (Left $ "Cannot tokenize: " ++ s) $
     match '(' x <&> (\_ -> f TLPar xs) <|>
     match ')' x <&> (\_ -> f TRPar xs) <|>
     match ',' x <&> (\_ -> f TComma xs) <|>
