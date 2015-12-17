@@ -11,6 +11,9 @@ import Calculator.Types (Expr(..), Token(..), Assoc(..))
 import Calculator.Lexer
 import Calculator.Parser
 import Calculator.Evaluator
+import qualified Text.Megaparsec as MP
+import qualified Calculator.MegaParser as CMP
+import System.Environment (getArgs)
 
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
@@ -23,22 +26,41 @@ opMap = M.fromList [("=", f 0 R)
 loop :: Maps -> IO()
 loop maps = do
   putStr "> " >> hFlush stdout
+  args <- getArgs
   x <- getLine `catchIOError` (\e -> if isEOFError e
     then do {putStrLn "\nBye!"; exitSuccess}
     else do {print e; exitFailure})
   if not $ null x
-  then do
-    let t = tokenize x >>= parse (getPriorities $ maps^._3) >>= eval maps
-    case t of
-      Left err -> do
-        putStrLn err
-        loop maps
-      Right (r, m) -> do
-        print r
-        loop $ m & _1 %~ M.insert "_" r
+  then
+    case args of
+      ["-mp"] -> megaLoop x maps
+      _ -> do
+        let t = tokenize x >>= parse (getPriorities $ maps^._3) >>= eval maps
+        internalLoop t maps
   else do
     putStrLn "Empty!"
     loop maps
+
+megaLoop :: String -> Maps -> IO ()
+megaLoop x maps = do
+  let p = MP.runParser CMP.parser "" (x++"\n")
+  case p of
+    Left err -> do
+      print err
+      loop maps
+    Right s -> do
+      let t = eval maps s
+      internalLoop t maps
+
+internalLoop :: Either String (Double, Maps) -> Maps -> IO ()
+internalLoop t maps =
+  case t of
+    Left err -> do
+      putStrLn err
+      loop maps
+    Right (r, m) -> do
+      print r
+      loop $ m & _1 %~ M.insert "_" r
 
 defVar :: VarMap
 defVar = M.fromList [("pi",pi), ("e",exp 1), ("_",0.0)]

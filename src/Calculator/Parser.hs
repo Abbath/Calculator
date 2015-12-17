@@ -88,8 +88,8 @@ parseOp l s = do
   r <- lift $ breakPar3 (`elem` takeWithPriorities l m) s
   case r of
       Nothing -> parseOp (l+1) s
-      Just ([], _, _ ) -> lift (throwError "Empty first arg")
-      Just (_ , _, []) -> lift (throwError "Empty second arg")
+      Just ([], _, _ ) -> throwError "Empty first arg"
+      Just (_ , _, []) -> throwError "Empty second arg"
       Just (s1 , op, s2) ->
           OpCall <$> pure (unTOp op) <*> parseOp (l+1) s1 <*> parseOp l s2
 

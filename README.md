@@ -26,3 +26,5 @@ Features
 * A function or operator can take other functions as arguments
 * Outer variables' values are captured inside user defined functions
 * A signature of the user defined function consists of a name and arity
+* Megaparsec backend is available by running with `-mp` command line argument
+* Megaparsec backend does not support used defined operators
