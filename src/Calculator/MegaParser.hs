@@ -1,4 +1,4 @@
-module Calculator.MegaParser where
+module Calculator.MegaParser (parser) where
 
 import Control.Monad (void)
 import Text.Megaparsec
@@ -69,7 +69,8 @@ opcallExpr = makeExprParser expr3 operators
 
 operators :: [[Operator Parser Expr]]
 operators =
-  [[InfixR (symbol "^" *> pure (OpCall "^"))]
+  [[Prefix (symbol "-" *> pure UMinus)]
+  ,[InfixR (symbol "^" *> pure (OpCall "^"))]
   ,[InfixL (symbol "*" *> pure (OpCall "*")), InfixL (symbol "/" *> pure (OpCall "/"))]
   ,[InfixL (symbol "+" *> pure (OpCall "+")), InfixL (symbol "-" *> pure (OpCall "-"))]
   ,[InfixL (symbol "<" *> pure (OpCall "<")), InfixL (symbol ">" *> pure (OpCall ">"))
