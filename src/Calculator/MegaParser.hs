@@ -1,4 +1,4 @@
-module Calculator.MegaParser where
+module Calculator.MegaParser (parser) where
 
 import Control.Monad (void)
 import Text.Megaparsec
