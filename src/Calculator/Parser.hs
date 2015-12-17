@@ -19,13 +19,8 @@ checkOps t = if snd . foldl f (TEnd, True) $ t
     isOp (TOp _) = True
     isOp _ = False
 
-priorities :: Map String Int
-priorities = M.fromList [("=", 0), ("==", 1), ("<=", 1), (">=", 1), ("/=", 1)
-  ,("<", 1), (">", 1), ("+", 2), ("-", 2), ("*", 3), ("/", 3), ("%", 3)
-  ,("^", 4)]
-
 takeWithPriorities :: Int -> Map String Int -> [Token]
-takeWithPriorities n m = map (TOp . fst) . M.toList $ M.filter (== n) (M.union priorities m)
+takeWithPriorities n m = map (TOp . fst) . M.toList $ M.filter (== n) m
 
 preprocess :: Expr -> Expr
 preprocess e = simplify' e e
@@ -71,10 +66,9 @@ stringify (x:xs) = str x ++ stringify xs
 type ParseReader = ReaderT (Map String Int) (Except String) Expr
 
 parseOp :: Int -> [Token] -> ParseReader
-parseOp 0 x@(TOp op : TLPar : TNumber p : TComma : TNumber a : TRPar : TOp "=" : _) = do
-  (_,s2) <- lift $ breakPar (== TOp "=") x
-  if length s2 == 1  then throwError "Empty operator definition"
-  else UDO op (floor p) (if a == 0 then L else R) <$> parseOp 1 (tail s2)
+parseOp 0 x@(TOp op : TLPar : TNumber p : TComma : TNumber a : TRPar : TOp "=" : rest) =
+  if length rest == 1  then throwError "Empty operator definition"
+  else UDO op (floor p) (if a == 0 then L else R) <$> parseOp 1 (tail rest)
 parseOp 0 x@(TIdent _ : TLPar : TIdent _ : _ ) = do
   (a,b) <- lift $ breakPar (== TOp "=") x
   if null b then parseOp 1 x
