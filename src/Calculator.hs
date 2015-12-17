@@ -14,6 +14,7 @@ import Calculator.Evaluator
 import qualified Text.Megaparsec as MP
 import qualified Calculator.MegaParser as CMP
 import System.Environment (getArgs)
+import Control.Monad.Reader
 
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
@@ -22,6 +23,11 @@ opMap = M.fromList [("=", f 0 R)
   , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)
   , ("^", f 4 R)]
   where f p a = ((p, a), Number 0)
+
+getPrA :: OpMap -> Map String (Int, Assoc)
+getPrA om = let lst = M.toList om
+                ps = M.fromList $ map (\(s,(pa,_)) -> (s,pa)) lst
+            in ps
 
 loop :: Maps -> IO()
 loop maps = do
@@ -43,7 +49,7 @@ loop maps = do
 
 megaLoop :: String -> Maps -> IO ()
 megaLoop x maps = do
-  let p = MP.runParser CMP.parser "" (x++"\n")
+  let p = MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (x++"\n")
   case p of
     Left err -> do
       print err
