@@ -17,13 +17,13 @@ parser :: PReader Expr
 parser = sc *> expr <* eof
 
 expr :: PReader Expr
-expr = try expr2 <|> try udfExpr <|> try udoExpr <|> assignExpr
+expr =  try udfExpr <|> try udoExpr <|> try assignExpr <|> expr2
 
 expr2 :: PReader Expr
-expr2 =  try funcallExpr <|> try parExpr <|> try opcallExpr <|> try idExpr <|> numExpr
+expr2 =  try opcallExpr <|> try parExpr <|> try funcallExpr <|> expr3
 
 expr3 :: PReader Expr
-expr3 = try idExpr <|> try numExpr <|> try funcallExpr <|> try parExpr
+expr3 = try parExpr <|> try funcallExpr <|> try idExpr <|> numExpr
 
 numExpr :: PReader Expr
 numExpr = do
@@ -34,7 +34,7 @@ numExpr = do
 
 idExpr :: PReader Expr
 idExpr = do
-  name <- identifier <* notFollowedBy (symbol "(" <|> symbol "=")
+  name <- identifier <* notFollowedBy (symbol "(")
   return $ Id name
 
 parExpr :: PReader Expr
@@ -46,7 +46,7 @@ udfExpr :: PReader Expr
 udfExpr = do
   name <- identifier
   args <- parens $ sepBy1 identifier comma
-  void $ symbol "="
+  void $ symbol "=" <* notFollowedBy (symbol "=")
   e    <- expr2
   return $ UDF name args e
 
@@ -58,7 +58,7 @@ udoExpr = do
   void comma
   a <- number
   void $ symbol ")"
-  void $ symbol "="
+  void $ symbol "=" <* notFollowedBy (symbol "=")
   e <- expr2
   case (p, a) of
     (Left in1, Left in2) -> ret (fromIntegral in1) (fromIntegral in2) name e
@@ -70,20 +70,14 @@ udoExpr = do
 assignExpr :: PReader Expr
 assignExpr = do
   name <- identifier
-  void $ symbol "="
+  void $ symbol "=" <* notFollowedBy (symbol "=")
   e <- expr2
   return $ Asgn name e
-
-uminusExpr ::  PReader Expr
-uminusExpr = do
-  void $ symbol "-"
-  e <- expr2
-  return $ UMinus e
 
 funcallExpr :: PReader Expr
 funcallExpr = do
   fname <- identifier
-  args <- parens (sepBy1 expr2 comma) <* notFollowedBy (symbol "=")
+  args <- parens (sepBy1 expr2 comma) <* notFollowedBy (symbol "=" <* notFollowedBy (symbol "="))
   return $ FunCall fname args
 
 opcallExpr :: PReader Expr
@@ -95,13 +89,13 @@ operators :: [[Operator PReader Expr]]
 operators =
   [[Prefix (try (symbol "-") *> pure UMinus)]
   ,[sop InfixR "^"]
-  ,[sop InfixL "*", InfixL (try (symbol "/" <* notFollowedBy (symbol "=")) *> pure (OpCall "/"))]
+  ,[sop InfixL "*", InfixL ((symbol "/" <* notFollowedBy (symbol "=")) *> pure (OpCall "/"))]
   ,[sop InfixL "+", sop InfixL "-"]
   ,[sop InfixL "<=", sop InfixL ">="
   , sop InfixL "<", sop InfixL ">"
-  , sop InfixL "==", sop InfixL "/="]
+  , sop InfixL "==", sop InfixL "!="]
   ]
-  where sop i s = i (try(symbol s ) *> pure (OpCall s))
+  where sop i s = i (try (symbol s ) *> pure (OpCall s))
 
 genOp :: String -> (Int, Assoc) -> Operator PReader Expr
 genOp s (_,L) = InfixL (try (symbol s) *> pure (OpCall s))
@@ -112,4 +106,4 @@ insertOps [[]] _ =  [[]]
 insertOps ops m | M.null m = ops
 insertOps ops m = let (k,a) = M.elemAt 0 m
                       op = genOp k a
-                  in insertOps (ops & ix (fst a) %~ (op:)) (M.deleteAt 0 m)
+                  in insertOps (ops & ix (5 - fst a) %~ (op:)) (M.deleteAt 0 m)

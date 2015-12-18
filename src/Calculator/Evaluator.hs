@@ -64,7 +64,7 @@ compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",cmpDoubles)
 
 compOps :: Map String (Double -> Double -> Bool)
 compOps = M.fromList [("<",(<)), (">",(>)), ("==",cmpDoubles)
-  ,("/=",\x y -> not $ cmpDoubles x y ), ("<=",(<=)), (">=",(>=))]
+  ,("!=",\x y -> not $ cmpDoubles x y ), ("<=",(<=)), (">=",(>=))]
 
 mathFuns :: Map String (Double -> Double)
 mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
@@ -151,7 +151,7 @@ eval maps e = case e of
   (OpCall op x y) | M.member op mathOps -> eval' ( mathOps M.! op) x y
   (OpCall op x y)  ->
     case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc),Expr)) of
-      Just ((_,asc), expr) -> do
+      Just (_, expr) -> do
         expr1 <- substitute (["@x", "@y"], [x,y]) expr
         (a,_) <- evm expr1
         return $ mps a

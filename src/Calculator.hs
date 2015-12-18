@@ -18,7 +18,7 @@ import Control.Monad.Reader
 
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
-  , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("/=", f 1 L), ("<", f 1 L), (">", f 1 L)
+  , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
   , ("+", f 2 L), ("-", f 2 L)
   , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)
   , ("^", f 4 R)]
@@ -29,7 +29,7 @@ getPrA om = let lst = M.toList om
                 ps = M.fromList $ map (\(s,(pa,_)) -> (s,pa)) lst
             in ps
 
-loop :: Maps -> IO()
+loop :: Maps -> IO ()
 loop maps = do
   putStr "> " >> hFlush stdout
   args <- getArgs

@@ -29,3 +29,4 @@ executable Calculator
                       , Calculator.Types
                       , Calculator.MegaLexer
                       , Calculator.MegaParser
+                      , Calculator.Tests

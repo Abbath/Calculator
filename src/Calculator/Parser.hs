@@ -71,7 +71,7 @@ unTOp (TOp op) = op
 parseOp :: Int -> [Token] -> ParseReader
 parseOp 0 x@(TOp op : TLPar : TNumber p : TComma : TNumber a : TRPar : TOp "=" : rest) =
   if length rest == 1  then throwError "Empty operator definition"
-  else UDO op (floor p) (if a == 0 then L else R) <$> parseOp 1 (tail rest)
+  else UDO op (floor p) (if a == 0 then L else R) <$> parseOp 1 rest
 parseOp 0 x@(TIdent _ : TLPar : TIdent _ : _ ) = do
   (a,b) <- lift $ breakPar (== TOp "=") x
   if null b then parseOp 1 x

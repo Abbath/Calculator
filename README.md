@@ -12,7 +12,7 @@ Features
 * If conditions with a following syntax `if(<cond_expression>,<expression1>,<expression2>)`
 * Lazy evaluation of function arguments
 * Comparison functions `lt gt le ge eq ne`
-* Comparison operators `< > <= >= == /=`
+* Comparison operators `< > <= >= == !=`
 * Optimisations like `log(exp(x)) = x`
 * Automatic detection of division operation in `atan` argument
 * Variable `_` stores result of the previous calculation
@@ -28,3 +28,7 @@ Features
 * A signature of the user defined function consists of a name and arity
 * Megaparsec backend is available by running with `-mp` command line argument
 * Comments are supported under Megaparsec backend with syntax `#end comment` and `{inner comment}`
+
+Bugs & Todo
+--
+* Megaparsec backend has poor support of user defined operators

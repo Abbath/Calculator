@@ -35,4 +35,4 @@ identifier = lexeme p
   where p = (:) <$> (letterChar  <|> char '_') <*> many (alphaNumChar <|> char '_')
 
 operator :: PReader String
-operator = lexeme (many . oneOf $ "+-/*%^!~&|=><")
+operator = lexeme (many . oneOf $ "+-/*%^!~&|><")

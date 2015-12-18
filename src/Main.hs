@@ -1,6 +1,9 @@
 module Main where
 
 import Calculator
+import Calculator.Tests
 
 main :: IO ()
-main = evalLoop
+main = do
+  testLoop
+  evalLoop
