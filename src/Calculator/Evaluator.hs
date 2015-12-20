@@ -6,6 +6,7 @@ import qualified Data.Map.Strict as M
 import Calculator.Types (Expr(..), Assoc(..))
 import Control.Lens
 import Control.Lens.Tuple (_1,_2,_3)
+import Data.AEq ((~==))
 
 type FunMap = Map (String, Int) ([String], Expr)
 type VarMap = Map String Double
@@ -54,17 +55,13 @@ catchVar m ex = case ex of
   e -> goInside st e
   where st = catchVar m
 
-cmpDoubles :: Double -> Double -> Bool
-cmpDoubles x y = abs(x-y) < 2*eps
-  where eps = 1e-16
-
 compFuns :: Map String (Double -> Double -> Bool)
-compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",cmpDoubles)
-  ,("ne",\x y -> not $ cmpDoubles x y ), ("le",(<=)), ("ge",(>=))]
+compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(~==))
+  ,("ne", \x y -> not $ x ~== y ), ("le",(<=)), ("ge",(>=))]
 
 compOps :: Map String (Double -> Double -> Bool)
-compOps = M.fromList [("<",(<)), (">",(>)), ("==",cmpDoubles)
-  ,("!=",\x y -> not $ cmpDoubles x y ), ("<=",(<=)), (">=",(>=))]
+compOps = M.fromList [("<",(<)), (">",(>)), ("==",(~==))
+  ,("!=", \x y -> not $ x ~== y ), ("<=",(<=)), (">=",(>=))]
 
 mathFuns :: Map String (Double -> Double)
 mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)

@@ -85,6 +85,7 @@ tests = [
   ,("x = 5",5)
   ,("abs(-x)==x", 1)
   ,("1!=2", 1)
+  ,("sin(pi)==0", 1)
   ]
 
 defVar :: VarMap
