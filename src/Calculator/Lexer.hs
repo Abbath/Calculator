@@ -1,16 +1,18 @@
 module Calculator.Lexer (tokenize) where
 
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Char (isSpace, isAlpha, isDigit)
-import Data.List (isPrefixOf, find)
 import Control.Applicative ((<|>))
 import Calculator.Types (Token(..))
 
+opSymbols :: String
 opSymbols = "+-/*%^!~&|=><"
 
+isOp :: Char -> Bool
 isOp = (`elem` opSymbols)
 
 infixl 4 <&>
+(<&>) :: Maybe a -> (a -> b) -> Maybe b
 (<&>) = flip (<$>)
 
 tokenize :: String -> Either String [Token]
@@ -25,12 +27,13 @@ tokenize s@(x:xs) = fromMaybe (Left $ "Cannot tokenize: " ++ s) $
     readNumber s <&> (\(n,rest) -> f (TNumber n ) rest)
   where
     f out inp = (out:) <$> tokenize inp
-    match c x = if c == x then Just x else Nothing
-    space x = if isSpace x then Just x else Nothing
-    readOperator s = let s1 = takeWhile isOp s
+    match c h = if c == h then Just h else Nothing
+    space h = if isSpace h then Just h else Nothing
+    readOperator str = let s1 = takeWhile isOp str
       in if null s1 then Nothing else Just s1
-    readIdentifier s@(x:_) = if isAlpha x || x == '_'
-      then Just $ break (\x -> not (isAlpha x || isDigit x || (x == '_'))) s
+    readIdentifier [] = Nothing
+    readIdentifier str@(h:_) = if isAlpha h || h == '_'
+      then Just $ break (\z -> not (isAlpha z || isDigit z || (z == '_'))) str
       else Nothing
-    readNumber s = let x = (reads :: String -> [(Double, String)]) s
-      in if null x then Nothing else Just $ head x
+    readNumber str = let z = (reads :: String -> [(Double, String)]) str
+      in if null z then Nothing else Just $ head z

@@ -1,4 +1,4 @@
-module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString) where
+module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp) where
 
 import Data.List (intercalate)
 
@@ -28,24 +28,24 @@ instance Show Expr where
   show = showExpr 0
 
 showExpr :: Int -> Expr -> String
-showExpr n e =
-  let suf = case e of
-        (UDF n a e)       -> n ++ "("++ intercalate ", " a ++ ")" ++ "\n" ++ s e
-        (UDO n p a e)     -> n ++ "("++ show a ++ ", " ++ show p ++ ")" ++ "\n" ++ s e
+showExpr n ex =
+  let suf = case ex of
+        (UDF name a e)    -> name ++ "("++ intercalate ", " a ++ ")" ++ "\n" ++ s e
+        (UDO name p a e)  -> name ++ "("++ show a ++ ", " ++ show p ++ ")" ++ "\n" ++ s e
         (Asgn i e)        -> "Assign " ++ i ++ "\n" ++ s e
         (Number x )       -> "Number " ++ show x
         (Par e)           -> "Par \n" ++ s e
         (UMinus e)        -> "UMinus \n" ++ s e
         (OpCall op e1 e2) -> "OpCall " ++ op ++ "\n" ++ s e1 ++ "\n" ++ s e2
-        (FunCall n e)     -> "FunCall " ++ n ++ "\n" ++ intercalate "\n" (map s e)
-        (Id s)            -> "Id " ++ s
+        (FunCall name e)  -> "FunCall " ++ name ++ "\n" ++ intercalate "\n" (map s e)
+        (Id name)         -> "Id " ++ name
   in replicate n ' ' ++ suf
   where s = showExpr (n+1)
 
 exprToString :: Expr -> String
-exprToString e = case e of
+exprToString ex = case ex of
   (UDF n a e)       -> n ++ "("++ intercalate ", " a ++ ")" ++ " = " ++ exprToString e
-  (UDO n p a e)     -> n ++ "("++ show p ++ ", " ++ show (if a == L then 0 else 1) ++ ")" ++ " = " ++  exprToString e
+  (UDO n p a e)     -> n ++ "("++ show p ++ ", " ++ show (if a == L then 0 :: Double else 1) ++ ")" ++ " = " ++  exprToString e
   (Asgn i e)        -> i ++ " = " ++ exprToString e
   (Number x )       -> show x
   (Par e)           -> "(" ++ exprToString e ++ ")"
@@ -53,3 +53,7 @@ exprToString e = case e of
   (OpCall op e1 e2) -> exprToString e1 ++ op ++ exprToString e2
   (FunCall n e)     -> n ++ "(" ++ intercalate ", " (map exprToString e) ++ ")"
   (Id s)            -> s
+
+unTOp :: Token -> String
+unTOp (TOp op) = op
+unTOp _ = error "Not a TOp"

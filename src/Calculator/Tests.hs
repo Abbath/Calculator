@@ -1,19 +1,14 @@
 module Calculator.Tests (testLoop) where
 
-import System.IO (hFlush, stdout)
-import System.IO.Error (catchIOError, isEOFError)
-import System.Exit (exitSuccess, exitFailure)
 import Data.Map.Strict (Map)
-import Control.Lens
-import Control.Lens.Tuple (_1,_2,_3)
+import Control.Lens (_3, (^.))
 import qualified Data.Map.Strict as M
-import Calculator.Types (Expr(..), Token(..), Assoc(..))
+import Calculator.Types (Expr(..), Assoc(..))
 import Calculator.Lexer
 import Calculator.Parser
 import Calculator.Evaluator
 import qualified Text.Megaparsec as MP
 import qualified Calculator.MegaParser as CMP
-import System.Environment (getArgs)
 import Control.Monad.Reader
 
 data Backend = Internal | Mega deriving Show
@@ -77,7 +72,7 @@ tests = [
   ,("2&2-2&2", 0)
   ,("&(2,0) = x - y", 14)
   ,("2&2-2&2", -4)
-  ,("2^3^4", 2^3^4)
+  ,("2^3^4", 2**3**4)
   ,("2+2*2", 6)
   ,("-((1))", -1)
   ,("-1^2", 1)
@@ -91,6 +86,7 @@ tests = [
 defVar :: VarMap
 defVar = M.fromList [("pi",pi), ("e",exp 1), ("_",0.0)]
 
+testLoop :: IO ()
 testLoop = do
   loop tests (defVar, M.empty, opMap) Internal
   loop tests (defVar, M.empty, opMap) Mega

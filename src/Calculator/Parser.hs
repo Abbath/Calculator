@@ -23,11 +23,11 @@ takeWithPriorities :: Int -> Map String Int -> [Token]
 takeWithPriorities n m = map (TOp . fst) . M.toList $ M.filter (== n) m
 
 preprocess :: Expr -> Expr
-preprocess e = simplify' e e
+preprocess ex = simplify' ex ex
   where simplify' e o = if simplifyExpr e == o then o else simplify' (simplifyExpr e) e
 
 simplifyExpr :: Expr -> Expr
-simplifyExpr e = case e of
+simplifyExpr ex = case ex of
   (Asgn s e)                              -> Asgn s (simplifyExpr e)
   (UDF n s e)                             -> UDF n s (simplifyExpr e)
   (UDO n p a e)                           -> UDO n p a (simplifyExpr e)
@@ -61,15 +61,13 @@ stringify (x:xs) = str x ++ stringify xs
   str TRPar = ")"
   str (TIdent s) = " "++s++" "
   str (TOp s) = " "++s++" "
-  str (TComma) = ", "
+  str TComma = ", "
+  str TEnd = ""
 
 type ParseReader = ReaderT (Map String Int) (Except String) Expr
 
--- TODO: move out to Types.hs
-unTOp (TOp op) = op
-
 parseOp :: Int -> [Token] -> ParseReader
-parseOp 0 x@(TOp op : TLPar : TNumber p : TComma : TNumber a : TRPar : TOp "=" : rest) =
+parseOp 0 (TOp op : TLPar : TNumber p : TComma : TNumber a : TRPar : TOp "=" : rest) =
   if length rest == 1  then throwError "Empty operator definition"
   else UDO op (floor p) (if a == 0 then L else R) <$> parseOp 1 rest
 parseOp 0 x@(TIdent _ : TLPar : TIdent _ : _ ) = do
@@ -103,12 +101,12 @@ parseFunDec (TIdent name : TLPar : TIdent a : TComma : rest) = do
     [TIdent _] -> throwError "Missing bracket"
     [TIdent _, TComma] -> throwError "Missing bracket"
     [TIdent n, TRPar] -> return [n]
-    (TIdent n : TComma : rest) -> (n:) <$> parseFunDec' rest
+    (TIdent n : TComma : rst) -> (n:) <$> parseFunDec' rst
     x -> throwError $ "Syntax error: " ++ stringify x
 parseFunDec s = throwError $ "Syntax error: " ++ stringify s
 
 parseToken :: [Token] -> ParseReader
-parseToken s = case s of
+parseToken str = case str of
   [] -> throwError "Syntax error"
   [TIdent s]  -> return $ Id s
   (TIdent name : TLPar : rest) -> FunCall name <$> parseFuncall rest
@@ -132,9 +130,9 @@ parseFuncall s = do
     else (:) <$> parseOp 1 s1 <*> parseFuncall (tail s2)
 
 takePar :: [Token] -> Except String ([Token], [Token])
-takePar = takePar' 1 [] where
+takePar = takePar' (1::Integer) [] where
   takePar' 0 acc s = return (reverse acc, s)
-  takePar' n acc [] = throwError $ "Parentheses mismatch: " ++ show n
+  takePar' n _ [] = throwError $ "Parentheses mismatch: " ++ show n
   takePar' n acc (x:xs) = case x of
     TRPar -> tp (n-1)
     TLPar -> tp (n+1)
@@ -153,18 +151,15 @@ breakPar p xs@(x:xs')
 
 breakPar3 :: (Token -> Bool) -> [Token] -> Except String (Maybe ([Token], Token, [Token]))
 breakPar3 _ []  = return Nothing
-breakPar3 p xs@(x:xs')
+breakPar3 p (x:xs)
   | x == TLPar = do
-   (a,b) <- takePar xs'
+   (a,b) <- takePar xs
    r <- breakPar3 p b
    case r of
        Nothing -> return Nothing
        Just (y,match,z) -> return (Just (x : a ++ y, match, z))
-  | p x        = return (Just ([],x,xs'))
-  | otherwise  = fmap (\(a,b,c) -> (x:a, b, c)) <$> breakPar3 p xs'
-
-tryHead :: String -> [Token] -> Except String Token
-tryHead s l = if length l < 2 then throwError s else return $ head l
+  | p x        = return (Just ([],x,xs))
+  | otherwise  = fmap (\(a,b,c) -> (x:a, b, c)) <$> breakPar3 p xs
 
 parse :: Map String Int -> [Token] -> Either String Expr
 parse m s = do

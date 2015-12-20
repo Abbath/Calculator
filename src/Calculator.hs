@@ -4,10 +4,9 @@ import System.IO (hFlush, stdout)
 import System.IO.Error (catchIOError, isEOFError)
 import System.Exit (exitSuccess, exitFailure)
 import Data.Map.Strict (Map)
-import Control.Lens
-import Control.Lens.Tuple (_1,_2,_3)
+import Control.Lens (_1, _3, (^.), (&), (%~))
 import qualified Data.Map.Strict as M
-import Calculator.Types (Expr(..), Token(..), Assoc(..))
+import Calculator.Types (Expr(..), Assoc(..))
 import Calculator.Lexer
 import Calculator.Parser
 import Calculator.Evaluator
@@ -71,4 +70,5 @@ internalLoop t maps =
 defVar :: VarMap
 defVar = M.fromList [("pi",pi), ("e",exp 1), ("_",0.0)]
 
+evalLoop :: IO ()
 evalLoop = loop (defVar, M.empty, opMap)

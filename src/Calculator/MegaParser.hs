@@ -1,16 +1,13 @@
 module Calculator.MegaParser (parser) where
 
-import Control.Monad (void)
 import Text.Megaparsec
 import Text.Megaparsec.Expr
-import Text.Megaparsec.String
-import qualified Text.Megaparsec.Lexer as L
 import Calculator.Types
 import Calculator.MegaLexer
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Control.Monad.Reader
-import Control.Lens
+import Control.Lens ((&), (%~))
 import Control.Lens.At
 
 parser :: PReader Expr
@@ -61,11 +58,13 @@ udoExpr = do
   void $ symbol "=" <* notFollowedBy (symbol "=")
   e <- expr2
   case (p, a) of
-    (Left in1, Left in2) -> ret (fromIntegral in1) (fromIntegral in2) name e
-    (Right db, Left int) -> ret (floor db) (fromIntegral int)  name e
-    (Left int, Right db) -> ret (fromIntegral int) db  name e
+    (Left in1, Left in2) -> ret in1 (fromInteger in2) name e
+    (Right db, Left int) -> ret (floor db) (fromInteger int)  name e
+    (Left int, Right db) -> ret int db  name e
     (Right d1, Right d2) -> ret (floor d1) d2  name e
-  where ret a b n e = return $ UDO n a (if b == 0 then L else R) e
+  where
+    ret :: Integer -> Double -> String -> Expr -> PReader Expr
+    ret a b n e = return $ UDO n (fromInteger a) (if b == 0 then L else R) e
 
 assignExpr :: PReader Expr
 assignExpr = do

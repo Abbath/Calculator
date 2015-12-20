@@ -1,11 +1,9 @@
-module Calculator.Evaluator (eval, getPriorities, FunMap, VarMap, OpMap, Maps(..)) where
+module Calculator.Evaluator (eval, getPriorities, FunMap, VarMap, OpMap, Maps) where
 
-import Data.Maybe (fromMaybe, fromJust)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Calculator.Types (Expr(..), Assoc(..), exprToString)
-import Control.Lens
-import Control.Lens.Tuple (_1,_2,_3)
+import Control.Lens ((^.), (.~), (&), (%~), _1, _2, _3)
 import Data.AEq ((~==))
 
 type FunMap = Map (String, Int) ([String], Expr)
@@ -14,7 +12,7 @@ type OpMap = Map String ((Int, Assoc), Expr)
 type Maps = (VarMap, FunMap, OpMap)
 
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
-goInside f e = case e of
+goInside f ex = case ex of
   (OpCall op e1 e2) -> OpCall op <$> f e1 <*> f e2
   (Par e) -> Par <$> f e
   (UMinus e) -> UMinus <$> f e
@@ -26,12 +24,12 @@ substitute ([],[]) e = return e
 substitute (x,y) _ | length x /= length y =
   Left $ "Bad argument number: " ++ show(length y) ++ " instead of " ++ show(length x)
 substitute (x:xs, y:ys) (Id i) = if i == x then return $ Par y else substitute (xs, ys) (Id i)
-substitute s@(x:xs, Id fname:ys) (FunCall n e) = do
-  t <- mapM (substitute s) e
-  if n == x
-  then return $ FunCall fname t
-  else substitute (xs, ys) (FunCall n t)
-substitute s@(x:xs, y:ys) (FunCall n e) = do
+substitute s@(x:xs, Id fname:ys) (FunCall n e) = if n == x
+  then FunCall fname <$> mapM (substitute s) e
+  else do
+    t <- mapM (substitute s) e
+    substitute (xs, ys) (FunCall n t)
+substitute s@(_:xs, _:ys) (FunCall n e) = do
   t <- mapM (substitute s) e
   substitute (xs, ys) (FunCall n t)
 substitute s ex = goInside (substitute s) ex
@@ -69,7 +67,7 @@ mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), (
         ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs)]
 
 fmod :: Double -> Double -> Double
-fmod x y = fromIntegral $ mod (floor x) (floor y)
+fmod x y = fromInteger $ mod (floor x) (floor y)
 
 mathOps :: Map String (Double -> Double -> Double)
 mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",(**))]
@@ -80,7 +78,7 @@ getPriorities om = let lst = M.toList om
                    in ps
 
 eval :: Maps -> Expr -> Either String (Double, Maps)
-eval maps e = case e of
+eval maps ex = case ex of
   (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
   (Asgn s e)                           -> do {(r,_) <- evm e; return (r, maps & _1 %~ M.insert s r)}
   (UDF n s e)                          -> do
@@ -95,8 +93,8 @@ eval maps e = case e of
         let newmap = M.insert n ((p, a), newe) (maps^._3)
         return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
   (FunCall "atan" [OpCall "/" e1 e2])       -> eval' atan2 e1 e2
-  (FunCall n [a])   | M.member n mathFuns -> do
-    let fun = mathFuns M.! n
+  (FunCall name [a])   | M.member name mathFuns -> do
+    let fun = mathFuns M.! name
     (n,_) <- evm a
     return $ mps $ fun n
   (FunCall n [a,b]) | M.member n compFuns -> cmp n a b compFuns
@@ -123,7 +121,7 @@ eval maps e = case e of
     if a == b
     then case a of
       Nothing -> Left $ "No such operators: " ++ op1 ++ " " ++ op2
-      Just n -> do
+      Just _ -> do
         let ((_, asc1), _) = (maps^._3) M.! op1
         let ((_, asc2), _) = (maps^._3) M.! op2
         case (asc1, asc2) of
@@ -131,7 +129,7 @@ eval maps e = case e of
           (R, R) -> do
             (tmp,_) <- evm s
             evm $ OpCall op1 x (Number tmp)
-          otherwise -> Left $ "Operators with different associativity: " ++ op1 ++ " and " ++ op2
+          _ -> Left $ "Operators with different associativity: " ++ op1 ++ " and " ++ op2
     else do
       (tmp,_) <- evm s
       evm $ OpCall op1 x (Number tmp)
@@ -144,7 +142,7 @@ eval maps e = case e of
     (n1,_) <- evm x
     if n ~== 0
     then Left $ "Div by zero: " ++ exprToString oc
-    else return $ mps (fromIntegral $ mod (floor n1) (floor n))
+    else return $ mps (fromInteger $ mod (floor n1) (floor n))
   (OpCall op x y) | M.member op compOps -> cmp op x y compOps
   (OpCall op x y) | M.member op mathOps -> eval' ( mathOps M.! op) x y
   (OpCall op x y)  ->
@@ -164,8 +162,8 @@ eval maps e = case e of
     mte s (Nothing, _) = Left s
     evm = eval maps
     mps x = (x, maps)
-    cmp op x y map = do
-      let fun = map M.! op
+    cmp op x y mp = do
+      let fun = mp M.! op
       (n,_) <- evm x
       (n1,_) <- evm y
       return $ if fun n n1
