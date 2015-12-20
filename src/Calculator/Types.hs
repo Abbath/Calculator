@@ -1,4 +1,4 @@
-module Calculator.Types (Expr(..), Token(..), Assoc(..)) where
+module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString) where
 
 import Data.List (intercalate)
 
@@ -41,3 +41,15 @@ showExpr n e =
         (Id s)            -> "Id " ++ s
   in replicate n ' ' ++ suf
   where s = showExpr (n+1)
+
+exprToString :: Expr -> String
+exprToString e = case e of
+  (UDF n a e)       -> n ++ "("++ intercalate ", " a ++ ")" ++ " = " ++ exprToString e
+  (UDO n p a e)     -> n ++ "("++ show p ++ ", " ++ show (if a == L then 0 else 1) ++ ")" ++ " = " ++  exprToString e
+  (Asgn i e)        -> i ++ " = " ++ exprToString e
+  (Number x )       -> show x
+  (Par e)           -> "(" ++ exprToString e ++ ")"
+  (UMinus e)        -> "-" ++ exprToString e
+  (OpCall op e1 e2) -> exprToString e1 ++ op ++ exprToString e2
+  (FunCall n e)     -> n ++ "(" ++ intercalate ", " (map exprToString e) ++ ")"
+  (Id s)            -> s
