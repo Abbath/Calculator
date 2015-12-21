@@ -6,7 +6,7 @@ import Control.Applicative ((<|>))
 import Calculator.Types (Token(..))
 
 opSymbols :: String
-opSymbols = "+-/*%^!~&|=><"
+opSymbols = "+-/*%^$!~&|=><"
 
 isOp :: Char -> Bool
 isOp = (`elem` opSymbols)

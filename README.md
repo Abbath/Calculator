@@ -19,11 +19,12 @@ Features
 * A variable can be defined using syntax `<name> = <expression>`
 * A user defined function can be defined using syntax `<name>(<arg1>[,<arg2>[,<arg3>...]]) = <expression>`
 * A user defined operator can be defined using syntax `<name>(<priority>,<associativity>) = <expression>`
-* The available symbols for operators are `+-/*%^!~&|=><`
+* The available symbols for operators are `+-/*%^$!~&|=><`
 * Arguments `x y` are default for user defined operators
 * A priority of the user defined operator can be `1 2 3 or 4`
 * An associativity of the user defined operator is left if `associativity` equals `0` of right otherwise
 * A function or operator can take other functions as arguments
+* An operator alias can be defined using syntax `<alias_operator> = <operator>`
 * Outer variables' values are captured inside user defined functions
 * A signature of the user defined function consists of a name and arity
 * Megaparsec backend is available by running with `-mp` command line argument

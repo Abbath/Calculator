@@ -85,6 +85,12 @@ eval maps ex = case ex of
     newe <- localize s e >>= catchVar (maps^._1)
     let newmap = M.insert (n, length s) (map ('@':) s, newe) $ maps^._2
     return (fromIntegral $ M.size (maps^._2), maps & _2 .~ newmap)
+  (UDO n (-1) _ e@(OpCall op _ _)) ->
+    case M.lookup op (maps^._3) of
+      Just ((p, a), _) -> do
+        let newmap = M.insert n ((p, a), e) (maps^._3)
+        return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
+      Nothing -> Left $ "No such operator: " ++ op
   (UDO n p a e )
     | M.member n mathOps || M.member n compOps || n == "=" -> Left $ "Can not redefine embedded operator: " ++ n
     | p < 1 || p > 4 ->  Left $ "Bad priority: " ++ show p
