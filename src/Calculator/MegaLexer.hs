@@ -31,5 +31,14 @@ identifier :: PReader String
 identifier = lexeme p
   where p = (:) <$> (letterChar  <|> char '_') <*> many (alphaNumChar <|> char '_')
 
+opSymbols :: String
+opSymbols = "+-/*%$^!~&|=><"
+
 operator :: PReader String
-operator = lexeme (many . oneOf $ "+-/*%$^!~&|><")
+operator = lexeme (many . oneOf $ opSymbols)
+
+exactOper :: String -> PReader String
+exactOper s = symbol s <* notFollowedBy (oneOf opSymbols)
+
+eq :: PReader String
+eq = symbol "=" <* notFollowedBy (symbol "=")

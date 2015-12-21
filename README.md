@@ -21,7 +21,7 @@ Features
 * A user defined operator can be defined using syntax `<name>(<priority>,<associativity>) = <expression>`
 * The available symbols for operators are `+-/*%^$!~&|=><`
 * Arguments `x y` are default for user defined operators
-* A priority of the user defined operator can be `1 2 3 or 4`
+* A priority of the user defined operator can be any of `1 2 3 4`
 * An associativity of the user defined operator is left if `associativity` equals `0` of right otherwise
 * A function or operator can take other functions as arguments
 * An operator alias can be defined using syntax `<alias_operator> = <operator>`
@@ -29,6 +29,7 @@ Features
 * A signature of the user defined function consists of a name and arity
 * Megaparsec backend is available by running with `-mp` command line argument
 * Comments are supported under Megaparsec backend with syntax `#end comment` and `{inner comment}`
+* With Megaparsec backend you shall not define operator that starts with the same symbols as the operator with higher priority
 
 Bugs & Todo
 --

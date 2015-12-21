@@ -45,7 +45,10 @@ loop (x:xs) maps bk = do
         then "Passed: " ++ sample
         else "Failed: " ++ sample ++ " expected: " ++ show (snd x) ++ " received: " ++ show t
         loop xs m bk
-      Left err -> putStrLn err >> loop xs maps bk
+      Left err -> do
+        putStrLn err
+        print maps
+        loop xs maps bk
   else do
     putStrLn "Empty!"
     loop xs maps bk
@@ -81,6 +84,7 @@ tests = [
   ,("abs(-x)==x", 1)
   ,("1!=2", 1)
   ,("sin(pi)==0", 1)
+  ,("/= = !=", 14)
   ]
 
 defVar :: VarMap

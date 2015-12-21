@@ -31,7 +31,7 @@ showExpr :: Int -> Expr -> String
 showExpr n ex =
   let suf = case ex of
         (UDF name a e)    -> name ++ "("++ intercalate ", " a ++ ")" ++ "\n" ++ s e
-        (UDO name p a e)  -> name ++ "("++ show a ++ ", " ++ show p ++ ")" ++ "\n" ++ s e
+        (UDO name p a e)  -> name ++ "("++ show p ++ ", " ++ show a ++ ")" ++ "\n" ++ s e
         (Asgn i e)        -> "Assign " ++ i ++ "\n" ++ s e
         (Number x )       -> "Number " ++ show x
         (Par e)           -> "Par \n" ++ s e

@@ -14,13 +14,20 @@ parser :: PReader Expr
 parser = sc *> expr <* eof
 
 expr :: PReader Expr
-expr =  try udfExpr <|> try udoExpr <|> try assignExpr <|> expr2
+expr =  try udfExpr <|> try udoExpr <|> try assignExpr <|> try opAliasExpr <|> expr2
 
 expr2 :: PReader Expr
 expr2 =  try opcallExpr <|> try parExpr <|> try funcallExpr <|> expr3
 
 expr3 :: PReader Expr
 expr3 = try parExpr <|> try funcallExpr <|> try idExpr <|> numExpr
+
+opAliasExpr :: PReader Expr
+opAliasExpr = do
+  op1 <- operator
+  void eq
+  op2 <- operator
+  return $ UDO op1 (-1) L (OpCall op2 (Id "@x") (Id "@y"))
 
 numExpr :: PReader Expr
 numExpr = do
@@ -43,7 +50,7 @@ udfExpr :: PReader Expr
 udfExpr = do
   name <- identifier
   args <- parens $ sepBy1 identifier comma
-  void $ symbol "=" <* notFollowedBy (symbol "=")
+  void eq
   e    <- expr2
   return $ UDF name args e
 
@@ -55,7 +62,7 @@ udoExpr = do
   void comma
   a <- number
   void $ symbol ")"
-  void $ symbol "=" <* notFollowedBy (symbol "=")
+  void eq
   e <- expr2
   case (p, a) of
     (Left in1, Left in2) -> ret in1 (fromInteger in2) name e
@@ -69,7 +76,7 @@ udoExpr = do
 assignExpr :: PReader Expr
 assignExpr = do
   name <- identifier
-  void $ symbol "=" <* notFollowedBy (symbol "=")
+  void eq
   e <- expr2
   return $ Asgn name e
 
@@ -88,13 +95,13 @@ operators :: [[Operator PReader Expr]]
 operators =
   [[Prefix (try (symbol "-") *> pure UMinus)]
   ,[sop InfixR "^"]
-  ,[sop InfixL "*", InfixL ((symbol "/" <* notFollowedBy (symbol "=")) *> pure (OpCall "/"))]
+  ,[sop InfixL "*", sop InfixL "/" {-((symbol "/" <* notFollowedBy (symbol "=")) *> pure (OpCall "/"))-}]
   ,[sop InfixL "+", sop InfixL "-"]
   ,[sop InfixL "<=", sop InfixL ">="
   , sop InfixL "<", sop InfixL ">"
   , sop InfixL "==", sop InfixL "!="]
   ]
-  where sop i s = i (try (symbol s ) *> pure (OpCall s))
+  where sop i s = i (try (exactOper s ) *> pure (OpCall s))
 
 genOp :: String -> (Int, Assoc) -> Operator PReader Expr
 genOp s (_,L) = InfixL (try (symbol s) *> pure (OpCall s))
