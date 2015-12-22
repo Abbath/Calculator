@@ -37,11 +37,11 @@ substitute s ex = goInside (substitute s) ex
 localize :: [String] -> Expr -> Either String Expr
 localize [] e = return e
 localize (x:xs) (Id i) = if i == x then return $ Id ('@':i) else localize xs (Id i)
-localize s@(x:xs) (FunCall nm e) = do
-  t <- mapM (localize s) e
-  if nm == x
-  then return $ FunCall ('@':nm) t
-  else localize xs (FunCall nm t)
+localize s@(x:xs) (FunCall nm e) = if nm == x
+  then FunCall ('@':nm) <$> mapM (localize s) e
+  else do
+    t <- mapM (localize s) e
+    localize xs (FunCall nm t)
 localize s ex = goInside (localize s) ex
 
 catchVar :: VarMap -> Expr -> Either String Expr

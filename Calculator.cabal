@@ -1,5 +1,5 @@
 name:                 Calculator
-version:              0.3.2.0
+version:              0.3.3.0
 synopsis:             Calculator
 -- description:
 -- license:
@@ -31,4 +31,4 @@ executable Calculator
                       , Calculator.MegaLexer
                       , Calculator.MegaParser
                       , Calculator.Tests
-  ghc-options:          -Wall -Werror
+  ghc-options:         -O2 -Wall -Werror

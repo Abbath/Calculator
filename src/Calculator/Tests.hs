@@ -1,7 +1,7 @@
 module Calculator.Tests (testLoop) where
 
 import Data.Map.Strict (Map)
-import Control.Lens (_3, (^.))
+import Control.Lens (_1, _3, (^.), (&), (%~))
 import qualified Data.Map.Strict as M
 import Calculator.Types (Expr(..), Assoc(..))
 import Calculator.Lexer
@@ -44,7 +44,7 @@ loop (x:xs) maps bk = do
         putStrLn $ if abs(r - snd x) < 2e-16
         then "Passed: " ++ sample
         else "Failed: " ++ sample ++ " expected: " ++ show (snd x) ++ " received: " ++ show t
-        loop xs m bk
+        loop xs (m & _1 %~ M.insert "_" r) bk
       Left err -> do
         putStrLn err
         print maps
@@ -60,7 +60,9 @@ errorToEither (Right r) = Right r
 
 tests :: Tests
 tests = [
-   ("1", 1)
+   ("_", 0)
+  ,("1", 1)
+  ,("_", 1)
   ,("-1", -1)
   ,("2+2", 4)
   ,("2-2-2-2", -4)
