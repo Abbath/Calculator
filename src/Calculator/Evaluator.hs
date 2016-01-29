@@ -106,7 +106,7 @@ eval maps ex = case ex of
   (FunCall n [a,b]) | M.member n compFuns -> cmp n a b compFuns
   (FunCall "if" [a,b,c]) -> do
     (cond,_) <- evm a
-    if cond /= 0
+    if not $ cond ~== 0
     then evm b
     else evm c
   (FunCall name e) ->

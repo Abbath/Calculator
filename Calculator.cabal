@@ -21,6 +21,7 @@ executable Calculator
                       , mtl
                       , megaparsec
                       , ieee754
+                      , optparse-applicative
   hs-source-dirs:       src
   default-language:     Haskell2010
   other-modules:        Calculator
