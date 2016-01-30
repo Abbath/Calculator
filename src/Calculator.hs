@@ -11,6 +11,7 @@ import qualified Text.Megaparsec as MP
 import qualified Calculator.MegaParser as CMP
 import Control.Monad.Reader
 import System.Console.Haskeline
+import Control.Arrow (left)
 
 data Mode = Internal | Megaparsec deriving Show
 
@@ -39,7 +40,7 @@ loop mode maps = runInputT (defaultSettings { historyFile = Just "/home/dan/.myc
       Just x -> do
         let t = case md of
                   Megaparsec -> 
-                    convert (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (x++"\n")) >>= eval ms
+                    left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (x++"\n")) >>= eval ms
                   Internal -> 
                     tokenize x >>= parse (getPriorities $ ms^._3) >>= eval ms
         case t of 
@@ -49,9 +50,6 @@ loop mode maps = runInputT (defaultSettings { historyFile = Just "/home/dan/.myc
           Right (r, m) -> do
             liftIO $ print r
             loop' md $ m & _1 %~ M.insert "_" r
-  convert :: Either MP.ParseError Expr -> Either String Expr
-  convert (Left err) = Left (show err)
-  convert (Right r) = Right r
 
 defVar :: VarMap
 defVar = M.fromList [("pi",pi), ("e",exp 1), ("_",0.0)]

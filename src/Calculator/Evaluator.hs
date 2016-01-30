@@ -198,7 +198,7 @@ derivative e x = case e of
     d1 <- derivative ex1 x
     d2 <- derivative ex2 x
     return $ OpCall "/" (OpCall "-" (OpCall "*" d1 ex2) (OpCall "*" d2 ex1)) (OpCall "^" ex2 (Number 2))  
-  ex@(FunCall "exp" [i]) | i == x -> return $ ex
+  ex@(FunCall "exp" [i]) | i == x -> return ex
   FunCall "log" [i] | i == x -> return $ OpCall "/" (Number 1) i
   FunCall "sin" [i] | i == x -> return $ FunCall "cos" [i] 
   FunCall "cos" [i] | i == x -> return $ UMinus (FunCall "sin" [i])
