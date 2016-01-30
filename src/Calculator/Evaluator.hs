@@ -79,37 +79,38 @@ getPriorities om = let lst = M.toList om
 
 eval :: Maps -> Expr -> Either String (Double, Maps)
 eval maps ex = case ex of
-  (Asgn s _) | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
-  (Asgn s e)                           -> do {(r,_) <- evm e; return (r, maps & _1 %~ M.insert s r)}
-  (UDF n s e)                          -> do
+  Asgn s _ | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
+  Asgn s e                           -> do {(r,_) <- evm e; return (r, maps & _1 %~ M.insert s r)}
+  UDF n s e                          -> do
     newe <- localize s e >>= catchVar (maps^._1)
     let newmap = M.insert (n, length s) (map ('@':) s, newe) $ maps^._2
     return (fromIntegral $ M.size (maps^._2), maps & _2 .~ newmap)
-  (UDO n (-1) _ e@(OpCall op _ _)) ->
+  UDO n (-1) _ e@(OpCall op _ _) ->
     case M.lookup op (maps^._3) of
       Just ((p, a), _) -> do
         let newmap = M.insert n ((p, a), e) (maps^._3)
         return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
       Nothing -> Left $ "No such operator: " ++ op
-  (UDO n p a e )
+  UDO n p a e 
     | M.member n mathOps || M.member n compOps || n == "=" -> Left $ "Can not redefine embedded operator: " ++ n
     | p < 1 || p > 4 ->  Left $ "Bad priority: " ++ show p
     |otherwise -> do
         newe <- localize ["x","y"] e >>= catchVar (maps^._1)
         let newmap = M.insert n ((p, a), newe) (maps^._3)
         return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
-  (FunCall "atan" [OpCall "/" e1 e2])       -> eval' atan2 e1 e2
-  (FunCall name [a])   | M.member name mathFuns -> do
+  FunCall "df" [a,x] -> derivative a x >>= (Left . exprToString)                     
+  FunCall "atan" [OpCall "/" e1 e2]       -> eval' atan2 e1 e2
+  FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
     (n,_) <- evm a
     return $ mps $ fun n
-  (FunCall n [a,b]) | M.member n compFuns -> cmp n a b compFuns
-  (FunCall "if" [a,b,c]) -> do
+  FunCall n [a,b] | M.member n compFuns -> cmp n a b compFuns
+  FunCall "if" [a,b,c] -> do
     (cond,_) <- evm a
     if not $ cond ~== 0
     then evm b
     else evm c
-  (FunCall name e) ->
+  FunCall name e ->
     case (M.lookup (name, length e) (maps^._2) :: Maybe ([String],Expr)) of
       Just (al, expr) -> do
         expr1 <- substitute (al, e) expr
@@ -118,9 +119,9 @@ eval maps ex = case ex of
       Nothing -> case name of
         ('@':r) -> Left $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e)
         _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
-  (Id s)     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Double)
-  (Number x) -> return $ mps x
-  (OpCall op1 x s@(OpCall op2 y z)) -> do
+  Id s     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Double)
+  Number x -> return $ mps x
+  OpCall op1 x s@(OpCall op2 y z) -> do
     let pr = getPriorities (maps^._3)
     let a = M.lookup op1 pr
     let b = M.lookup op2 pr
@@ -149,9 +150,9 @@ eval maps ex = case ex of
     if n ~== 0
     then Left $ "Div by zero: " ++ exprToString oc
     else return $ mps (fromInteger $ mod (floor n1) (floor n))
-  (OpCall op x y) | M.member op compOps -> cmp op x y compOps
-  (OpCall op x y) | M.member op mathOps -> eval' ( mathOps M.! op) x y
-  (OpCall op x y)  ->
+  OpCall op x y | M.member op compOps -> cmp op x y compOps
+  OpCall op x y | M.member op mathOps -> eval' ( mathOps M.! op) x y
+  OpCall op x y  ->
     case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc),Expr)) of
       Just (_, expr) -> do
         expr1 <- substitute (["@x", "@y"], [x,y]) expr
@@ -160,9 +161,9 @@ eval maps ex = case ex of
       Nothing -> case op of
         ('@':r) -> Left $ "Expression instead of function name: " ++ r ++ "/2"
         _ -> Left $ "No such operator: " ++ op ++ "/2"
-  (UMinus (OpCall "^" x y)) -> evm $ OpCall "^" (UMinus x) y
-  (UMinus x)         -> do {(n,_) <- evm x; return $ mps (-n)}
-  (Par e)            -> evm e
+  UMinus (OpCall "^" x y) -> evm $ OpCall "^" (UMinus x) y
+  UMinus x         -> do {(n,_) <- evm x; return $ mps (-n)}
+  Par e            -> evm e
   where
     mte _ (Just x, m) = Right (x, m)
     mte s (Nothing, _) = Left s
@@ -179,3 +180,29 @@ eval maps ex = case ex of
       (t1,_) <- eval maps x
       (t2,_) <- eval maps y
       return (f t1 t2, maps)
+
+derivative :: Expr -> Expr ->  Either String Expr
+derivative e x = case e of
+  Number _ -> return $ Number 0
+  i@(Id _) | i == x -> return $ Number 1
+  (Id _) -> return $ Number 0
+  OpCall "^" i (Number n) | i == x-> 
+    return $ OpCall "*" (Number n) (OpCall "^" i (Number (n-1)))
+  OpCall "^" (Number a) i | i == x -> return $ OpCall "*" e (FunCall "log" [Number a])
+  OpCall op ex1 ex2 | op == "-" || op == "+" -> OpCall op <$> derivative ex1 x <*> derivative ex2 x
+  OpCall "*" ex1 ex2 -> do 
+    d1 <- derivative ex1 x
+    d2 <- derivative ex2 x
+    return $ OpCall "+" (OpCall "*" d1 ex2) (OpCall "*" d2 ex1) 
+  OpCall "/" ex1 ex2 -> do
+    d1 <- derivative ex1 x
+    d2 <- derivative ex2 x
+    return $ OpCall "/" (OpCall "-" (OpCall "*" d1 ex2) (OpCall "*" d2 ex1)) (OpCall "^" ex2 (Number 2))  
+  ex@(FunCall "exp" [i]) | i == x -> return $ ex
+  FunCall "log" [i] | i == x -> return $ OpCall "/" (Number 1) i
+  FunCall "sin" [i] | i == x -> return $ FunCall "cos" [i] 
+  FunCall "cos" [i] | i == x -> return $ UMinus (FunCall "sin" [i])
+  FunCall "tan" [i] | i == x -> 
+    return $ OpCall "/" (Number 1) (OpCall "^" (FunCall "cos" [i]) (Number 2))
+  ex@(FunCall _ [i]) -> OpCall "*" <$> derivative ex i <*> derivative i x
+  _ -> Left "No such derivative"

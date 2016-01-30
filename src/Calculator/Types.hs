@@ -49,8 +49,8 @@ exprToString ex = case ex of
   (Asgn i e)        -> i ++ " = " ++ exprToString e
   (Number x )       -> show x
   (Par e)           -> "(" ++ exprToString e ++ ")"
-  (UMinus e)        -> "-" ++ exprToString e
-  (OpCall op e1 e2) -> exprToString e1 ++ op ++ exprToString e2
+  (UMinus e)        -> "(-" ++ exprToString e ++ ")"
+  (OpCall op e1 e2) -> "(" ++ exprToString e1 ++ op ++ exprToString e2 ++ ")"
   (FunCall n e)     -> n ++ "(" ++ intercalate ", " (map exprToString e) ++ ")"
   (Id s)            -> s
 
