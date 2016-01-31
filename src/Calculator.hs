@@ -12,6 +12,7 @@ import qualified Calculator.MegaParser as CMP
 import Control.Monad.Reader
 import System.Console.Haskeline
 import Control.Arrow (left)
+import Data.List (isPrefixOf)
 
 data Mode = Internal | Megaparsec deriving Show
 
@@ -28,8 +29,19 @@ getPrA om = let lst = M.toList om
                 ps = M.fromList $ map (\(s,(pa,_)) -> (s,pa)) lst
             in ps
 
+getNames :: [String]
+getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^"
+  ,"sin","cos","tan","asin","acos","atan","log","sqrt","exp","abs"
+  ,"lt","gt","le","ge","eq","ne","if","df","quit"]
+
+completionList :: Monad m => String -> m [Completion]
+completionList s = return $ map (\x -> Completion {replacement = x, display = x, isFinished = False }) $ filter (isPrefixOf s) getNames 
+
+completeName :: Monad m => CompletionFunc m
+completeName = completeWord Nothing " " completionList
+
 loop :: Mode -> Maps -> IO ()
-loop mode maps = runInputT (defaultSettings { historyFile = Just "/home/dan/.mycalchist", autoAddHistory = True}) (loop' mode maps)
+loop mode maps = runInputT (setComplete completeName $ defaultSettings { historyFile = Just "/home/dan/.mycalchist"}) (loop' mode maps)
   where 
   loop' :: Mode -> Maps -> InputT IO ()
   loop' md ms = do
