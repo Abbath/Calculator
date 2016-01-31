@@ -34,7 +34,7 @@ numExpr = do
   n <- number
   case n of
     Left int -> return $ Number (fromIntegral int)
-    Right doub -> return $ Number doub
+    Right doub -> return $ Number (toRational doub)
 
 idExpr :: PReader Expr
 idExpr = do

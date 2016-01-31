@@ -36,4 +36,4 @@ tokenize s@(x:xs) = fromMaybe (Left $ "Cannot tokenize: " ++ s) $
       then Just $ break (\z -> not (isAlpha z || isDigit z || (z == '_'))) str
       else Nothing
     readNumber str = let z = (reads :: String -> [(Double, String)]) str
-      in if null z then Nothing else Just $ head z
+      in if null z then Nothing else Just $ (\(fs,sd) -> (toRational fs, sd)) . head $ z

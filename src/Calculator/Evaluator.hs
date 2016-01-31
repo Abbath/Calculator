@@ -4,10 +4,9 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Calculator.Types (Expr(..), Assoc(..), exprToString, preprocess)
 import Control.Lens ((^.), (.~), (&), (%~), _1, _2, _3)
-import Data.AEq ((~==))
 
 type FunMap = Map (String, Int) ([String], Expr)
-type VarMap = Map String Double
+type VarMap = Map String Rational
 type OpMap = Map String ((Int, Assoc), Expr)
 type Maps = (VarMap, FunMap, OpMap)
 
@@ -48,36 +47,39 @@ catchVar :: VarMap -> Expr -> Either String Expr
 catchVar m ex = case ex of
   (Id i@('@':_)) -> return $ Id i
   (Id i) ->
-    case M.lookup i m :: Maybe Double of
+    case M.lookup i m :: Maybe Rational of
       Just n -> return $ Number n
       Nothing -> Left $ "No such variable: " ++ i
   e -> goInside st e
   where st = catchVar m
 
-compFuns :: Map String (Double -> Double -> Bool)
-compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(~==))
-  ,("ne", \x y -> not $ x ~== y ), ("le",(<=)), ("ge",(>=))]
+compFuns :: Map String (Rational -> Rational -> Bool)
+compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(==))
+  ,("ne",(/=)), ("le",(<=)), ("ge",(>=))]
 
-compOps :: Map String (Double -> Double -> Bool)
-compOps = M.fromList [("<",(<)), (">",(>)), ("==",(~==))
-  ,("!=", \x y -> not $ x ~== y ), ("<=",(<=)), (">=",(>=))]
+compOps :: Map String (Rational -> Rational -> Bool)
+compOps = M.fromList [("<",(<)), (">",(>)), ("==",(==))
+  ,("!=",(/=)), ("<=",(<=)), (">=",(>=))]
 
 mathFuns :: Map String (Double -> Double)
 mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
         ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs)]
 
-fmod :: Double -> Double -> Double
+fmod :: Rational -> Rational -> Rational
 fmod x y = fromInteger $ mod (floor x) (floor y)
 
-mathOps :: Map String (Double -> Double -> Double)
-mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",(**))]
+mathOps :: Map String (Rational -> Rational -> Rational)
+mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow)]
+
+pow :: Rational -> Rational -> Rational 
+pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
 
 getPriorities :: OpMap -> Map String Int
 getPriorities om = let lst = M.toList om
                        ps = M.fromList $ map (\(s,((p,_),_)) -> (s,p)) lst
                    in ps
 
-eval :: Maps -> Expr -> Either String (Double, Maps)
+eval :: Maps -> Expr -> Either String (Rational, Maps)
 eval maps ex = case ex of
   Asgn s _ | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
   Asgn s e                           -> do {(r,_) <- evm e; return (r, maps & _1 %~ M.insert s r)}
@@ -104,15 +106,18 @@ eval maps ex = case ex of
         let newmap = M.insert n ((p, a), newe) (maps^._3)
         return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
   FunCall "df" [a,x] -> derivative a x >>= (Left . exprToString . preprocess)                     
-  FunCall "atan" [OpCall "/" e1 e2]       -> eval' atan2 e1 e2
+  FunCall "atan" [OpCall "/" e1 e2] -> do
+    (t1,_) <- eval maps e1
+    (t2,_) <- eval maps e2 
+    return (toRational $ atan2 (fromRational t1 :: Double) (fromRational t2 :: Double), maps)
   FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
     (n,_) <- evm a
-    return $ mps $ fun n
+    return $ mps $ toRational . (\x -> if x <= sin pi then 0 else x) . fun . fromRational $ n
   FunCall n [a,b] | M.member n compFuns -> cmp n a b compFuns
   FunCall "if" [a,b,c] -> do
     (cond,_) <- evm a
-    if not $ cond ~== 0
+    if cond /= 0
     then evm b
     else evm c
   FunCall name e ->
@@ -124,7 +129,7 @@ eval maps ex = case ex of
       Nothing -> case name of
         ('@':r) -> Left $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e)
         _ -> Left $ "No such function: " ++ name ++ "/" ++ show (length e)
-  Id s     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Double)
+  Id s     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Rational)
   Number x -> return $ mps x
   OpCall op1 x s@(OpCall op2 y z) -> do
     let pr = getPriorities (maps^._3)
@@ -148,11 +153,11 @@ eval maps ex = case ex of
   oc@(OpCall "/" x y) -> do
     (n,_) <- evm y
     (n1,_) <- evm x
-    if n ~== 0 then Left $ "Div by zero: " ++ exprToString oc else return $ mps (n1 / n)
+    if n == 0 then Left $ "Div by zero: " ++ exprToString oc else return $ mps (n1 / n)
   oc@(OpCall "%" x y) -> do
     (n,_) <- evm y
     (n1,_) <- evm x
-    if n ~== 0
+    if n == 0
     then Left $ "Div by zero: " ++ exprToString oc
     else return $ mps (fromInteger $ mod (floor n1) (floor n))
   OpCall op x y | M.member op compOps -> cmp op x y compOps
@@ -181,6 +186,7 @@ eval maps ex = case ex of
       return $ if fun n n1
         then mps 1
         else mps 0
+    eval' :: (Rational -> Rational -> Rational) -> Expr -> Expr -> Either String (Rational, Maps)
     eval' f x y = do
       (t1,_) <- eval maps x
       (t2,_) <- eval maps y

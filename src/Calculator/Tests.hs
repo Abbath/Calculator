@@ -13,7 +13,7 @@ import Control.Monad.Reader
 
 data Backend = Internal | Mega deriving Show
 
-type Tests = [(String, Double)]
+type Tests = [(String, Rational)]
 
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
@@ -41,7 +41,7 @@ loop (x:xs) maps bk = do
     let t = e >>= eval maps
     case t of
       Right (r,m) -> do
-        putStrLn $ if abs(r - snd x) < 2e-16
+        putStrLn $ if r == snd x
         then "Passed: " ++ sample
         else "Failed: " ++ sample ++ " expected: " ++ show (snd x) ++ " received: " ++ show t
         loop xs (m & _1 %~ M.insert "_" r) bk
@@ -77,7 +77,7 @@ tests = [
   ,("2&2-2&2", 0)
   ,("&(2,0) = x - y", 14)
   ,("2&2-2&2", -4)
-  ,("2^3^4", 2**3**4)
+  ,("2^3^4", 2417851639229258349412352)
   ,("2+2*2", 6)
   ,("-((1))", -1)
   ,("-1^2", 1)
@@ -90,7 +90,7 @@ tests = [
   ]
 
 defVar :: VarMap
-defVar = M.fromList [("pi",pi), ("e",exp 1), ("_",0.0)]
+defVar = M.fromList [("pi", toRational (pi :: Double)), ("e", toRational . exp $ (1.0 :: Double)), ("_",0.0)]
 
 testLoop :: IO ()
 testLoop = do

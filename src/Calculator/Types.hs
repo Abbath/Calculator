@@ -2,7 +2,7 @@ module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, pr
 
 import Data.List (intercalate)
 
-data Token = TNumber Double
+data Token = TNumber Rational
            | TLPar
            | TRPar
            | TIdent String
@@ -13,7 +13,7 @@ data Token = TNumber Double
 
 data Assoc = L | R deriving (Show, Eq, Ord)
 
-data Expr = Number Double
+data Expr = Number Rational
           | Asgn String Expr
           | UDF String [String] Expr
           | UDO String Int Assoc Expr

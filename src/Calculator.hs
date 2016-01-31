@@ -60,11 +60,11 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
             liftIO $ putStrLn err
             loop' md ms
           Right (r, m) -> do
-            liftIO $ print r
+            liftIO . print $ (fromRational r :: Double)
             loop' md $ m & _1 %~ M.insert "_" r
 
 defVar :: VarMap
-defVar = M.fromList [("pi",pi), ("e",exp 1), ("_",0.0)]
+defVar = M.fromList [("pi", toRational (pi::Double)), ("e", toRational . exp $ (1::Double)), ("_",0.0)]
 
 evalLoop :: Mode -> IO ()
 evalLoop m = loop m (defVar, M.empty, opMap)
