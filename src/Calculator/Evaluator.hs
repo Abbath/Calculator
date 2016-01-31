@@ -2,7 +2,7 @@ module Calculator.Evaluator (eval, getPriorities, FunMap, VarMap, OpMap, Maps) w
 
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
-import Calculator.Types (Expr(..), Assoc(..), exprToString)
+import Calculator.Types (Expr(..), Assoc(..), exprToString, preprocess)
 import Control.Lens ((^.), (.~), (&), (%~), _1, _2, _3)
 import Data.AEq ((~==))
 
@@ -81,6 +81,11 @@ eval :: Maps -> Expr -> Either String (Double, Maps)
 eval maps ex = case ex of
   Asgn s _ | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
   Asgn s e                           -> do {(r,_) <- evm e; return (r, maps & _1 %~ M.insert s r)}
+  UDF n [s] (FunCall "df" [e, Id x]) | s == x -> do 
+    let de = derivative e (Id x) 
+    case de of 
+      Left err -> Left err
+      Right r -> evm (UDF n [s] r)                      
   UDF n s e                          -> do
     newe <- localize s e >>= catchVar (maps^._1)
     let newmap = M.insert (n, length s) (map ('@':) s, newe) $ maps^._2
@@ -98,7 +103,7 @@ eval maps ex = case ex of
         newe <- localize ["x","y"] e >>= catchVar (maps^._1)
         let newmap = M.insert n ((p, a), newe) (maps^._3)
         return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
-  FunCall "df" [a,x] -> derivative a x >>= (Left . exprToString)                     
+  FunCall "df" [a,x] -> derivative a x >>= (Left . exprToString . preprocess)                     
   FunCall "atan" [OpCall "/" e1 e2]       -> eval' atan2 e1 e2
   FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
@@ -181,8 +186,10 @@ eval maps ex = case ex of
       (t2,_) <- eval maps y
       return (f t1 t2, maps)
 
-derivative :: Expr -> Expr ->  Either String Expr
+derivative :: Expr -> Expr -> Either String Expr
 derivative e x = case e of
+  Par ex -> Par <$> (derivative ex x)
+  UMinus ex -> UMinus <$> (derivative ex x)
   Number _ -> return $ Number 0
   i@(Id _) | i == x -> return $ Number 1
   (Id _) -> return $ Number 0

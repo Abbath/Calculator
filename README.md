@@ -27,10 +27,15 @@ Features
 * An operator alias can be defined using syntax `<alias_operator> = <operator>`
 * Outer variables' values are captured inside user defined functions
 * A signature of the user defined function consists of a name and arity
-* Megaparsec backend is available by running with `-mp` command line argument
+* Megaparsec backend is available by running with `-m` or `--megaparsec-backend` command line argument
 * Comments are supported under Megaparsec backend with syntax `#end comment` and `{inner comment}`
 * With Megaparsec backend you shall not define operator that starts with the same symbols as the operator with higher priority
+* Autocompletion of internal functions and operators is available on the <Tab> key
+* History is available on the <Up> and <Down> keys
+* Derivative of a function can be symbolically calculated using syntax `df(<function_expression>, <variable name>)`
+* Derivative can be binded to a function alias using syntax `<new_function_name>(<varname>) = df(<function_expression>, <varname>)`
 
 Bugs & Todo
 --
 * Megaparsec backend has poor support of user defined operators
+* Improve the derivatives calculation

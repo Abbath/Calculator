@@ -22,36 +22,6 @@ checkOps t = if snd . foldl f (TEnd, True) $ t
 takeWithPriorities :: Int -> Map String Int -> [Token]
 takeWithPriorities n m = map (TOp . fst) . M.toList $ M.filter (== n) m
 
-preprocess :: Expr -> Expr
-preprocess ex = simplify' ex ex
-  where simplify' e o = if simplifyExpr e == o then o else simplify' (simplifyExpr e) e
-
-simplifyExpr :: Expr -> Expr
-simplifyExpr ex = case ex of
-  (Asgn s e)                              -> Asgn s (simplifyExpr e)
-  (UDF n s e)                             -> UDF n s (simplifyExpr e)
-  (UDO n p a e)                           -> UDO n p a (simplifyExpr e)
-  (Par (Par e))                           -> Par (simplifyExpr e)
-  (Par e)                                 -> Par (simplifyExpr e)
-  (UMinus (Par (UMinus e)))               -> Par (simplifyExpr e)
-  (UMinus (OpCall "^" e1 e2))             -> OpCall "^" (UMinus (simplifyExpr e1)) (simplifyExpr e2)
-  (UMinus e)                              -> UMinus (simplifyExpr e)
-  (OpCall "-" (Number 0.0) (OpCall op e1 e2)) | op `elem` ["+","-"] ->
-    OpCall op (simplifyExpr . UMinus $ e1) (simplifyExpr e2)
-  (OpCall "-" (Number 0.0) n)             -> UMinus (simplifyExpr n)
-  (OpCall "+" (Number 0.0) n)             -> simplifyExpr n
-  (OpCall op n (Number 0.0)) | op `elem` ["+","-"] -> simplifyExpr n
-  (OpCall "*" (Number 1.0) n)             -> simplifyExpr n
-  (OpCall op n (Number 1.0)) | op `elem` ["*","/", "%"] -> simplifyExpr n
-  (OpCall "^" n (Number 1.0))             -> simplifyExpr n
-  (OpCall "^" (FunCall "sqrt" [e]) (Number 2.0)) -> simplifyExpr e
-  (OpCall op e1 e2)                       -> OpCall op (simplifyExpr e1) (simplifyExpr e2)
-  (FunCall "exp" [FunCall "log" [e]])     -> simplifyExpr e
-  (FunCall "log" [FunCall "exp" [e]])     -> simplifyExpr e
-  (FunCall "sqrt" [OpCall "^" e (Number 2.0)]) -> simplifyExpr e
-  (FunCall name e)                        -> FunCall name (map simplifyExpr e)
-  x                                       -> x
-
 stringify :: [Token] -> String
 stringify [] = []
 stringify (x:xs) = str x ++ stringify xs
