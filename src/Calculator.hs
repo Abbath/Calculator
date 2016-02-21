@@ -35,14 +35,14 @@ getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^"
   ,"lt","gt","le","ge","eq","ne","if","df","quit"]
 
 completionList :: Monad m => String -> m [Completion]
-completionList s = return $ map (\x -> Completion {replacement = x, display = x, isFinished = False }) $ filter (isPrefixOf s) getNames 
+completionList s = return $ map (\x -> Completion {replacement = x, display = x, isFinished = False }) $ filter (isPrefixOf s) getNames
 
 completeName :: Monad m => CompletionFunc m
 completeName = completeWord Nothing " " completionList
 
 loop :: Mode -> Maps -> IO ()
 loop mode maps = runInputT (setComplete completeName $ defaultSettings { historyFile = Just "/home/dan/.mycalchist"}) (loop' mode maps)
-  where 
+  where
   loop' :: Mode -> Maps -> InputT IO ()
   loop' md ms = do
     input <- getInputLine "> "
@@ -51,11 +51,11 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
       Just "quit" -> return ()
       Just x -> do
         let t = case md of
-                  Megaparsec -> 
+                  Megaparsec ->
                     left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (x++"\n")) >>= eval ms
-                  Internal -> 
+                  Internal ->
                     tokenize x >>= parse (getPriorities $ ms^._3) >>= eval ms
-        case t of 
+        case t of
           Left err -> do
             liftIO $ putStrLn err
             loop' md ms

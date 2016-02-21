@@ -71,7 +71,7 @@ fmod x y = fromInteger $ mod (floor x) (floor y)
 mathOps :: Map String (Rational -> Rational -> Rational)
 mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow)]
 
-pow :: Rational -> Rational -> Rational 
+pow :: Rational -> Rational -> Rational
 pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
 
 getPriorities :: OpMap -> Map String Int
@@ -83,11 +83,11 @@ eval :: Maps -> Expr -> Either String (Rational, Maps)
 eval maps ex = case ex of
   Asgn s _ | s `elem` ["pi","e","_"] -> Left $ "Can not change constant value: " ++ s
   Asgn s e                           -> do {(r,_) <- evm e; return (r, maps & _1 %~ M.insert s r)}
-  UDF n [s] (FunCall "df" [e, Id x]) | s == x -> do 
-    let de = derivative e (Id x) 
-    case de of 
+  UDF n [s] (FunCall "df" [e, Id x]) | s == x -> do
+    let de = derivative e (Id x)
+    case de of
       Left err -> Left err
-      Right r -> evm (UDF n [s] r)                      
+      Right r -> evm (UDF n [s] r)
   UDF n s e                          -> do
     newe <- localize s e >>= catchVar (maps^._1)
     let newmap = M.insert (n, length s) (map ('@':) s, newe) $ maps^._2
@@ -98,17 +98,17 @@ eval maps ex = case ex of
         let newmap = M.insert n ((p, a), e) (maps^._3)
         return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
       Nothing -> Left $ "No such operator: " ++ op
-  UDO n p a e 
+  UDO n p a e
     | M.member n mathOps || M.member n compOps || n == "=" -> Left $ "Can not redefine embedded operator: " ++ n
     | p < 1 || p > 4 ->  Left $ "Bad priority: " ++ show p
     |otherwise -> do
         newe <- localize ["x","y"] e >>= catchVar (maps^._1)
         let newmap = M.insert n ((p, a), newe) (maps^._3)
         return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
-  FunCall "df" [a,x] -> derivative a x >>= (Left . exprToString . preprocess)                     
+  FunCall "df" [a,x] -> derivative a x >>= (Left . exprToString . preprocess)
   FunCall "atan" [OpCall "/" e1 e2] -> do
     (t1,_) <- eval maps e1
-    (t2,_) <- eval maps e2 
+    (t2,_) <- eval maps e2
     return (toRational $ atan2 (fromRational t1 :: Double) (fromRational t2 :: Double), maps)
   FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
@@ -199,23 +199,23 @@ derivative e x = case e of
   Number _ -> return $ Number 0
   i@(Id _) | i == x -> return $ Number 1
   (Id _) -> return $ Number 0
-  OpCall "^" i (Number n) | i == x-> 
+  OpCall "^" i (Number n) | i == x->
     return $ OpCall "*" (Number n) (OpCall "^" i (Number (n-1)))
   OpCall "^" (Number a) i | i == x -> return $ OpCall "*" e (FunCall "log" [Number a])
   OpCall op ex1 ex2 | op == "-" || op == "+" -> OpCall op <$> derivative ex1 x <*> derivative ex2 x
-  OpCall "*" ex1 ex2 -> do 
+  OpCall "*" ex1 ex2 -> do
     d1 <- derivative ex1 x
     d2 <- derivative ex2 x
-    return $ OpCall "+" (OpCall "*" d1 ex2) (OpCall "*" d2 ex1) 
+    return $ OpCall "+" (OpCall "*" d1 ex2) (OpCall "*" d2 ex1)
   OpCall "/" ex1 ex2 -> do
     d1 <- derivative ex1 x
     d2 <- derivative ex2 x
-    return $ OpCall "/" (OpCall "-" (OpCall "*" d1 ex2) (OpCall "*" d2 ex1)) (OpCall "^" ex2 (Number 2))  
+    return $ OpCall "/" (OpCall "-" (OpCall "*" d1 ex2) (OpCall "*" d2 ex1)) (OpCall "^" ex2 (Number 2))
   ex@(FunCall "exp" [i]) | i == x -> return ex
   FunCall "log" [i] | i == x -> return $ OpCall "/" (Number 1) i
-  FunCall "sin" [i] | i == x -> return $ FunCall "cos" [i] 
+  FunCall "sin" [i] | i == x -> return $ FunCall "cos" [i]
   FunCall "cos" [i] | i == x -> return $ UMinus (FunCall "sin" [i])
-  FunCall "tan" [i] | i == x -> 
+  FunCall "tan" [i] | i == x ->
     return $ OpCall "/" (Number 1) (OpCall "^" (FunCall "cos" [i]) (Number 2))
   ex@(FunCall _ [i]) -> OpCall "*" <$> derivative ex i <*> derivative i x
   _ -> Left "No such derivative"

@@ -47,7 +47,7 @@ exprToString ex = case ex of
   UDF n a e       -> n ++ "("++ intercalate ", " a ++ ")" ++ " = " ++ exprToString e
   UDO n p a e     -> n ++ "("++ show p ++ ", " ++ show (if a == L then 0 :: Double else 1) ++ ")" ++ " = " ++  exprToString e
   Asgn i e        -> i ++ " = " ++ exprToString e
-  Number x        -> show x
+  Number x        -> show . (fromRational :: Rational -> Double) $ x
   Par e           -> "(" ++ exprToString e ++ ")"
   UMinus e        -> "(-" ++ exprToString e ++ ")"
   OpCall op e1 e2 -> "(" ++ exprToString e1 ++ op ++ exprToString e2 ++ ")"
