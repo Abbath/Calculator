@@ -90,7 +90,8 @@ webLoop mode = scotty 3000 $ do
                 H.body $ do
                     H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/" $ do
                         H.input H.! type_ "input" H.! name "foo"
-    get "/clear" $ do
+  
+    post "/clear" $ do
         liftIO $ TIO.writeFile "storage.dat" (TS.pack ("(" ++ show defVar ++ ",fromList []," ++ show opMap ++ ")")) 
         liftIO $ TIO.writeFile "log.dat" ""
         html $ "Ok"
@@ -117,5 +118,7 @@ webLoop mode = scotty 3000 $ do
                 H.body $ do
                     H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/" $ do
                         H.input H.! type_ "input" H.! name "foo"
+                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/clear" $ do
+                        H.input H.! type_ "submit" H.! value "Clear history"      
                     H.ul $ mapM_ (H.li . H.toHtml) (TS.lines rtxt)
 
