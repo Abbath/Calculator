@@ -84,7 +84,7 @@ webLoop :: Mode -> IO ()
 webLoop mode = scotty 3000 $ do
     get "/" $ do
         liftIO $ TIO.writeFile "storage.dat" (TS.pack ("(" ++ show defVar ++ ",fromList []," ++ show opMap ++ ")")) 
-        liftIO $ TIO.writeFile "log.dat" ""         
+        liftIO $ TIO.writeFile "log.dat" "[]"         
         html $ renderHtml
              $ H.html $ do
                 H.body $ do
@@ -93,11 +93,12 @@ webLoop mode = scotty 3000 $ do
                         H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
                     H.style $ 
                       H.toHtml (TS.pack $ "h1 {font-size : 24; }\n" ++
-                                          "body { text-align: center; }\n" )                        
+                                          "body { text-align: center; }\n" ++ 
+                                          "input[type=\"input\"] {width: 400; height: 50; font-size: 18;}")                        
   
     post "/clear" $ do
         liftIO $ TIO.writeFile "storage.dat" (TS.pack ("(" ++ show defVar ++ ",fromList []," ++ show opMap ++ ")")) 
-        liftIO $ TIO.writeFile "log.dat" ""
+        liftIO $ TIO.writeFile "log.dat" "[]"
         html $ "Ok"
         redirect "/"
     post "/" $ do
@@ -105,18 +106,19 @@ webLoop mode = scotty 3000 $ do
         rest <- liftIO $ TIO.readFile "log.dat"
         env <- liftIO $ TIO.readFile "storage.dat"
         let ms = read (TS.unpack env) :: Maps
+        let lg = read (TS.unpack rest) :: [(TS.Text, TS.Text)]
         let t = case mode of
                   Megaparsec ->
                     left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" ((T.unpack fs) ++ "\n")) >>= eval ms
                   Internal ->
                     tokenize (T.unpack fs) >>= parse (getPriorities $ ms^._3) >>= eval ms
         let txt = case t of
-                    Left err -> return (T.toStrict $ T.append (T.append (T.pack err) "\n") (T.fromStrict rest))
+                    Left err -> return  $ (T.toStrict fs, TS.pack err) : lg-- (T.toStrict $ T.append (T.append (T.pack err) "\n") (T.fromStrict rest))
                     Right (r, m) -> do
                       TIO.writeFile "storage.dat" . TS.pack . show $ m & _1 %~ M.insert "_" r            
-                      return (T.toStrict $ T.append (T.append (T.pack . show $ (fromRational r :: Double)) "\n") (T.fromStrict rest))
+                      return $ (T.toStrict fs , TS.pack . show $ (fromRational r :: Double)) : lg -- (T.toStrict $ T.concat [fs, "  ->  ", T.pack . show $ (fromRational r :: Double), "\n", T.fromStrict rest])
         rtxt <- liftIO txt 
-        liftIO $ TIO.writeFile "log.dat" rtxt
+        liftIO $ TIO.writeFile "log.dat" (TS.pack $ show rtxt)
         html $ renderHtml
              $ H.html $ do
                 H.body $ do
@@ -125,10 +127,13 @@ webLoop mode = scotty 3000 $ do
                         H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
                     H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/clear" $ do
                         H.input H.! type_ "submit" H.! value "Clear history"      
-                    H.ul $ mapM_ (H.li . H.toHtml) (TS.lines rtxt)
+                    H.table $ mapM_ (\(x,y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
                     H.style $ 
                       H.toHtml (TS.pack $ "h1 {font-size : 24; }\n" ++
                                           "body { text-align: center; }\n" ++
                                           "input[type=\"submit\"] { font-family: \"Tahoma\"; color: white; background: red; border-style: none;}\n" ++ 
-                                          "ul {list-style-type: none; font-family : \"Tahoma\"; }" )
+                                          "ul {list-style-type: none; font-family : \"Tahoma\"; }" ++
+                                          "input[type=\"input\"] {width: 400; height: 50; font-size: 18;}" ++ 
+                                          "table {width : 600; text-align: center; margin-left: auto; margin-right: auto; }" ++ 
+                                          "tr:nth-child(even) { background-color: #c0c0c0; } tr:nth-child(odd) { background-color: #e0e0e0; }")
 
