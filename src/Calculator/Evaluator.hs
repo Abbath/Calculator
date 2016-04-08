@@ -114,7 +114,7 @@ eval maps ex = case ex of
   FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
     (n,_) <- evm a
-    return $ mps $ toRational . (\x -> if x <= sin pi then 0 else x) . fun . fromRational $ n
+    return $ mps $ toRational . (\x -> if abs x <= sin pi then 0 else x) . fun . fromRational $ n
   FunCall n [a,b] | M.member n compFuns -> cmp n a b compFuns
   FunCall "if" [a,b,c] -> do
     (cond,_) <- evm a
