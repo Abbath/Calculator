@@ -88,8 +88,12 @@ webLoop mode = scotty 3000 $ do
         html $ renderHtml
              $ H.html $ do
                 H.body $ do
+                    H.h1 $ H.toHtml (TS.pack "Calculator")
                     H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/" $ do
-                        H.input H.! type_ "input" H.! name "foo"
+                        H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
+                    H.style $ 
+                      H.toHtml (TS.pack $ "h1 {font-size : 24; }\n" ++
+                                          "body { text-align: center; }\n" )                        
   
     post "/clear" $ do
         liftIO $ TIO.writeFile "storage.dat" (TS.pack ("(" ++ show defVar ++ ",fromList []," ++ show opMap ++ ")")) 
@@ -116,9 +120,15 @@ webLoop mode = scotty 3000 $ do
         html $ renderHtml
              $ H.html $ do
                 H.body $ do
+                    H.h1 $ H.toHtml (TS.pack "Calculator")
                     H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/" $ do
-                        H.input H.! type_ "input" H.! name "foo"
+                        H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
                     H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/clear" $ do
                         H.input H.! type_ "submit" H.! value "Clear history"      
                     H.ul $ mapM_ (H.li . H.toHtml) (TS.lines rtxt)
+                    H.style $ 
+                      H.toHtml (TS.pack $ "h1 {font-size : 24; }\n" ++
+                                          "body { text-align: center; }\n" ++
+                                          "input[type=\"submit\"] { font-family: \"Tahoma\"; color: white; background: red; border-style: none;}\n" ++ 
+                                          "ul {list-style-type: none; font-family : \"Tahoma\"; }" )
 
