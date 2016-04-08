@@ -5,6 +5,7 @@ import           Calculator.Types (Assoc (..), Expr (..), exprToString,
 import           Control.Lens     ((%~), (&), (.~), (^.), _1, _2, _3)
 import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict  as M
+import           Data.Ratio
 
 type FunMap = Map (String, Int) ([String], Expr)
 type VarMap = Map String Rational
@@ -111,6 +112,12 @@ eval maps ex = case ex of
     (t1,_) <- eval maps e1
     (t2,_) <- eval maps e2
     return (toRational $ atan2 (fromRational t1 :: Double) (fromRational t2 :: Double), maps)
+  FunCall f [e1, e2] | f `elem` ["gcd", "lcm"] -> do
+      (t1,_) <- eval maps e1
+      (t2,_) <- eval maps e2
+      if denominator t1 == 1 && denominator t2 == 1
+         then return $ mps (toRational $ (if f == "gcd" then gcd else lcm) (numerator t1) (numerator t2))
+         else Left "Cannot find gcd of real numbers!" 
   FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
     (n,_) <- evm a

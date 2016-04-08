@@ -24,6 +24,7 @@ import Control.Monad.Reader
 import System.Console.Haskeline
 import Control.Arrow (left)
 import Data.List (isPrefixOf)
+import Data.Ratio (numerator, denominator)
 
 data Mode = Internal | Megaparsec deriving Show
 
@@ -71,7 +72,7 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
             liftIO $ putStrLn err
             loop' md ms
           Right (r, m) -> do
-            liftIO . print $ (fromRational r :: Double)
+            liftIO . putStrLn $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)
             loop' md $ m & _1 %~ M.insert "_" r
 
 defVar :: VarMap
@@ -113,10 +114,10 @@ webLoop mode = scotty 3000 $ do
                   Internal ->
                     tokenize (T.unpack fs) >>= parse (getPriorities $ ms^._3) >>= eval ms
         let txt = case t of
-                    Left err -> return  $ (T.toStrict fs, TS.pack err) : lg-- (T.toStrict $ T.append (T.append (T.pack err) "\n") (T.fromStrict rest))
+                    Left err -> return  $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
                       TIO.writeFile "storage.dat" . TS.pack . show $ m & _1 %~ M.insert "_" r            
-                      return $ (T.toStrict fs , TS.pack . show $ (fromRational r :: Double)) : lg -- (T.toStrict $ T.concat [fs, "  ->  ", T.pack . show $ (fromRational r :: Double), "\n", T.fromStrict rest])
+                      return $ (T.toStrict fs , TS.pack $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)) : lg
         rtxt <- liftIO txt 
         liftIO $ TIO.writeFile "log.dat" (TS.pack $ show rtxt)
         html $ renderHtml
