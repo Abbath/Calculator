@@ -1,4 +1,15 @@
-module Calculator (Mode(..), evalLoop) where
+{-# LANGUAGE OverloadedStrings #-}
+module Calculator (Mode(..), evalLoop, webLoop) where
+
+import Web.Scotty
+
+import qualified Text.Blaze.Html5 as H
+import Text.Blaze.Html5.Attributes
+import Text.Blaze.Html.Renderer.Text (renderHtml)
+
+import qualified Data.Text as TS
+import qualified Data.Text.Lazy as T
+import qualified Data.Text.IO as TIO
 
 import Data.Map.Strict (Map)
 import Control.Lens (_1, _3, (^.), (&), (%~))
@@ -67,4 +78,44 @@ defVar :: VarMap
 defVar = M.fromList [("pi", toRational (pi::Double)), ("e", toRational . exp $ (1::Double)), ("_",0.0)]
 
 evalLoop :: Mode -> IO ()
-evalLoop m = loop m (defVar, M.empty, opMap)
+evalLoop m = Calculator.loop m (defVar, M.empty, opMap)
+
+webLoop :: Mode -> IO ()
+webLoop mode = scotty 3000 $ do
+    get "/" $ do
+        liftIO $ TIO.writeFile "storage.dat" (TS.pack ("(" ++ show defVar ++ ",fromList []," ++ show opMap ++ ")")) 
+        liftIO $ TIO.writeFile "log.dat" ""         
+        html $ renderHtml
+             $ H.html $ do
+                H.body $ do
+                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/" $ do
+                        H.input H.! type_ "input" H.! name "foo"
+    get "/clear" $ do
+        liftIO $ TIO.writeFile "storage.dat" (TS.pack ("(" ++ show defVar ++ ",fromList []," ++ show opMap ++ ")")) 
+        liftIO $ TIO.writeFile "log.dat" ""
+        html $ "Ok"
+        redirect "/"
+    post "/" $ do
+        fs <- param "foo"
+        rest <- liftIO $ TIO.readFile "log.dat"
+        env <- liftIO $ TIO.readFile "storage.dat"
+        let ms = read (TS.unpack env) :: Maps
+        let t = case mode of
+                  Megaparsec ->
+                    left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" ((T.unpack fs) ++ "\n")) >>= eval ms
+                  Internal ->
+                    tokenize (T.unpack fs) >>= parse (getPriorities $ ms^._3) >>= eval ms
+        let txt = case t of
+                    Left err -> return (T.toStrict $ T.append (T.append (T.pack err) "\n") (T.fromStrict rest))
+                    Right (r, m) -> do
+                      TIO.writeFile "storage.dat" . TS.pack . show $ m & _1 %~ M.insert "_" r            
+                      return (T.toStrict $ T.append (T.append (T.pack . show $ (fromRational r :: Double)) "\n") (T.fromStrict rest))
+        rtxt <- liftIO txt 
+        liftIO $ TIO.writeFile "log.dat" rtxt
+        html $ renderHtml
+             $ H.html $ do
+                H.body $ do
+                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/" $ do
+                        H.input H.! type_ "input" H.! name "foo"
+                    H.ul $ mapM_ (H.li . H.toHtml) (TS.lines rtxt)
+

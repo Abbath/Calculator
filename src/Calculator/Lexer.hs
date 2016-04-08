@@ -4,6 +4,7 @@ import Data.Maybe (fromMaybe)
 import Data.Char (isSpace, isAlpha, isDigit)
 import Control.Applicative ((<|>))
 import Calculator.Types (Token(..))
+import Control.Arrow (first)
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><"
@@ -36,4 +37,4 @@ tokenize s@(x:xs) = fromMaybe (Left $ "Cannot tokenize: " ++ s) $
       then Just $ break (\z -> not (isAlpha z || isDigit z || (z == '_'))) str
       else Nothing
     readNumber str = let z = (reads :: String -> [(Double, String)]) str
-      in if null z then Nothing else Just $ (\(fs,sd) -> (toRational fs, sd)) . head $ z
+      in if null z then Nothing else Just $ first toRational . head $ z

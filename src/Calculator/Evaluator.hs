@@ -1,9 +1,10 @@
 module Calculator.Evaluator (eval, getPriorities, FunMap, VarMap, OpMap, Maps) where
 
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
-import Calculator.Types (Expr(..), Assoc(..), exprToString, preprocess)
-import Control.Lens ((^.), (.~), (&), (%~), _1, _2, _3)
+import           Calculator.Types (Assoc (..), Expr (..), exprToString,
+                                   preprocess)
+import           Control.Lens     ((%~), (&), (.~), (^.), _1, _2, _3)
+import           Data.Map.Strict  (Map)
+import qualified Data.Map.Strict  as M
 
 type FunMap = Map (String, Int) ([String], Expr)
 type VarMap = Map String Rational
@@ -48,7 +49,7 @@ catchVar m ex = case ex of
   (Id i@('@':_)) -> return $ Id i
   (Id i) ->
     case M.lookup i m :: Maybe Rational of
-      Just n -> return $ Number n
+      Just n -> return $ Number (n)
       Nothing -> Left $ "No such variable: " ++ i
   e -> goInside st e
   where st = catchVar m
