@@ -44,7 +44,7 @@ getPrA om = let lst = M.toList om
 getNames :: [String]
 getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^"
   ,"sin","cos","tan","asin","acos","atan","log","sqrt","exp","abs"
-  ,"lt","gt","le","ge","eq","ne","if","df","quit"]
+  ,"lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div","mod","quot","rem","prat","quit"]
 
 completionList :: Monad m => String -> m [Completion]
 completionList s = return $ map (\x -> Completion {replacement = x, display = x, isFinished = False }) $ filter (isPrefixOf s) getNames

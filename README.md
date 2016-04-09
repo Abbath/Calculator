@@ -9,6 +9,8 @@ Features
 * Scientific number notation support
 * Embedded constants `pi` and `e`
 * Embedded functions `sin cos tan asin acos atan log exp sqrt abs`
+* Embedded integral functions `gcd lcm mod div quot rem`
+* Ability to print rational numbers using function `prat`
 * If conditions with a following syntax `if(<cond_expression>,<expression1>,<expression2>)`
 * Lazy evaluation of function arguments
 * Comparison functions `lt gt le ge eq ne`
@@ -27,7 +29,8 @@ Features
 * An operator alias can be defined using syntax `<alias_operator> = <operator>`
 * Outer variables' values are captured inside user defined functions
 * A signature of the user defined function consists of a name and arity
-* Megaparsec backend is available by running with `-m` or `--megaparsec-backend` command line argument
+* Megaparsec backend is available by running with `-m` or `--megaparsec-backend` command line flag
+* Web interface can be used by running with `-w` of `--web` command line flag. Web interface is available on 3000 port
 * Comments are supported under Megaparsec backend with syntax `#end comment` and `{inner comment}`
 * With Megaparsec backend you shall not define operator that starts with the same symbols as the operator with higher priority
 * Autocompletion of internal functions and operators is available on the `Tab` key

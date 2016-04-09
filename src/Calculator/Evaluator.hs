@@ -66,6 +66,9 @@ compOps = M.fromList [("<",(<)), (">",(>)), ("==",(==))
 mathFuns :: Map String (Double -> Double)
 mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
         ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs)]
+        
+intFuns :: Map String (Integer -> Integer -> Integer)
+intFuns = M.fromList [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem)] 
 
 fmod :: Rational -> Rational -> Rational
 fmod x y = fromInteger $ mod (floor x) (floor y)
@@ -109,15 +112,13 @@ eval maps ex = case ex of
         return (fromIntegral $ M.size (maps^._3), maps & _3 .~ newmap)
   FunCall "df" [a,x] -> derivative a x >>= (Left . exprToString . preprocess)
   FunCall "atan" [OpCall "/" e1 e2] -> do
-    (t1,_) <- eval maps e1
-    (t2,_) <- eval maps e2
+    (t1,_) <- evm e1
+    (t2,_) <- evm e2
     return (toRational $ atan2 (fromRational t1 :: Double) (fromRational t2 :: Double), maps)
-  FunCall f [e1, e2] | f `elem` ["gcd", "lcm"] -> do
-      (t1,_) <- eval maps e1
-      (t2,_) <- eval maps e2
-      if denominator t1 == 1 && denominator t2 == 1
-         then return $ mps (toRational $ (if f == "gcd" then gcd else lcm) (numerator t1) (numerator t2))
-         else Left "Cannot find gcd of real numbers!" 
+  FunCall "prat" [e] -> do
+    (t1,_) <- evm e
+    Left $ show (numerator t1) ++ " / " ++ show (denominator t1)
+  FunCall f [e1, e2] | M.member f intFuns -> evalInt f e1 e2 
   FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
     (n,_) <- evm a
@@ -199,6 +200,12 @@ eval maps ex = case ex of
       (t1,_) <- eval maps x
       (t2,_) <- eval maps y
       return (f t1 t2, maps)
+    evalInt f x y = do
+      (t1,_) <- eval maps x
+      (t2,_) <- eval maps y
+      if denominator t1 == 1 && denominator t2 == 1
+         then return $ mps (toRational $ (intFuns M.! f) (numerator t1) (numerator t2))
+         else Left "Cannot use integral function on real numbers!"
 
 derivative :: Expr -> Expr -> Either String Expr
 derivative e x = case e of
