@@ -9,8 +9,8 @@ import Text.Blaze.Html.Renderer.Text (renderHtml)
 
 import qualified Data.Text as TS
 import qualified Data.Text.Lazy as T
-import qualified Data.Text.IO as TIO
 import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Char8 as BS
 
 import Data.Map.Strict (Map)
 import Control.Lens (_1, _3, (^.), (&), (%~))
@@ -89,7 +89,7 @@ webLoop :: Mode -> IO ()
 webLoop mode = scotty 3000 $ do
     get "/" $ do
         liftIO $ B.writeFile "storage.dat" (encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
-        liftIO $ TIO.writeFile "log.dat" "[]"
+        liftIO $ BS.writeFile "log.dat" "[]"
         html $ renderHtml
              $ H.html $
                 H.body $ do
@@ -102,12 +102,14 @@ webLoop mode = scotty 3000 $ do
         redirect "/"
     post "/" $ do
         fs <- param "foo"
-        rest <- liftIO $ TIO.readFile "log.dat"
+        rest <- liftIO $ BS.readFile $ "log.dat"
         env <- liftIO $ B.readFile "storage.dat"
         let ms = case (decode env :: Maybe ListTuple) of 
                   Just r -> listsToMaps r
-                  Nothing -> error "Cannot read storage"
-        let lg = read (TS.unpack rest) :: [(TS.Text, TS.Text)]
+                  Nothing -> error "Cannot decode storage"
+        let lg = case decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)] of
+                   Just r -> r
+                   Nothing -> error "Cannot decode log"
         let t = case mode of
                   Megaparsec ->
                     left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (T.unpack fs ++ "\n")) >>= eval ms
@@ -119,7 +121,7 @@ webLoop mode = scotty 3000 $ do
                       B.writeFile "storage.dat" . encode . mapsToLists $ (m & _1 %~ M.insert "_" r) 
                       return $ (T.toStrict fs , TS.pack $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)) : lg
         rtxt <- liftIO txt
-        liftIO $ TIO.writeFile "log.dat" (TS.pack $ show rtxt)
+        liftIO $ BS.writeFile "log.dat" . B.toStrict . encode $ rtxt
         html $ renderHtml
              $ H.html $
                 H.body $ do
