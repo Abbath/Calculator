@@ -1,6 +1,9 @@
-module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, preprocess) where
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, preprocess, ListTuple) where
 
 import Data.List (intercalate)
+import GHC.Generics
+import Data.Aeson (ToJSON, FromJSON)
 
 data Token = TNumber Rational
            | TLPar
@@ -11,7 +14,7 @@ data Token = TNumber Rational
            | TEnd
            deriving (Show, Eq, Ord)
 
-data Assoc = L | R deriving (Show, Read, Eq, Ord)
+data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic,  ToJSON, FromJSON)
 
 data Expr = Number Rational
           | Asgn String Expr
@@ -22,7 +25,13 @@ data Expr = Number Rational
           | Par Expr
           | FunCall String [Expr]
           | Id String
-          deriving (Eq, Show, Read)
+          deriving (Eq, Show, Read, Generic)
+
+instance ToJSON Expr  
+
+instance FromJSON Expr
+
+type ListTuple =  ([(String, Rational)], [((String, Int), ([String], Expr))], [(String, ((Int, Assoc), Expr))])
 
 -- instance Show Expr where
 --   show = showExpr 0

@@ -10,11 +10,12 @@ import Text.Blaze.Html.Renderer.Text (renderHtml)
 import qualified Data.Text as TS
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.IO as TIO
+import qualified Data.ByteString.Lazy as B
 
 import Data.Map.Strict (Map)
 import Control.Lens (_1, _3, (^.), (&), (%~))
 import qualified Data.Map.Strict as M
-import Calculator.Types (Expr(..), Assoc(..))
+import Calculator.Types (Expr(..), Assoc(..), ListTuple)
 import Calculator.Lexer
 import Calculator.Parser
 import Calculator.Evaluator
@@ -27,6 +28,7 @@ import Control.Arrow (left)
 import Data.List (isPrefixOf)
 import Data.Ratio (numerator, denominator)
 import Clay (render)
+import Data.Aeson (encode, decode)
 
 data Mode = Internal | Megaparsec deriving Show
 
@@ -86,7 +88,7 @@ evalLoop m = Calculator.loop m (defVar, M.empty, opMap)
 webLoop :: Mode -> IO ()
 webLoop mode = scotty 3000 $ do
     get "/" $ do
-        liftIO $ TIO.writeFile "storage.dat" (TS.pack ("(" ++ show defVar ++ ",fromList []," ++ show opMap ++ ")"))
+        liftIO $ B.writeFile "storage.dat" (encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
         liftIO $ TIO.writeFile "log.dat" "[]"
         html $ renderHtml
              $ H.html $
@@ -96,17 +98,15 @@ webLoop mode = scotty 3000 $ do
                         H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
                     H.style $
                       H.toHtml . render $ getCss 
-
     post "/clear" $ do
-        liftIO $ TIO.writeFile "storage.dat" (TS.pack . show $ (defVar, M.fromList [] :: FunMap, opMap))
-        liftIO $ TIO.writeFile "log.dat" "[]"
-        html "Ok"
         redirect "/"
     post "/" $ do
         fs <- param "foo"
         rest <- liftIO $ TIO.readFile "log.dat"
-        env <- liftIO $ TIO.readFile "storage.dat"
-        let ms = read (TS.unpack env) :: Maps
+        env <- liftIO $ B.readFile "storage.dat"
+        let ms = case (decode env :: Maybe ListTuple) of 
+                  Just r -> listsToMaps r
+                  Nothing -> error "Cannot read storage"
         let lg = read (TS.unpack rest) :: [(TS.Text, TS.Text)]
         let t = case mode of
                   Megaparsec ->
@@ -116,7 +116,7 @@ webLoop mode = scotty 3000 $ do
         let txt = case t of
                     Left err -> return  $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
-                      TIO.writeFile "storage.dat" . TS.pack . show $ m & _1 %~ M.insert "_" r
+                      B.writeFile "storage.dat" . encode . mapsToLists $ (m & _1 %~ M.insert "_" r) 
                       return $ (T.toStrict fs , TS.pack $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)) : lg
         rtxt <- liftIO txt
         liftIO $ TIO.writeFile "log.dat" (TS.pack $ show rtxt)
@@ -131,7 +131,8 @@ webLoop mode = scotty 3000 $ do
                     H.table $ mapM_ (\(x,y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
                     H.style $
                       H.toHtml . render $ postCss
-
-  
+    where 
+        mapsToLists = \(a,b,c) -> (M.toList a, M.toList b, M.toList c)
+        listsToMaps = \(a,b,c) -> (M.fromList a, M.fromList b, M.fromList c)
     
         
