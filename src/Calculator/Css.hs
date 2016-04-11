@@ -20,7 +20,7 @@ postCss = do
     width (px 400)
     height (px 50)
     fontSize (px 18)
-  input # "type=\"isubmit\"" ? do
+  input # "type=\"submit\"" ? do
     fontFamily ["Tahoma"] [sansSerif]
     color white
     background red
