@@ -122,7 +122,9 @@ webLoop port mode = scotty port $ do
                     Left err -> Left (err, ms)
                     Right r -> eval ms r 
         let txt = case res of
-                    Left (err,_) -> return  $ (T.toStrict fs, TS.pack err) : lg
+                    Left (err, m) -> do
+                      B.writeFile "storage.dat" . encode . mapsToLists $ m
+                      return  $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
                       B.writeFile "storage.dat" . encode . mapsToLists $ (m & _1 %~ M.insert "_" r) 
                       return $ (T.toStrict fs , TS.pack $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)) : lg
