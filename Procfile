@@ -1,1 +1,1 @@
-web: Calculator
+web: Calculator $PORT

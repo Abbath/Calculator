@@ -85,8 +85,8 @@ defVar = M.fromList [("pi", toRational (pi::Double)), ("e", toRational . exp $ (
 evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m (defVar, M.empty, opMap)
 
-webLoop :: Mode -> IO ()
-webLoop mode = scotty 3000 $ do
+webLoop :: Int -> Mode -> IO ()
+webLoop port mode = scotty port $ do
     get "/" $ do
         liftIO $ B.writeFile "storage.dat" (encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
         liftIO $ BS.writeFile "log.dat" "[]"
