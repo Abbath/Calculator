@@ -1,1 +1,1 @@
-web: stack exec -- Calculator
+web: Calculator
