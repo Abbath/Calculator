@@ -114,7 +114,7 @@ webLoop port mode = scotty port $ do
         redirect $ T.append "/" $ T.pack (show $ abs y)
     get "/:id" $ do
         iD <- param "id"
-        liftIO $ B.writeFile ("storage" ++ T.unpack iD ++ ".dat") (encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
+        liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
         liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
         html $ renderHtml
              $ H.html $
@@ -132,8 +132,8 @@ webLoop port mode = scotty port $ do
         liftIO $ updateIDS (read . T.unpack $ iD :: Integer) 
         fs <- param "foo"
         rest <- liftIO $ BS.readFile $ ("log" ++ T.unpack iD ++ ".dat")
-        env <- liftIO $ B.readFile ("storage" ++ T.unpack iD ++ ".dat")
-        let ms = case (decode env :: Maybe ListTuple) of 
+        env <- liftIO $ BS.readFile ("storage" ++ T.unpack iD ++ ".dat")
+        let ms = case (decode (B.fromStrict env) :: Maybe ListTuple) of 
                   Just r -> listsToMaps r
                   Nothing -> error "Cannot decode storage"
         let lg = case decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)] of
@@ -149,10 +149,10 @@ webLoop port mode = scotty port $ do
                     Right r -> eval ms r 
         let txt = case res of
                     Left (err, m) -> do
-                      B.writeFile ("storage" ++ T.unpack iD ++ ".dat") . encode . mapsToLists $ m
+                      BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") . B.toStrict . encode . mapsToLists $ m
                       return  $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
-                      B.writeFile ("storage" ++ T.unpack iD ++ ".dat") . encode . mapsToLists $ (m & _1 %~ M.insert "_" r) 
+                      BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") . B.toStrict . encode . mapsToLists $ (m & _1 %~ M.insert "_" r) 
                       return $ (T.toStrict fs , TS.pack $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)) : lg
         rtxt <- liftIO txt
         liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") . B.toStrict . encode $ rtxt
