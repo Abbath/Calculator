@@ -2,6 +2,7 @@
 module Calculator (Mode(..), evalLoop, webLoop) where
 
 import Web.Scotty
+import Network.Wai.Middleware.Static
 
 import qualified Text.Blaze.Html5 as H
 import Text.Blaze.Html5.Attributes
@@ -29,6 +30,9 @@ import Data.List (isPrefixOf)
 import Data.Ratio (numerator, denominator)
 import Clay (render)
 import Data.Aeson (encode, decode)
+import System.Random
+import System.Directory
+import Data.Time.Clock.POSIX
 
 data Mode = Internal | Megaparsec deriving Show
 
@@ -88,25 +92,47 @@ defVar = M.fromList [("pi", toRational (pi::Double)), ("e", toRational . exp $ (
 evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m (defVar, M.empty, opMap)
 
+updateIDS :: Integer -> IO ()
+updateIDS i = do
+    f <- BS.readFile "ids"
+    let ids = read (BS.unpack f) :: [(Integer, Integer)]
+    tm <- round `fmap` getPOSIXTime
+    mapM_ (\(_, ff) -> do
+             removeFile ("storage" ++ show ff ++ ".dat")
+             removeFile ("log" ++ show ff ++ ".dat")) $ filter (\(a,_) -> tm-a > 60*60) ids
+    if i `elem` map snd ids 
+       then BS.writeFile "ids" $ BS.pack $ show $ map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
+       else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
+       
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = scotty port $ do
-    get "/" $ do
-        liftIO $ B.writeFile "storage.dat" (encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
-        liftIO $ BS.writeFile "log.dat" "[]"
+    middleware $ staticPolicy (noDots >-> addBase "static/images") -- for future
+    get "/" $ do 
+        let x = liftIO $ (randomIO :: IO Integer)
+        y <- x
+        liftIO $ updateIDS (abs y)
+        redirect $ T.append "/" $ T.pack (show $ abs y)
+    get "/:id" $ do
+        iD <- param "id"
+        liftIO $ B.writeFile ("storage" ++ T.unpack iD ++ ".dat") (encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
+        liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
         html $ renderHtml
              $ H.html $
                 H.body $ do
-                    H.h1 $ H.toHtml (TS.pack "Calculator")
-                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/" $
+                    H.h1 $ H.toHtml ("Calculator" :: TS.Text)
+                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
                         H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
                     H.style $
                       H.toHtml . render $ getCss 
-    post "/clear" $ do
-        redirect "/"
-    post "/" $ do
+    post "/clear/:id" $ do
+        iD <- param "id"
+        redirect $ T.append "/" iD
+    post "/:id" $ do
+        iD <- param "id"
+        liftIO $ updateIDS (read . T.unpack $ iD :: Integer) 
         fs <- param "foo"
-        rest <- liftIO $ BS.readFile $ "log.dat"
-        env <- liftIO $ B.readFile "storage.dat"
+        rest <- liftIO $ BS.readFile $ ("log" ++ T.unpack iD ++ ".dat")
+        env <- liftIO $ B.readFile ("storage" ++ T.unpack iD ++ ".dat")
         let ms = case (decode env :: Maybe ListTuple) of 
                   Just r -> listsToMaps r
                   Nothing -> error "Cannot decode storage"
@@ -123,20 +149,20 @@ webLoop port mode = scotty port $ do
                     Right r -> eval ms r 
         let txt = case res of
                     Left (err, m) -> do
-                      B.writeFile "storage.dat" . encode . mapsToLists $ m
+                      B.writeFile ("storage" ++ T.unpack iD ++ ".dat") . encode . mapsToLists $ m
                       return  $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
-                      B.writeFile "storage.dat" . encode . mapsToLists $ (m & _1 %~ M.insert "_" r) 
+                      B.writeFile ("storage" ++ T.unpack iD ++ ".dat") . encode . mapsToLists $ (m & _1 %~ M.insert "_" r) 
                       return $ (T.toStrict fs , TS.pack $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)) : lg
         rtxt <- liftIO txt
-        liftIO $ BS.writeFile "log.dat" . B.toStrict . encode $ rtxt
+        liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") . B.toStrict . encode $ rtxt
         html $ renderHtml
              $ H.html $
                 H.body $ do
                     H.h1 $ H.toHtml ("Calculator" :: TS.Text)
-                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/" $
+                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
                         H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
-                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action "/clear" $
+                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/clear/" iD) $
                         H.input H.! type_ "submit" H.! value "Clear history"
                     H.table $ mapM_ (\(x,y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
                     H.style $

@@ -20,6 +20,7 @@ options = Options
     
 main :: IO ()
 main = do
+  writeFile "ids" "[]"
   Options m t c p <- execParser opts
   case (m,t,c) of
     (_,True,_) -> testLoop
