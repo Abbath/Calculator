@@ -83,7 +83,7 @@ parseToken str = case str of
   (TIdent name : TLPar : rest) -> FunCall name <$> parseFuncall rest
   [TNumber n] -> return $ Number n
   (TLPar : rest) -> Par <$> ps rest
-  x -> throwError $ "Syntax error: " ++ show x
+  x -> throwError $ "Syntax error: " ++ stringify x
   where
     ps ss = let t = runExcept $ takePar ss
      in case t of

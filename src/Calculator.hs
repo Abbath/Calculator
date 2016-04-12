@@ -68,13 +68,16 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
       Just x -> do
         let t = case md of
                   Megaparsec ->
-                    left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (x++"\n")) >>= eval ms
+                    left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (x++"\n"))
                   Internal ->
-                    tokenize x >>= parse (getPriorities $ ms^._3) >>= eval ms
-        case t of
-          Left err -> do
+                    tokenize x >>= parse (getPriorities $ ms^._3)
+        let res = case t of 
+                    Left err -> Left (err, ms)
+                    Right r -> eval ms r 
+        case res of
+          Left (err,m) -> do
             liftIO $ putStrLn err
-            loop' md ms
+            loop' md m
           Right (r, m) -> do
             liftIO . putStrLn $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)
             loop' md $ m & _1 %~ M.insert "_" r
@@ -112,11 +115,14 @@ webLoop port mode = scotty port $ do
                    Nothing -> error "Cannot decode log"
         let t = case mode of
                   Megaparsec ->
-                    left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (T.unpack fs ++ "\n")) >>= eval ms
+                    left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (T.unpack fs ++ "\n")) 
                   Internal ->
-                    tokenize (T.unpack fs) >>= parse (getPriorities $ ms^._3) >>= eval ms
-        let txt = case t of
-                    Left err -> return  $ (T.toStrict fs, TS.pack err) : lg
+                    tokenize (T.unpack fs) >>= parse (getPriorities $ ms^._3)
+        let res = case t of 
+                    Left err -> Left (err, ms)
+                    Right r -> eval ms r 
+        let txt = case res of
+                    Left (err,_) -> return  $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
                       B.writeFile "storage.dat" . encode . mapsToLists $ (m & _1 %~ M.insert "_" r) 
                       return $ (T.toStrict fs , TS.pack $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)) : lg

@@ -38,14 +38,16 @@ loop (x:xs) maps bk = do
               Internal -> tokenize sample >>= parse (getPriorities $ maps^._3)
               Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sample++"\n"))
     --print e
-    let t = e >>= eval maps
+    let t = case e of 
+              Left err -> Left (err, maps) 
+              Right r -> eval maps r
     case t of
       Right (r,m) -> do
         putStrLn $ if r == snd x
         then "Passed: " ++ sample
         else "Failed: " ++ sample ++ " expected: " ++ show (snd x) ++ " received: " ++ show t
         loop xs (m & _1 %~ M.insert "_" r) bk
-      Left err -> do
+      Left (err,_) -> do
         putStrLn err
         print maps
         loop xs maps bk
