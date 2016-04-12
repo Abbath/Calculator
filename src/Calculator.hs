@@ -86,7 +86,7 @@ evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m (defVar, M.empty, opMap)
 
 webLoop :: Mode -> IO ()
-webLoop mode = scotty 3000 $ do
+webLoop mode = scotty 80 $ do
     get "/" $ do
         liftIO $ B.writeFile "storage.dat" (encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
         liftIO $ BS.writeFile "log.dat" "[]"
