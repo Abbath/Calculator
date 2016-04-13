@@ -77,6 +77,7 @@ mathOps :: Map String (Rational -> Rational -> Rational)
 mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow)]
 
 pow :: Rational -> Rational -> Rational
+pow a b | denominator a == 1 && denominator b == 1 = toRational $ numerator a ^ numerator b
 pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
 
 getPriorities :: OpMap -> Map String Int
@@ -185,7 +186,7 @@ eval maps ex = case ex of
     then Left . mps $ "Div by zero: " ++ exprToString oc
     else return $ mps (fromInteger $ mod (floor n1) (floor n))
   OpCall op x y | M.member op compOps -> cmp op x y compOps
-  OpCall op x y | M.member op mathOps -> eval' ( mathOps M.! op) x y
+  OpCall op x y | M.member op mathOps -> eval' ( mathOps M.! op) op x y
   OpCall op x y  ->
     case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc),Expr)) of
       Just (_, expr) -> do
@@ -204,7 +205,11 @@ eval maps ex = case ex of
   where
     mte _ (Just x, m) = Right (x, m)
     mte s (Nothing, _) = Left . mps $ s
-    evm = eval maps
+    evm x = do 
+      (r,m) <- eval maps x
+      if r > (2^(8000000 :: Integer) :: Rational)
+         then Left . mps $ "Too much!"
+         else return (r,m)
     mps x = (x, maps)
     cmp op x y mp = do
       let fun = mp M.! op
@@ -213,14 +218,16 @@ eval maps ex = case ex of
       return $ if fun n n1
         then mps 1
         else mps 0
-    eval' :: (Rational -> Rational -> Rational) -> Expr -> Expr -> Either (String, Maps) (Rational, Maps)
-    eval' f x y = do
-      (t1,_) <- eval maps x
-      (t2,_) <- eval maps y
-      return (f t1 t2, maps)
+    eval' :: (Rational -> Rational -> Rational) -> String -> Expr -> Expr -> Either (String, Maps) (Rational, Maps)
+    eval' f op x y = do
+      (t1,_) <- evm x
+      (t2,_) <- evm y
+      if ( op == "^" && (fromRational t1 :: Double) * logBase 10 (fromRational t2 :: Double) > 2408240) || f t1 t2 > (2^(8000000 :: Integer) :: Rational)
+         then Left . mps $ "Too much!"
+         else return (f t1 t2, maps)
     evalInt f x y = do
-      (t1,_) <- eval maps x
-      (t2,_) <- eval maps y
+      (t1,_) <- evm x
+      (t2,_) <- evm y
       if denominator t1 == 1 && denominator t2 == 1
          then return $ mps (toRational $ (intFuns M.! f) (numerator t1) (numerator t2))
          else Left $ mps "Cannot use integral function on real numbers!"
