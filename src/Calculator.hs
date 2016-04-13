@@ -107,22 +107,33 @@ updateIDS i = do
        else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
        
 bannedIPs :: [String]
-bannedIPs = ["127.0.0.1", "117.136.234.6", "117.135.250.134"]
+bannedIPs = ["117.136.234.6", "117.135.250.134"]
+
+theseFaggots :: Show a => a -> Bool
+theseFaggots sa = let ss = show sa
+                      (s1,rest) = break (=='.') $ ss
+                      s2 = fst . break (=='.') $ tail rest
+                      n1 = read s1 :: Int
+                      n2 = read s2 :: Int
+                  in if n1 == 117 && n2 >= 128 && n2 < 192 
+                        then True
+                        else False
        
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = scotty port $ do
-    middleware $ staticPolicy (noDots >-> addBase "static/images") -- for future
+    middleware $ staticPolicy (noDots >-> addBase "Static/images") -- for future
     get "/" $ do 
         req <- request
         let sa = remoteHost req
         liftIO $ print sa
-        if (fst $ break (==':') $ show sa) `elem` bannedIPs
+        if (fst $ break (==':') $ show sa) `elem` bannedIPs || theseFaggots sa
            then status $ Status 500 "Nope!"
            else do
              let x = liftIO $ (randomIO :: IO Integer)
              y <- x
              liftIO $ updateIDS (abs y)
              redirect $ T.append "/" $ T.pack (show $ abs y)
+    get "/favicon.ico" $ file "./Static/favicon.ico"
     get "/:id" $ do
         iD <- param "id"
         liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
@@ -135,7 +146,6 @@ webLoop port mode = scotty port $ do
                         H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
                     H.style $
                       H.toHtml . render $ getCss 
-    get "/favicon.ico" $ file "Static/favicon.ico"
     post "/clear/:id" $ do
         iD <- param "id"
         redirect $ T.append "/" iD
