@@ -2,7 +2,9 @@
 module Calculator (Mode(..), evalLoop, webLoop) where
 
 import Web.Scotty
+import Network.Wai
 import Network.Wai.Middleware.Static
+import Network.HTTP.Types.Status
 
 import qualified Text.Blaze.Html5 as H
 import Text.Blaze.Html5.Attributes
@@ -104,14 +106,23 @@ updateIDS i = do
        then BS.writeFile "ids" $ BS.pack $ show $ map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
        else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
        
+bannedIPs :: [String]
+bannedIPs = ["127.0.0.1", "117.136.234.6"]
+       
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = scotty port $ do
     middleware $ staticPolicy (noDots >-> addBase "static/images") -- for future
     get "/" $ do 
-        let x = liftIO $ (randomIO :: IO Integer)
-        y <- x
-        liftIO $ updateIDS (abs y)
-        redirect $ T.append "/" $ T.pack (show $ abs y)
+        req <- request
+        let sa = remoteHost req
+        liftIO $ print sa
+        if (fst $ break (==':') $ show sa) `elem` bannedIPs
+           then status $ Status 500 "Nope!"
+           else do
+             let x = liftIO $ (randomIO :: IO Integer)
+             y <- x
+             liftIO $ updateIDS (abs y)
+             redirect $ T.append "/" $ T.pack (show $ abs y)
     get "/:id" $ do
         iD <- param "id"
         liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
@@ -124,6 +135,7 @@ webLoop port mode = scotty port $ do
                         H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
                     H.style $
                       H.toHtml . render $ getCss 
+    get "/favicon.ico" $ file "Static/favicon.ico"
     post "/clear/:id" $ do
         iD <- param "id"
         redirect $ T.append "/" iD

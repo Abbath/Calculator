@@ -222,7 +222,8 @@ eval maps ex = case ex of
     eval' f op x y = do
       (t1,_) <- evm x
       (t2,_) <- evm y
-      if ( op == "^" && (fromRational t1 :: Double) * logBase 10 (fromRational t2 :: Double) > 2408240) || f t1 t2 > (2^(8000000 :: Integer) :: Rational)
+      if ( op == "^" && (fromRational t1 :: Double) * logBase 10 (fromRational t2 :: Double) > 2408240) ||
+         f t1 t2 > (2^(8000000 :: Integer) :: Rational)
          then Left . mps $ "Too much!"
          else return (f t1 t2, maps)
     evalInt f x y = do
