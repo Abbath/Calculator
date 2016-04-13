@@ -100,8 +100,10 @@ updateIDS i = do
     let ids = read (BS.unpack f) :: [(Integer, Integer)]
     tm <- round `fmap` getPOSIXTime
     mapM_ (\(_, ff) -> do
-             removeFile ("storage" ++ show ff ++ ".dat")
-             removeFile ("log" ++ show ff ++ ".dat")) $ filter (\(a,_) -> tm-a > 60*60) ids
+             b1 <- findFile ["."] ("storage" ++ show ff ++ ".dat")
+             b2 <- findFile ["."] ("log" ++ show ff ++ ".dat")
+             when (b1 /= Nothing) $ removeFile ("storage" ++ show ff ++ ".dat")
+             when (b2 /= Nothing) $ removeFile ("log" ++ show ff ++ ".dat")) $ filter (\(a,_) -> tm-a > 60*60) ids
     if i `elem` map snd ids 
        then BS.writeFile "ids" $ BS.pack $ show $ map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
        else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
