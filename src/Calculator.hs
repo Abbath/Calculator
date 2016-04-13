@@ -107,7 +107,7 @@ updateIDS i = do
        else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
        
 bannedIPs :: [String]
-bannedIPs = ["127.0.0.1", "117.136.234.6"]
+bannedIPs = ["127.0.0.1", "117.136.234.6", "117.135.250.134"]
        
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = scotty port $ do
