@@ -123,43 +123,46 @@ theseFaggots sa = let ss = show sa
        
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = scotty port $ do
-    middleware $ staticPolicy (noDots >-> addBase "Static/images") -- for future
-    get "/" $ do 
-        req <- request
-        let sa = remoteHost req
-        liftIO $ print sa
-        if (fst $ break (==':') $ show sa) `elem` bannedIPs || theseFaggots sa
-           then status $ Status 500 "Nope!"
-           else do
-             let x = liftIO $ (randomIO :: IO Integer)
-             y <- x
-             liftIO $ updateIDS (abs y)
-             redirect $ T.append "/" $ T.pack (show $ abs y)
-    get "/favicon.ico" $ file "./Static/favicon.ico"
-    get "/:id" $ do
-        iD <- param "id"
-        liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
-        liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
-        html $ renderHtml
-             $ H.html $
-                H.body $ do
-                    H.h1 $ H.toHtml ("Calculator" :: TS.Text)
-                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
-                        H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
-                    H.style $
-                      H.toHtml . render $ getCss 
-    post "/clear/:id" $ do
-        iD <- param "id"
-        redirect $ T.append "/" iD
-    post "/:id" $ do
-        iD <- param "id"
-        liftIO $ updateIDS (read . T.unpack $ iD :: Integer) 
-        fs <- param "foo"
+  middleware $ staticPolicy (noDots >-> addBase "Static/images") -- for future
+  get "/" $ do 
+    req <- request
+    let sa = remoteHost req
+    liftIO $ print sa
+    if (fst $ break (==':') $ show sa) `elem` bannedIPs || theseFaggots sa
+      then status $ Status 500 "Nope!"
+      else do
+        let x = liftIO $ (randomIO :: IO Integer)
+        y <- x
+        liftIO $ updateIDS (abs y)
+        redirect $ T.append "/" $ T.pack (show $ abs y)
+  get "/favicon.ico" $ file "./Static/favicon.ico"
+  get "/:id" $ do
+    iD <- param "id"
+    liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
+    liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
+    html $ renderHtml
+      $ H.html $ H.body $ do
+        H.h1 $ H.toHtml ("Calculator" :: TS.Text)
+        H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
+          H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
+        H.style $ H.toHtml . render $ getCss 
+  post "/clear/:id" $ do
+    iD <- param "id"
+    redirect $ T.append "/" iD
+  post "/:id" $ do
+    iD <- param "id"
+    liftIO $ updateIDS (read . T.unpack $ iD :: Integer) 
+    fs <- param "foo" 
+    f1 <- liftIO $ findFile ["."] ("storage" ++ T.unpack iD ++ ".dat")  
+    f2 <- liftIO $ findFile ["."] ("log" ++ T.unpack iD ++ ".dat")
+    if f1 == Nothing || f2 == Nothing 
+      then redirect "/"
+      else do
         rest <- liftIO $ BS.readFile $ ("log" ++ T.unpack iD ++ ".dat")
         env <- liftIO $ BS.readFile ("storage" ++ T.unpack iD ++ ".dat")
         let ms = case (decode (B.fromStrict env) :: Maybe ListTuple) of 
-                  Just r -> listsToMaps r
-                  Nothing -> error "Cannot decode storage"
+                   Just r -> listsToMaps r
+                   Nothing -> error "Cannot decode storage"
         let lg = case decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)] of
                    Just r -> r
                    Nothing -> error "Cannot decode log"
@@ -183,16 +186,15 @@ webLoop port mode = scotty port $ do
         html $ renderHtml
              $ H.html $
                 H.body $ do
-                    H.h1 $ H.toHtml ("Calculator" :: TS.Text)
-                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
-                        H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
-                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/clear/" iD) $
-                        H.input H.! type_ "submit" H.! value "Clear history"
-                    H.table $ mapM_ (\(x,y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
-                    H.style $
-                      H.toHtml . render $ postCss
-    where 
-        mapsToLists = \(a,b,c) -> (M.toList a, M.toList b, M.toList c)
-        listsToMaps = \(a,b,c) -> (M.fromList a, M.fromList b, M.fromList c)
+                  H.h1 $ H.toHtml ("Calculator" :: TS.Text)
+                  H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
+                    H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
+                  H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/clear/" iD) $
+                    H.input H.! type_ "submit" H.! value "Clear history"
+                  H.table $ mapM_ (\(x,y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
+                  H.style $ H.toHtml . render $ postCss 
+  where 
+    mapsToLists = \(a,b,c) -> (M.toList a, M.toList b, M.toList c)
+    listsToMaps = \(a,b,c) -> (M.fromList a, M.fromList b, M.fromList c)
     
         
