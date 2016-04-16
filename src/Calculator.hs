@@ -133,8 +133,12 @@ webLoop port mode = scotty port $ do
       else do
         let x = liftIO $ (randomIO :: IO Integer)
         y <- x
-        liftIO $ updateIDS (abs y)
-        redirect $ T.append "/" $ T.pack (show $ abs y)
+        f <- liftIO $ findFile ["."] ("log" ++ show y ++ ".dat")
+        if f /= Nothing
+          then redirect "/"
+          else do
+            liftIO $ updateIDS (abs y)
+            redirect $ T.append "/" $ T.pack (show $ abs y)
   get "/favicon.ico" $ file "./Static/favicon.ico"
   get "/:id" $ do
     iD <- param "id"
