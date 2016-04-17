@@ -12,6 +12,9 @@ type VarMap = Map String Rational
 type OpMap = Map String ((Int, Assoc), Expr)
 type Maps = (VarMap, FunMap, OpMap)
 
+-- funNames :: FunMap -> [String]
+-- funNames = map . fst . M.keys
+
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
 goInside f ex = case ex of
   (OpCall op e1 e2) -> OpCall op <$> f e1 <*> f e2
@@ -152,7 +155,7 @@ eval maps ex = case ex of
             return $ mps a
           Left err -> Left . mps $ err  
       Nothing -> case name of
-        ('@':r) -> Left . mps $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e)
+        ('@':r) -> Left . mps $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e) ++ " in function " ++ name
         _ -> Left . mps $ "No such function: " ++ name ++ "/" ++ show (length e)
   Id s     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Rational)
   Number x -> return $ mps x
@@ -222,7 +225,7 @@ eval maps ex = case ex of
     eval' f op x y = do
       (t1,_) <- evm x
       (t2,_) <- evm y
-      if ( op == "^" && (fromRational t1 :: Double) * logBase 10 (fromRational t2 :: Double) > 2408240) ||
+      if ( op == "^" && logBase 10 (fromRational t1 :: Double) * (fromRational t2 :: Double) > 2408240) ||
          f t1 t2 > (2^(8000000 :: Integer) :: Rational)
          then Left . mps $ "Too much!"
          else return (f t1 t2, maps)

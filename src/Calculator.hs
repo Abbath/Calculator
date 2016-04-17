@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Calculator (Mode(..), evalLoop, webLoop) where
+module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap) where
 
 import Web.Scotty
 import Network.Wai
@@ -100,10 +100,12 @@ updateIDS i = do
     let ids = read (BS.unpack f) :: [(Integer, Integer)]
     tm <- round `fmap` getPOSIXTime
     mapM_ (\(_, ff) -> do
-             b1 <- findFile ["."] ("storage" ++ show ff ++ ".dat")
-             b2 <- findFile ["."] ("log" ++ show ff ++ ".dat")
-             when (b1 /= Nothing) $ removeFile ("storage" ++ show ff ++ ".dat")
-             when (b2 /= Nothing) $ removeFile ("log" ++ show ff ++ ".dat")) $ filter (\(a,_) -> tm-a > 60*60) ids
+             let logname = "log" ++ show ff ++ ".dat";
+             let storagename = "storage" ++ show ff ++ ".dat"
+             b1 <- findFile ["."] storagename
+             b2 <- findFile ["."] logname
+             when (b1 /= Nothing) $ removeFile storagename
+             when (b2 /= Nothing) $ removeFile logname) $ filter (\(a,_) -> tm-a > 60*60) ids
     if i `elem` map snd ids 
        then BS.writeFile "ids" $ BS.pack $ show $ map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
        else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
@@ -162,8 +164,10 @@ webLoop port mode = scotty port $ do
     if f1 == Nothing || f2 == Nothing 
       then redirect "/"
       else do
-        rest <- liftIO $ BS.readFile $ ("log" ++ T.unpack iD ++ ".dat")
-        env <- liftIO $ BS.readFile ("storage" ++ T.unpack iD ++ ".dat")
+        let logname = "log" ++ T.unpack iD ++ ".dat"
+        let storagename = "storage" ++ T.unpack iD ++ ".dat"
+        rest <- liftIO $ BS.readFile logname 
+        env <- liftIO $ BS.readFile storagename
         let ms = case (decode (B.fromStrict env) :: Maybe ListTuple) of 
                    Just r -> listsToMaps r
                    Nothing -> error "Cannot decode storage"
@@ -180,13 +184,13 @@ webLoop port mode = scotty port $ do
                     Right r -> eval ms r 
         let txt = case res of
                     Left (err, m) -> do
-                      BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") . B.toStrict . encode . mapsToLists $ m
+                      storeMaps storagename m
                       return  $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
-                      BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") . B.toStrict . encode . mapsToLists $ (m & _1 %~ M.insert "_" r) 
+                      storeMaps storagename (m & _1 %~ M.insert "_" r) 
                       return $ (T.toStrict fs , TS.pack $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)) : lg
         rtxt <- liftIO txt
-        liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") . B.toStrict . encode $ rtxt
+        liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
         html $ renderHtml
              $ H.html $
                 H.body $ do
@@ -198,6 +202,7 @@ webLoop port mode = scotty port $ do
                   H.table $ mapM_ (\(x,y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
                   H.style $ H.toHtml . render $ postCss 
   where 
+    storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists  
     mapsToLists = \(a,b,c) -> (M.toList a, M.toList b, M.toList c)
     listsToMaps = \(a,b,c) -> (M.fromList a, M.fromList b, M.fromList c)
     
