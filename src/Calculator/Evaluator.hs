@@ -12,8 +12,8 @@ type VarMap = Map String Rational
 type OpMap = Map String ((Int, Assoc), Expr)
 type Maps = (VarMap, FunMap, OpMap)
 
--- funNames :: FunMap -> [String]
--- funNames = map . fst . M.keys
+funNames :: FunMap -> [(String, String)]
+funNames = map (\(f,_) -> (f, f)) . M.keys
 
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
 goInside f ex = case ex of
@@ -48,15 +48,19 @@ localize s@(x:xs) (FunCall nm e) = if nm == x
     localize xs (FunCall nm t)
 localize s ex = goInside (localize s) ex
 
-catchVar :: VarMap -> Expr -> Either String Expr
-catchVar m ex = case ex of
+catchVar :: (VarMap, FunMap) -> Expr -> Either String Expr
+catchVar (vm, fm) ex = case ex of
   (Id i@('@':_)) -> return $ Id i
-  (Id i) ->
-    case M.lookup i m :: Maybe Rational of
-      Just n -> return $ Number (n)
-      Nothing -> Left $ "No such variable: " ++ i
+  (Id i) -> 
+    let a = M.lookup i vm :: Maybe Rational
+        b = lookup i (funNames fm ++ map (\f -> (f,f)) (M.keys mathFuns)) :: Maybe String     
+    in case a of
+         Just n -> return $ Number (n)
+         Nothing -> case b of 
+                     Just s -> return $ Id s
+                     Nothing -> Left $ "No such variable: " ++ i
   e -> goInside st e
-  where st = catchVar m
+    where st = catchVar (vm, fm)
 
 compFuns :: Map String (Rational -> Rational -> Bool)
 compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(==))
@@ -100,7 +104,7 @@ eval maps ex = case ex of
       Left err -> Left . mps $ err
       Right r -> evm (UDF n [s] r)
   UDF n s e                          -> do
-    let newe = localize s e >>= catchVar (maps^._1)
+    let newe = localize s e >>= catchVar (maps^._1, maps ^._2)
     case newe of 
       Left err -> Left . mps $ err 
       Right r -> do 
@@ -116,7 +120,7 @@ eval maps ex = case ex of
     | M.member n mathOps || M.member n compOps || n == "=" -> Left . mps $ "Can not redefine embedded operator: " ++ n
     | p < 1 || p > 4 ->  Left . mps $ "Bad priority: " ++ show p
     |otherwise -> do
-        let t = localize ["x","y"] e >>= catchVar (maps^._1)
+        let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
         case t of 
           Left err -> Left . mps $ err
           Right r -> do 
@@ -148,14 +152,18 @@ eval maps ex = case ex of
   FunCall name e ->
     case (M.lookup (name, length e) (maps^._2) :: Maybe ([String],Expr)) of
       Just (al, expr) -> do
-        let expr1 = substitute (al, e) expr
+        let unparIds = map (\x -> case x of 
+                                    Par (Id s) -> Id s
+                                    Par (Number n) -> Number n
+                                    an -> an) e
+        let expr1 = substitute (al, unparIds) expr
         case expr1 of 
           Right r -> do 
             (a,_) <- evm r
             return $ mps a
           Left err -> Left . mps $ err  
       Nothing -> case name of
-        ('@':r) -> Left . mps $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e) ++ " in function " ++ name
+        ('@':r) -> Left . mps $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e) ++ show e
         _ -> Left . mps $ "No such function: " ++ name ++ "/" ++ show (length e)
   Id s     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Rational)
   Number x -> return $ mps x
