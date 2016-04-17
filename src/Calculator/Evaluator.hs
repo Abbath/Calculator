@@ -221,7 +221,7 @@ eval maps ex = case ex of
     mte s (Nothing, _) = Left . mps $ s
     evm x = do 
       (r,m) <- eval maps x
-      if r > (2^(8000000 :: Integer) :: Rational)
+      if r > tooBig
          then Left . mps $ "Too much!"
          else return (r,m)
     mps x = (x, maps)
@@ -237,7 +237,7 @@ eval maps ex = case ex of
       (t1,_) <- evm x
       (t2,_) <- evm y
       if ( op == "^" && logBase 10 (fromRational t1 :: Double) * (fromRational t2 :: Double) > 2408240) ||
-         f t1 t2 > (2^(8000000 :: Integer) :: Rational)
+         f t1 t2 > tooBig
          then Left . mps $ "Too much!"
          else return (f t1 t2, maps)
     evalInt f x y = do
@@ -247,6 +247,7 @@ eval maps ex = case ex of
          then return $ mps (toRational $ (intFuns M.! f) (numerator t1) (numerator t2))
          else Left $ mps "Cannot use integral function on real numbers!"
     msgmap m s = Left (s, m)     
+    tooBig = (2^(8000000 :: Integer) :: Rational)
 
 derivative :: Expr -> Expr -> Either String Expr
 derivative e x = case e of
