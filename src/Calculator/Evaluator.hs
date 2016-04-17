@@ -53,7 +53,9 @@ catchVar (vm, fm) ex = case ex of
   (Id i@('@':_)) -> return $ Id i
   (Id i) -> 
     let a = M.lookup i vm :: Maybe Rational
-        b = lookup i (funNames fm ++ map (\f -> (f,f)) (M.keys mathFuns)) :: Maybe String     
+        getNames = map (\f -> (f,f)) . M.keys
+        fNames = getNames mathFuns ++ getNames intFuns ++ getNames compFuns
+        b = lookup i (funNames fm ++ fNames) :: Maybe String     
     in case a of
          Just n -> return $ Number (n)
          Nothing -> case b of 
@@ -152,11 +154,12 @@ eval maps ex = case ex of
   FunCall name e ->
     case (M.lookup (name, length e) (maps^._2) :: Maybe ([String],Expr)) of
       Just (al, expr) -> do
-        let unparIds = map (\x -> case x of 
+        let unparIdsNums = map (\x -> case x of 
                                     Par (Id s) -> Id s
                                     Par (Number n) -> Number n
+                                    Par (Par ine) -> Par ine
                                     an -> an) e
-        let expr1 = substitute (al, unparIds) expr
+        let expr1 = substitute (al, unparIdsNums) expr
         case expr1 of 
           Right r -> do 
             (a,_) <- evm r
