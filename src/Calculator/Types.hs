@@ -1,9 +1,10 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
-module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, preprocess, ListTuple) where
+module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, preprocess, ListTuple, showRational) where
 
 import Data.List (intercalate)
 import GHC.Generics
 import Data.Aeson (ToJSON, FromJSON)
+import Data.Ratio
 
 data Token = TNumber Rational
            | TLPar
@@ -97,3 +98,6 @@ simplifyExpr ex = case ex of
   FunCall "sqrt" [OpCall "^" e (Number 2.0)] -> simplifyExpr e
   FunCall name e                        -> FunCall name (map simplifyExpr e)
   x                                     -> x
+
+showRational :: Rational -> String
+showRational r = if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)

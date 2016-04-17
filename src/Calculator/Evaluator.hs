@@ -1,7 +1,7 @@
 module Calculator.Evaluator (eval, getPriorities, FunMap, VarMap, OpMap, Maps) where
 
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
-                                   preprocess)
+                                   preprocess, showRational)
 import           Control.Lens     ((%~), (&), (.~), (^.), _1, _2, _3)
 import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict  as M
@@ -96,10 +96,10 @@ getPriorities om = let lst = M.toList om
 
 eval :: Maps -> Expr -> Either (String, Maps) (Rational, Maps)
 eval maps ex = case ex of
-  Asgn s _ | s `elem` ["pi","e","_"] -> msgmap maps $ "Can not change constant value: " ++ s
+  Asgn s _ | s `elem` ["pi","e","_"] -> msgmap maps $ "Cannot change a constant value: " ++ s
   Asgn s e                           -> do 
     (r,_) <- evm e
-    Left ("Constant " ++ s ++ "=" ++ (if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)), maps & _1 %~ M.insert s r)
+    Left ("Constant " ++ s ++ "=" ++ (showRational r), maps & _1 %~ M.insert s r)
   UDF n [s] (FunCall "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
     case de of
@@ -119,7 +119,7 @@ eval maps ex = case ex of
         Left ("Operator alias " ++ n ++ " = " ++ op, maps & _3 .~ newmap)
       Nothing -> Left . mps $ "No such operator: " ++ op
   UDO n p a e
-    | M.member n mathOps || M.member n compOps || n == "=" -> Left . mps $ "Can not redefine embedded operator: " ++ n
+    | M.member n mathOps || M.member n compOps || n == "=" -> Left . mps $ "Can not redefine the embedded operator: " ++ n
     | p < 1 || p > 4 ->  Left . mps $ "Bad priority: " ++ show p
     |otherwise -> do
         let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
@@ -166,7 +166,7 @@ eval maps ex = case ex of
             return $ mps a
           Left err -> Left . mps $ err  
       Nothing -> case name of
-        ('@':r) -> Left . mps $ "Expression instead of function name: " ++ r ++ "/" ++ show (length e) ++ show e
+        ('@':r) -> Left . mps $ "Expression instead of a function name: " ++ r ++ "/" ++ show (length e)
         _ -> Left . mps $ "No such function: " ++ name ++ "/" ++ show (length e)
   Id s     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Rational)
   Number x -> return $ mps x
@@ -185,19 +185,19 @@ eval maps ex = case ex of
           (R, R) -> do
             (tmp,_) <- evm s
             evm $ OpCall op1 x (Number tmp)
-          _ -> Left . mps $ "Operators with different associativity: " ++ op1 ++ " and " ++ op2
+          _ -> Left . mps $ "Operators with a different associativity: " ++ op1 ++ " and " ++ op2
     else do
       (tmp,_) <- evm s
       evm $ OpCall op1 x (Number tmp)
   oc@(OpCall "/" x y) -> do
     (n,_) <- evm y
     (n1,_) <- evm x
-    if n == 0 then Left . mps $ "Div by zero: " ++ exprToString oc else return $ mps (n1 / n)
+    if n == 0 then Left . mps $ "Division by zero: " ++ exprToString oc else return $ mps (n1 / n)
   oc@(OpCall "%" x y) -> do
     (n,_) <- evm y
     (n1,_) <- evm x
     if n == 0
-    then Left . mps $ "Div by zero: " ++ exprToString oc
+    then Left . mps $ "Division by zero: " ++ exprToString oc
     else return $ mps (fromInteger $ mod (floor n1) (floor n))
   OpCall op x y | M.member op compOps -> cmp op x y compOps
   OpCall op x y | M.member op mathOps -> eval' ( mathOps M.! op) op x y
@@ -211,7 +211,7 @@ eval maps ex = case ex of
            return $ mps a
          Left err -> Left . mps $ err 
       Nothing -> case op of
-        ('@':r) -> Left . mps $ "Expression instead of function name: " ++ r ++ "/2"
+        ('@':r) -> Left . mps $ "Expression instead of a function name: " ++ r ++ "/2"
         _ -> Left . mps $ "No such operator: " ++ op ++ "/2"
   UMinus (OpCall "^" x y) -> evm $ OpCall "^" (UMinus x) y
   UMinus x         -> do {(n,_) <- evm x; return $ mps (-n)}

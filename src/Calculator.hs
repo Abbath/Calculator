@@ -18,7 +18,7 @@ import qualified Data.ByteString.Char8 as BS
 import Data.Map.Strict (Map)
 import Control.Lens (_1, _3, (^.), (&), (%~))
 import qualified Data.Map.Strict as M
-import Calculator.Types (Expr(..), Assoc(..), ListTuple)
+import Calculator.Types (Expr(..), Assoc(..), ListTuple, showRational)
 import Calculator.Lexer
 import Calculator.Parser
 import Calculator.Evaluator
@@ -29,7 +29,6 @@ import Control.Monad.Reader
 import System.Console.Haskeline
 import Control.Arrow (left)
 import Data.List (isPrefixOf)
-import Data.Ratio (numerator, denominator)
 import Clay (render)
 import Data.Aeson (encode, decode)
 import System.Random
@@ -85,7 +84,7 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
             liftIO $ putStrLn err
             loop' md m
           Right (r, m) -> do
-            liftIO . putStrLn $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)
+            liftIO . putStrLn $ showRational r
             loop' md $ m & _1 %~ M.insert "_" r
 
 defVar :: VarMap
@@ -188,7 +187,7 @@ webLoop port mode = scotty port $ do
                       return  $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
                       storeMaps storagename (m & _1 %~ M.insert "_" r) 
-                      return $ (T.toStrict fs , TS.pack $ if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)) : lg
+                      return $ (T.toStrict fs , TS.pack $ showRational r) : lg
         rtxt <- liftIO txt
         liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
         html $ renderHtml
