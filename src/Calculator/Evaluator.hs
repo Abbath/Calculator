@@ -7,6 +7,7 @@ import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict  as M
 import           Data.Ratio
 import           Data.Either      (rights)
+import           Data.List        (foldl')
 
 type FunMap = Map (String, Int) ([String], Expr)
 type VarMap = Map String Rational
@@ -28,7 +29,13 @@ substitute :: ([String], [Expr]) -> Expr -> Either String Expr
 substitute ([],[]) e = return e
 substitute (x,y) _ | length x /= length y =
   Left $ "Bad argument number: " ++ show(length y) ++ " instead of " ++ show(length x)
-substitute (x:xs, y:ys) (Id i) = if i == x then return $ Par y else substitute (xs, ys) (Id i)
+substitute (x:xs, y:ys) (Id i) = if i == x 
+                                    then return $ case y of 
+                                                           n@(Number _) -> n
+                                                           iD@(Id _) -> iD
+                                                           p@(Par _) -> p
+                                                           t -> Par t
+                                    else substitute (xs, ys) (Id i)
 substitute s@(x:xs, Id fname:ys) (FunCall n e) = if n == x
   then FunCall fname <$> mapM (substitute s) e
   else do
@@ -134,9 +141,15 @@ eval maps ex = case ex of
       case e of 
         Left err -> Left . mps $ err 
         Right r ->  Left . mps . exprToString . preprocess $ r
-  FunCall "int" [Id fun, Number a, Number b, Number s] -> do
-      let list = [a,a+s..b-s]
-      return (sum . map ((*s) . fst) . rights . map (\n -> procListElem fun (n+1/2*s)) $ list, maps) 
+  FunCall "int" [Id fun, a, b, s] -> do
+      (a1,_) <- evm a
+      (b1,_) <- evm b
+      (s1,_) <- evm s
+      let list = [a1,a1+s1..b1-s1]
+      return (foldl' (\acc (next,_) -> acc + s1 * next) 0 
+              . rights 
+              . map (\n -> procListElem fun (n+1/2*s1)) 
+              $ list, maps) 
   FunCall "atan" [OpCall "/" e1 e2] -> do
     (t1,_) <- evm e1
     (t2,_) <- evm e2
@@ -158,12 +171,7 @@ eval maps ex = case ex of
   FunCall name e ->
     case (M.lookup (name, length e) (maps^._2) :: Maybe ([String],Expr)) of
       Just (al, expr) -> do
-        let unparIdsNums = map (\x -> case x of 
-                                    Par (Id s) -> Id s
-                                    Par (Number n) -> Number n
-                                    Par (Par ine) -> Par ine
-                                    an -> an) e
-        let expr1 = substitute (al, unparIdsNums) expr
+        let expr1 = substitute (al, e) expr
         case expr1 of 
           Right r -> do 
             (a,_) <- evm r
@@ -252,7 +260,7 @@ eval maps ex = case ex of
          else Left $ mps "Cannot use integral function on real numbers!"
     msgmap m s = Left (s, m)     
     tooBig = 2^(8000000 :: Integer) :: Rational
-    procListElem fun n = evm (FunCall fun [Number n]) 
+    procListElem fun n = evm (FunCall fun [Number n])
 
 derivative :: Expr -> Expr -> Either String Expr
 derivative e x = case e of
