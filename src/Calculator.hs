@@ -34,6 +34,7 @@ import Data.Aeson (encode, decode)
 import System.Random
 import System.Directory
 import Data.Time.Clock.POSIX
+import Data.Maybe (fromMaybe, isJust, isNothing)
 
 data Mode = Internal | Megaparsec deriving Show
 
@@ -103,8 +104,8 @@ updateIDS i = do
              let storagename = "storage" ++ show ff ++ ".dat"
              b1 <- findFile ["."] storagename
              b2 <- findFile ["."] logname
-             when (b1 /= Nothing) $ removeFile storagename
-             when (b2 /= Nothing) $ removeFile logname) $ filter (\(a,_) -> tm-a > 60*60) ids
+             when (isJust b1) $ removeFile storagename
+             when (isJust b2) $ removeFile logname) $ filter (\(a,_) -> tm-a > 60*60) ids
     if i `elem` map snd ids 
        then BS.writeFile "ids" $ BS.pack $ show $ map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
        else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
@@ -114,13 +115,11 @@ bannedIPs = ["117.136.234.6", "117.135.250.134"]
 
 theseFaggots :: Show a => a -> Bool
 theseFaggots sa = let ss = show sa
-                      (s1,rest) = break (=='.') $ ss
-                      s2 = fst . break (=='.') $ tail rest
+                      (s1,rest) = break (=='.') ss
+                      s2 = takeWhile (/='.') $ tail rest
                       n1 = read s1 :: Int
                       n2 = read s2 :: Int
-                  in if n1 == 117 && n2 >= 128 && n2 < 192 
-                        then True
-                        else False
+                  in n1 == 117 && n2 >= 128 && n2 < 192 
        
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = scotty port $ do
@@ -129,13 +128,13 @@ webLoop port mode = scotty port $ do
     req <- request
     let sa = remoteHost req
     liftIO $ print sa
-    if (fst $ break (==':') $ show sa) `elem` bannedIPs || theseFaggots sa
+    if takeWhile (/=':') (show sa) `elem` bannedIPs || theseFaggots sa
       then status $ Status 500 "Nope!"
       else do
-        let x = liftIO $ (randomIO :: IO Integer)
+        let x = liftIO (randomIO :: IO Integer)
         y <- x
         f <- liftIO $ findFile ["."] ("log" ++ show y ++ ".dat")
-        if f /= Nothing
+        if isJust f
           then redirect "/"
           else do
             liftIO $ updateIDS (abs y)
@@ -160,7 +159,7 @@ webLoop port mode = scotty port $ do
     fs <- param "foo" 
     f1 <- liftIO $ findFile ["."] ("storage" ++ T.unpack iD ++ ".dat")  
     f2 <- liftIO $ findFile ["."] ("log" ++ T.unpack iD ++ ".dat")
-    if f1 == Nothing || f2 == Nothing 
+    if isNothing f1 || isNothing f2 
       then redirect "/"
       else do
         let logname = "log" ++ T.unpack iD ++ ".dat"
@@ -170,9 +169,7 @@ webLoop port mode = scotty port $ do
         let ms = case (decode (B.fromStrict env) :: Maybe ListTuple) of 
                    Just r -> listsToMaps r
                    Nothing -> error "Cannot decode storage"
-        let lg = case decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)] of
-                   Just r -> r
-                   Nothing -> error "Cannot decode log"
+        let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
         let t = case mode of
                   Megaparsec ->
                     left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (T.unpack fs ++ "\n")) 
@@ -202,7 +199,7 @@ webLoop port mode = scotty port $ do
                   H.style $ H.toHtml . render $ postCss 
   where 
     storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists  
-    mapsToLists = \(a,b,c) -> (M.toList a, M.toList b, M.toList c)
-    listsToMaps = \(a,b,c) -> (M.fromList a, M.fromList b, M.fromList c)
+    mapsToLists (a, b, c) = (M.toList a, M.toList b, M.toList c)
+    listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.fromList c)
     
         

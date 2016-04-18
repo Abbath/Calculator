@@ -57,7 +57,7 @@ catchVar (vm, fm) ex = case ex of
         fNames = getNames mathFuns ++ getNames intFuns ++ getNames compFuns
         b = lookup i (funNames fm ++ fNames) :: Maybe String     
     in case a of
-         Just n -> return $ Number (n)
+         Just n -> return $ Number n
          Nothing -> case b of 
                      Just s -> return $ Id s
                      Nothing -> Left $ "No such variable: " ++ i
@@ -99,7 +99,7 @@ eval maps ex = case ex of
   Asgn s _ | s `elem` ["pi","e","_"] -> msgmap maps $ "Cannot change a constant value: " ++ s
   Asgn s e                           -> do 
     (r,_) <- evm e
-    Left ("Constant " ++ s ++ "=" ++ (showRational r), maps & _1 %~ M.insert s r)
+    Left ("Constant " ++ s ++ "=" ++ showRational r, maps & _1 %~ M.insert s r)
   UDF n [s] (FunCall "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
     case de of
@@ -247,12 +247,12 @@ eval maps ex = case ex of
          then return $ mps (toRational $ (intFuns M.! f) (numerator t1) (numerator t2))
          else Left $ mps "Cannot use integral function on real numbers!"
     msgmap m s = Left (s, m)     
-    tooBig = (2^(8000000 :: Integer) :: Rational)
+    tooBig = 2^(8000000 :: Integer) :: Rational
 
 derivative :: Expr -> Expr -> Either String Expr
 derivative e x = case e of
-  Par ex -> Par <$> (derivative ex x)
-  UMinus ex -> UMinus <$> (derivative ex x)
+  Par ex -> Par <$> derivative ex x
+  UMinus ex -> UMinus <$> derivative ex x
   Number _ -> return $ Number 0
   i@(Id _) | i == x -> return $ Number 1
   (Id _) -> return $ Number 0
