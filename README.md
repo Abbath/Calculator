@@ -1,5 +1,7 @@
 # Calculator
 
+[![Code Climate](https://codeclimate.com/github/Abbath/Calculator/badges/gpa.svg)](https://codeclimate.com/github/Abbath/Calculator)
+
 A simple string calculator
 
 Features
