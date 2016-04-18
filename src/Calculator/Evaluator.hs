@@ -135,7 +135,7 @@ eval maps ex = case ex of
         Left err -> Left . mps $ err 
         Right r ->  Left . mps . exprToString . preprocess $ r
   FunCall "int" [Id fun, Number a, Number b, Number s] -> do
-      let list = [a,a+s..b]
+      let list = [a,a+s..b-s]
       return (sum . map ((*s) . fst) . rights . map (\n -> procListElem fun (n+1/2*s)) $ list, maps) 
   FunCall "atan" [OpCall "/" e1 e2] -> do
     (t1,_) <- evm e1

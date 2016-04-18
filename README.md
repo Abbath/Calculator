@@ -39,6 +39,7 @@ Features
 * History is available on the `Up` and `Down` keys
 * Derivative of a function can be symbolically calculated using syntax `df(<function_expression>, <variable name>)`
 * Derivative can be binded to a function alias using syntax `<new_function_name>(<varname>) = df(<function_expression>, <varname>)`
+* Numerical integration is available through the function `int` with the following parameters: `int(<function>, <start>, <finish>, <step>)`
 
 Bugs & Todo
 --
