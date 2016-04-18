@@ -6,6 +6,7 @@ import           Control.Lens     ((%~), (&), (.~), (^.), _1, _2, _3)
 import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict  as M
 import           Data.Ratio
+import           Data.Either      (rights)
 
 type FunMap = Map (String, Int) ([String], Expr)
 type VarMap = Map String Rational
@@ -133,6 +134,9 @@ eval maps ex = case ex of
       case e of 
         Left err -> Left . mps $ err 
         Right r ->  Left . mps . exprToString . preprocess $ r
+  FunCall "int" [Id fun, Number a, Number b, Number s] -> do
+      let list = [a,a+s..b]
+      return (sum . map ((*s) . fst) . rights . map (\n -> procListElem fun (n+1/2*s)) $ list, maps) 
   FunCall "atan" [OpCall "/" e1 e2] -> do
     (t1,_) <- evm e1
     (t2,_) <- evm e2
@@ -248,6 +252,7 @@ eval maps ex = case ex of
          else Left $ mps "Cannot use integral function on real numbers!"
     msgmap m s = Left (s, m)     
     tooBig = 2^(8000000 :: Integer) :: Rational
+    procListElem fun n = evm (FunCall fun [Number n]) 
 
 derivative :: Expr -> Expr -> Either String Expr
 derivative e x = case e of
