@@ -39,6 +39,18 @@ import Web.Telegram.API.Bot
 
 data Mode = Internal | Megaparsec deriving Show
 
+parseString :: Mode -> String -> Maps -> Either String Expr
+parseString m s ms = case m of
+                       Megaparsec ->
+                         left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (s++"\n"))
+                       Internal ->
+                         tokenize s >>= parse (getPriorities $ ms^._3)
+
+evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)                         
+evalExpr t maps = case t of 
+             Left err -> Left (err, maps)
+             Right r -> eval maps r
+                         
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
   , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
@@ -73,16 +85,10 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
       Nothing -> return ()
       Just "quit" -> return ()
       Just x -> do
-        let t = case md of
-                  Megaparsec ->
-                    left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (x++"\n"))
-                  Internal ->
-                    tokenize x >>= parse (getPriorities $ ms^._3)
-        let res = case t of 
-                    Left err -> Left (err, ms)
-                    Right r -> eval ms r 
+        let t = parseString md x ms
+        let res = evalExpr t ms
         case res of
-          Left (err,m) -> do
+          Left (err,m) -> 
             liftIO $ putStrLn err
             loop' md m
           Right (r, m) -> do
@@ -171,18 +177,12 @@ webLoop port mode = scotty port $ do
                    Just r -> listsToMaps r
                    Nothing -> error "Cannot decode storage"
         let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
-        let t = case mode of
-                  Megaparsec ->
-                    left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (T.unpack fs ++ "\n")) 
-                  Internal ->
-                    tokenize (T.unpack fs) >>= parse (getPriorities $ ms^._3)
-        let res = case t of 
-                    Left err -> Left (err, ms)
-                    Right r -> eval ms r 
+        let t = parseString mode (T.unpack fs) ms
+        let res = evalExpr t ms 
         let txt = case res of
                     Left (err, m) -> do
                       storeMaps storagename m
-                      return  $ (T.toStrict fs, TS.pack err) : lg
+                      return $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
                       storeMaps storagename (m & _1 %~ M.insert "_" r) 
                       return $ (T.toStrict fs , TS.pack $ showRational r) : lg
@@ -220,45 +220,32 @@ telegramLoop' mode maps n = do
           if "/calc " `isPrefixOf` smm 
           then do
             let sm = drop 6 smm 
-            let t = case mode of
-                      Megaparsec ->
-                        left show (MP.runParser (runReaderT CMP.parser (getPrA $ chat_maps^._3)) "" (sm++"\n"))
-                      Internal ->
-                        tokenize sm >>= parse (getPriorities $ chat_maps^._3)
-            let res = case t of 
-                        Left err -> Left (err, chat_maps)
-                        Right r -> eval chat_maps r 
+            let t = parseString mode sm chat_maps
+            let res = evalExpr t chat_maps 
             case res of
-                Left (err,m) -> do
-                  rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) (TS.pack err) Nothing Nothing Nothing Nothing)
-                  case rs of 
-                    Right MessageResponse { message_result = mr } -> do   
-                      print (message_id mr)
-                      print (Web.Telegram.API.Bot.text mr)
-                      print (user_id . from $ mr)
-                      print (chat_id . chat $ mr)
-                    Left er -> print er  
-                  telegramLoop' mode (M.insert ch m maps) (uid+1)
-                Right (r, m) -> do
-                  rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) (TS.pack $ showRational r) Nothing Nothing Nothing Nothing)
-                  case rs of 
-                    Right MessageResponse { message_result = mr } -> do   
-                      print (message_id mr)
-                      print (Web.Telegram.API.Bot.text mr)
-                      print (user_id . from $ mr)
-                      print (chat_id . chat $ mr)
-                    Left err -> print err
-                  telegramLoop' mode (M.insert ch (m & _1 %~ M.insert "_" r) maps) (uid+1)
-          else telegramLoop' mode maps (uid+1)
-        else telegramLoop' mode maps (-1)
+              Left (err,m) -> procRes ch (TS.pack err) m uid
+              Right (r, m) -> procRes ch (TS.pack $ showRational r) (m & _1 %~ M.insert "_" r) uid
+          else nextIter (uid+1)
+        else nextIter (-1)
     Left err -> do 
       print err
-      telegramLoop' mode maps (-1)
+      nextIter (-1)
   where 
+    nextIter = telegramLoop' mode maps  
     unpackTheMessage m = do
       mm <- m
       t <- Web.Telegram.API.Bot.text mm
       let ch = chat mm
       return (t, chat_id ch)
     token = Token "bot202491437:AAHMzKzAmcMaibK5O2fanEJbdb71S4IiOzA"
-        
+    printData mr = do
+      print (message_id mr)
+      print (Web.Telegram.API.Bot.text mr)
+      print (user_id . from $ mr)
+      print (chat_id . chat $ mr)  
+    procRes ch s m uid = do 
+      rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) s Nothing Nothing Nothing Nothing)  
+      case rs of 
+        Right MessageResponse { message_result = mr } -> printData mr  
+        Left err -> print err  
+      telegramLoop' mode (M.insert ch m maps) (uid+1)  
