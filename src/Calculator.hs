@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap) where
+module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap, telegramLoop) where
 
 import Web.Scotty
 import Network.Wai
@@ -35,6 +35,7 @@ import System.Random
 import System.Directory
 import Data.Time.Clock.POSIX
 import Data.Maybe (fromMaybe, isJust, isNothing)
+import Web.Telegram.API.Bot
 
 data Mode = Internal | Megaparsec deriving Show
 
@@ -202,4 +203,53 @@ webLoop port mode = scotty port $ do
     mapsToLists (a, b, c) = (M.toList a, M.toList b, M.toList c)
     listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.fromList c)
     
+telegramLoop :: Mode -> IO ()
+telegramLoop mode = telegramLoop' mode (defVar, M.empty, opMap) (-1)
+    
+telegramLoop' :: Mode -> Maps -> Int -> IO ()
+telegramLoop' mode maps n = do
+  updates <- getUpdates token (Just n) (Just 10) Nothing
+  case updates of 
+    Right UpdatesResponse { update_result = u } -> do 
+      if not $ null u
+        then do
+          let Update { update_id = uid, message = msg} = head u
+          let (tt,ch) = fromMaybe ("0",-1001040733151) (unpackTheMessage msg)
+          let sm = TS.unpack tt
+          let t = case mode of
+                    Megaparsec ->
+                      left show (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sm++"\n"))
+                    Internal ->
+                      tokenize sm >>= parse (getPriorities $ maps^._3)
+          let res = case t of 
+                      Left err -> Left (err, maps)
+                      Right r -> eval maps r 
+          case res of
+            Left (err,m) -> do
+              rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) (TS.pack err) Nothing Nothing Nothing Nothing)
+              case rs of 
+                Right MessageResponse { message_result = mr } -> do   
+                  print (message_id mr)
+                  print (Web.Telegram.API.Bot.text mr)
+                Left er -> print er  
+              telegramLoop' mode m (uid+1)
+            Right (r, m) -> do
+              rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) (TS.pack $ showRational r) Nothing Nothing Nothing Nothing)
+              case rs of 
+                Right MessageResponse { message_result = mr } -> do   
+                  print (message_id mr)
+                  print (Web.Telegram.API.Bot.text mr)
+                Left err -> print err
+              telegramLoop' mode (m & _1 %~ M.insert "_" r) (uid+1)
+        else telegramLoop' mode maps (-1)
+    Left err -> do 
+      print err
+      telegramLoop' mode maps (-1)
+  where 
+    unpackTheMessage m = do
+      mm <- m
+      t <- Web.Telegram.API.Bot.text mm
+      let ch = chat mm
+      return (t, chat_id ch)
+    token = Token "bot202491437:AAHMzKzAmcMaibK5O2fanEJbdb71S4IiOzA"
         
