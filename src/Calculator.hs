@@ -204,46 +204,52 @@ webLoop port mode = scotty port $ do
     listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.fromList c)
     
 telegramLoop :: Mode -> IO ()
-telegramLoop mode = telegramLoop' mode (M.empty) (-1)
+telegramLoop mode = telegramLoop' mode M.empty (-1)
     
 telegramLoop' :: Mode -> Map Int Maps -> Int -> IO ()
 telegramLoop' mode maps n = do
   updates <- getUpdates token (Just n) (Just 10) Nothing
   case updates of 
-    Right UpdatesResponse { update_result = u } -> do 
+    Right UpdatesResponse { update_result = u } -> 
       if not $ null u
         then do
           let Update { update_id = uid, message = msg} = head u
           let (tt,ch) = fromMaybe ("0",-1001040733151) (unpackTheMessage msg)
-          let chat_maps = case M.lookup ch maps of
-                            Just some_maps -> some_maps
-                            Nothing -> (defVar, M.empty, opMap)
-          let sm = TS.unpack tt
-          let t = case mode of
-                    Megaparsec ->
-                      left show (MP.runParser (runReaderT CMP.parser (getPrA $ chat_maps^._3)) "" (sm++"\n"))
-                    Internal ->
-                      tokenize sm >>= parse (getPriorities $ chat_maps^._3)
-          let res = case t of 
-                      Left err -> Left (err, chat_maps)
-                      Right r -> eval chat_maps r 
-          case res of
-            Left (err,m) -> do
-              rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) (TS.pack err) Nothing Nothing Nothing Nothing)
-              case rs of 
-                Right MessageResponse { message_result = mr } -> do   
-                  print (message_id mr)
-                  print (Web.Telegram.API.Bot.text mr)
-                Left er -> print er  
-              telegramLoop' mode (M.insert ch m maps) (uid+1)
-            Right (r, m) -> do
-              rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) (TS.pack $ showRational r) Nothing Nothing Nothing Nothing)
-              case rs of 
-                Right MessageResponse { message_result = mr } -> do   
-                  print (message_id mr)
-                  print (Web.Telegram.API.Bot.text mr)
-                Left err -> print err
-              telegramLoop' mode (M.insert ch (m & _1 %~ M.insert "_" r) maps) (uid+1)
+          let chat_maps = fromMaybe (defVar, M.empty, opMap) $ M.lookup ch maps
+          let smm = TS.unpack tt
+          if "/calc " `isPrefixOf` smm 
+          then do
+            let sm = drop 6 smm 
+            let t = case mode of
+                      Megaparsec ->
+                        left show (MP.runParser (runReaderT CMP.parser (getPrA $ chat_maps^._3)) "" (sm++"\n"))
+                      Internal ->
+                        tokenize sm >>= parse (getPriorities $ chat_maps^._3)
+            let res = case t of 
+                        Left err -> Left (err, chat_maps)
+                        Right r -> eval chat_maps r 
+            case res of
+                Left (err,m) -> do
+                  rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) (TS.pack err) Nothing Nothing Nothing Nothing)
+                  case rs of 
+                    Right MessageResponse { message_result = mr } -> do   
+                      print (message_id mr)
+                      print (Web.Telegram.API.Bot.text mr)
+                      print (user_id . from $ mr)
+                      print (chat_id . chat $ mr)
+                    Left er -> print er  
+                  telegramLoop' mode (M.insert ch m maps) (uid+1)
+                Right (r, m) -> do
+                  rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) (TS.pack $ showRational r) Nothing Nothing Nothing Nothing)
+                  case rs of 
+                    Right MessageResponse { message_result = mr } -> do   
+                      print (message_id mr)
+                      print (Web.Telegram.API.Bot.text mr)
+                      print (user_id . from $ mr)
+                      print (chat_id . chat $ mr)
+                    Left err -> print err
+                  telegramLoop' mode (M.insert ch (m & _1 %~ M.insert "_" r) maps) (uid+1)
+          else telegramLoop' mode maps (uid+1)
         else telegramLoop' mode maps (-1)
     Left err -> do 
       print err
