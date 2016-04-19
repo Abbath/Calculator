@@ -88,7 +88,7 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
         let t = parseString md x ms
         let res = evalExpr t ms
         case res of
-          Left (err,m) -> 
+          Left (err,m) -> do
             liftIO $ putStrLn err
             loop' md m
           Right (r, m) -> do
