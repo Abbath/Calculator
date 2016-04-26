@@ -46,11 +46,11 @@ parseString m s ms = case m of
                        Internal ->
                          tokenize s >>= parse (getPriorities $ ms^._3)
 
-evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)                         
-evalExpr t maps = case t of 
+evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
+evalExpr t maps = case t of
              Left err -> Left (err, maps)
              Right r -> eval maps r
-                         
+
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
   , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
@@ -113,10 +113,10 @@ updateIDS i = do
              b2 <- findFile ["."] logname
              when (isJust b1) $ removeFile storagename
              when (isJust b2) $ removeFile logname) $ filter (\(a,_) -> tm-a > 60*60) ids
-    if i `elem` map snd ids 
+    if i `elem` map snd ids
        then BS.writeFile "ids" $ BS.pack $ show $ map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
        else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
-       
+
 bannedIPs :: [String]
 bannedIPs = ["117.136.234.6", "117.135.250.134"]
 
@@ -126,12 +126,12 @@ theseFaggots sa = let ss = show sa
                       s2 = takeWhile (/='.') $ tail rest
                       n1 = read s1 :: Int
                       n2 = read s2 :: Int
-                  in n1 == 117 && n2 >= 128 && n2 < 192 
-       
+                  in n1 == 117 && n2 >= 128 && n2 < 192
+
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = scotty port $ do
   middleware $ staticPolicy (noDots >-> addBase "Static/images") -- for future
-  get "/" $ do 
+  get "/" $ do
     req <- request
     let sa = remoteHost req
     liftIO $ print sa
@@ -156,35 +156,35 @@ webLoop port mode = scotty port $ do
         H.h1 $ H.toHtml ("Calculator" :: TS.Text)
         H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
           H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
-        H.style $ H.toHtml . render $ getCss 
+        H.style $ H.toHtml . render $ getCss
   post "/clear/:id" $ do
     iD <- param "id"
     redirect $ T.append "/" iD
   post "/:id" $ do
     iD <- param "id"
-    liftIO $ updateIDS (read . T.unpack $ iD :: Integer) 
-    fs <- param "foo" 
-    f1 <- liftIO $ findFile ["."] ("storage" ++ T.unpack iD ++ ".dat")  
+    liftIO $ updateIDS (read . T.unpack $ iD :: Integer)
+    fs <- param "foo"
+    f1 <- liftIO $ findFile ["."] ("storage" ++ T.unpack iD ++ ".dat")
     f2 <- liftIO $ findFile ["."] ("log" ++ T.unpack iD ++ ".dat")
-    if isNothing f1 || isNothing f2 
+    if isNothing f1 || isNothing f2
       then redirect "/"
       else do
         let logname = "log" ++ T.unpack iD ++ ".dat"
         let storagename = "storage" ++ T.unpack iD ++ ".dat"
-        rest <- liftIO $ BS.readFile logname 
+        rest <- liftIO $ BS.readFile logname
         env <- liftIO $ BS.readFile storagename
-        let ms = case (decode (B.fromStrict env) :: Maybe ListTuple) of 
+        let ms = case (decode (B.fromStrict env) :: Maybe ListTuple) of
                    Just r -> listsToMaps r
                    Nothing -> error "Cannot decode storage"
         let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
         let t = parseString mode (T.unpack fs) ms
-        let res = evalExpr t ms 
+        let res = evalExpr t ms
         let txt = case res of
                     Left (err, m) -> do
                       storeMaps storagename m
                       return $ (T.toStrict fs, TS.pack err) : lg
                     Right (r, m) -> do
-                      storeMaps storagename (m & _1 %~ M.insert "_" r) 
+                      storeMaps storagename (m & _1 %~ M.insert "_" r)
                       return $ (T.toStrict fs , TS.pack $ showRational r) : lg
         rtxt <- liftIO txt
         liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
@@ -197,41 +197,52 @@ webLoop port mode = scotty port $ do
                   H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/clear/" iD) $
                     H.input H.! type_ "submit" H.! value "Clear history"
                   H.table $ mapM_ (\(x,y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
-                  H.style $ H.toHtml . render $ postCss 
-  where 
-    storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists  
+                  H.style $ H.toHtml . render $ postCss
+  where
+    storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
     mapsToLists (a, b, c) = (M.toList a, M.toList b, M.toList c)
     listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.fromList c)
-    
+
 telegramLoop :: Mode -> IO ()
 telegramLoop mode = telegramLoop' mode M.empty (-1)
-    
+
 telegramLoop' :: Mode -> Map Int Maps -> Int -> IO ()
 telegramLoop' mode maps n = do
   updates <- getUpdates token (Just n) (Just 10) Nothing
-  case updates of 
-    Right UpdatesResponse { update_result = u } -> 
+  case updates of
+    Right UpdatesResponse { update_result = u } ->
       if not $ null u
         then do
-          let Update { update_id = uid, message = msg} = head u
+          let Update { update_id = uid, message = msg, inline_query = iq} = head u
           let (tt,ch) = fromMaybe ("0",-1001040733151) (unpackTheMessage msg)
+          let (qi, qq) = fromMaybe ("empty","0") (unpackQuery iq)
           let chat_maps = fromMaybe (defVar, M.empty, opMap) $ M.lookup ch maps
           let smm = TS.unpack tt
-          if "/calc " `isPrefixOf` smm 
+          if "/calc " `isPrefixOf` smm
           then do
-            let sm = drop 6 smm 
+            let sm = drop 6 smm
             let t = parseString mode sm chat_maps
-            let res = evalExpr t chat_maps 
+            let res = evalExpr t chat_maps
             case res of
               Left (err,m) -> procRes ch (TS.pack err) m uid
               Right (r, m) -> procRes ch (TS.pack $ showRational r) (m & _1 %~ M.insert "_" r) uid
-          else nextIter (uid+1)
+          else if qi /= "empty"
+                then do
+                  let t = parseString mode (TS.unpack qq) (defVar, M.empty, opMap)
+                  let res = evalExpr t (defVar, M.empty, opMap)
+                  case res of
+                    Left (err, _) -> procQ qi qq (TS.pack err) uid
+                    Right (r, _) -> procQ qi qq (TS.pack $ showRational r) uid
+                else nextIter (uid+1)
         else nextIter (-1)
-    Left err -> do 
+    Left err -> do
       print err
       nextIter (-1)
-  where 
-    nextIter = telegramLoop' mode maps  
+  where
+    nextIter = telegramLoop' mode maps
+    unpackQuery q = do
+      iq <- q
+      return (query_id iq, query_query iq)
     unpackTheMessage m = do
       mm <- m
       t <- Web.Telegram.API.Bot.text mm
@@ -242,10 +253,18 @@ telegramLoop' mode maps n = do
       print (message_id mr)
       print (Web.Telegram.API.Bot.text mr)
       print (user_id . from $ mr)
-      print (chat_id . chat $ mr)  
-    procRes ch s m uid = do 
-      rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) s Nothing Nothing Nothing Nothing)  
+      print (chat_id . chat $ mr)
+    procRes ch s m uid = do
+      rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) s Nothing Nothing Nothing Nothing)
+      case rs of
+        Right MessageResponse { message_result = mr } -> printData mr
+        Left err -> print err
+      telegramLoop' mode (M.insert ch m maps) (uid+1)
+    ir txt ii = InlineQueryResultArticle ii (Just txt) (Just txt) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+    procQ qi qq s uid = do
+      x <- randomIO :: IO Integer
+      rs <- answerInlineQuery token (AnswerInlineQueryRequest qi [ir (TS.concat [qq, " = ", s]) (TS.pack $ show x)] Nothing Nothing Nothing) 
       case rs of 
-        Right MessageResponse { message_result = mr } -> printData mr  
-        Left err -> print err  
-      telegramLoop' mode (M.insert ch m maps) (uid+1)  
+           Right InlineQueryResponse { query_result = b} -> print b
+           Left err -> print err
+      nextIter (uid+1)
