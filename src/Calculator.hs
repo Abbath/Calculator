@@ -150,7 +150,7 @@ webLoop port mode = scotty port $ do
     vt <- param "hub.verify_token"
     c <- param "hub.challenge"
     if vt == m_token
-      then json (c :: TS.Text)
+      then Web.Scotty.text (c :: T.Text)
       else json ("Error!" :: TS.Text)
   get "/favicon.ico" $ file "./Static/favicon.ico"
   get "/:id" $ do
