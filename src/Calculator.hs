@@ -161,8 +161,9 @@ webLoop port mode = scotty port $ do
     mapM_ (\m -> do
               let msg = fromMaybe "Hello" $ m ^? key "message" . key "text" . _String
               let sender = fromMaybe "" $ m ^? key "sender" . key "id" . _String
-              let opts = NW.defaults & NW.param "qs" .~ [TS.concat ["{access_token : ", m_token,"}"]]
-              _ <- liftIO $ NW.postWith opts "https://graph.facebook.com/v2.6/me/messages" $ encodeUtf8 $ TS.concat ["{recipient : {id:", sender,"}", ", messageData: ", msg ,"}"]
+              let opts = NW.defaults & NW.param "qs" .~ [TS.concat ["{access_token : \"", m_token,"\"}"]]
+              let resp = TS.concat ["{recipient : {id:\"", sender,"\"}", ", messageData: {text : \"", msg ,"\"}}"]
+              _ <- liftIO $ NW.postWith opts "https://graph.facebook.com/v2.6/me/messages" $ encodeUtf8 resp
               return ()) msgs
     status $ Status 200 "Ok"
   get "/favicon.ico" $ file "./Static/favicon.ico"
