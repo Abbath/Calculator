@@ -5,6 +5,7 @@ import Web.Scotty
 import Network.Wai
 import Network.Wai.Middleware.Static
 import Network.HTTP.Types.Status
+import qualified Network.Wreq as NW
 
 import qualified Text.Blaze.Html5 as H
 import Text.Blaze.Html5.Attributes
