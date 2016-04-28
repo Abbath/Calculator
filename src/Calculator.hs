@@ -12,12 +12,13 @@ import Text.Blaze.Html5.Attributes
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 
 import qualified Data.Text as TS
+import Data.Text.Encoding
 import qualified Data.Text.Lazy as T
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Char8 as BS
 
 import Data.Map.Strict (Map)
-import Control.Lens (_1, _3, (^.), (&), (%~))
+import Control.Lens (_1, _3, (^.), (&), (%~), (^?), (.~))
 import qualified Data.Map.Strict as M
 import Calculator.Types (Expr(..), Assoc(..), ListTuple, showRational)
 import Calculator.Lexer
@@ -32,6 +33,7 @@ import Control.Arrow (left)
 import Data.List (isPrefixOf)
 import Clay (render)
 import Data.Aeson (encode, decode)
+import Data.Aeson.Lens
 import System.Random
 import System.Directory
 import Data.Time.Clock.POSIX
@@ -153,6 +155,16 @@ webLoop port mode = scotty port $ do
     if vt == m_token
       then Web.Scotty.text (c :: T.Text)
       else json ("Error!" :: TS.Text)
+  post "/webhook" $ do
+    b <- body
+    let msgs = b ^? key "entry" . nth 0 . key "messaging"
+    mapM_ (\m -> do
+              let msg = fromMaybe "Hello" $ m ^? key "message" . key "text" . _String
+              let sender = fromMaybe "" $ m ^? key "sender" . key "id" . _String
+              let opts = NW.defaults & NW.param "qs" .~ [TS.concat ["{access_token : ", m_token,"}"]]
+              _ <- liftIO $ NW.postWith opts "https://graph.facebook.com/v2.6/me/messages" $ encodeUtf8 $ TS.concat ["{recipient : {id:", sender,"}", ", messageData: ", msg ,"}"]
+              return ()) msgs
+    status $ Status 200 "Ok"
   get "/favicon.ico" $ file "./Static/favicon.ico"
   get "/:id" $ do
     iD <- param "id"
@@ -209,7 +221,7 @@ webLoop port mode = scotty port $ do
     storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
     mapsToLists (a, b, c) = (M.toList a, M.toList b, M.toList c)
     listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.fromList c)
-    m_token = "EAADXPmCvIzUBAJsNSv4hbrFdvCXhhT5tpHoxbdW3YVjgWdjdkiudNjWLSo73ETD7nqyaneCutffik98dYE0mRImZCZB6ZBiZA87GKXAjwuGmRZCeXUxZA8pLHlF64evFiY1WFTeZALazOI3NxUXOwZAQTqkeuI7w5elrjZA8Shrin2wZDZD" :: TS.Text
+    m_token = "EAADXPmCvIzUBAJsNSv4hbrFdvCXhhT5tpHoxbdW3YVjgWdjdkiudNjWLSo73ETD7nqyaneCutffik98dYE0mRImZCZB6ZBiZA87GKXAjwuGmRZCeXUxZA8pLHlF64evFiY1WFTeZALazOI3NxUXOwZAQTqkeuI7w5elrjZA8Shrin2zeds" :: TS.Text
 
 telegramLoop :: Mode -> IO ()
 telegramLoop mode = telegramLoop' mode M.empty (-1)
