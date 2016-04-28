@@ -146,6 +146,12 @@ webLoop port mode = scotty port $ do
           else do
             liftIO $ updateIDS (abs y)
             redirect $ T.append "/" $ T.pack (show $ abs y)
+  get "/webhook" $ do
+    vt <- param "hub.verify_token"
+    c <- param "hub.challenge"
+    if vt == m_token
+      then json (c :: TS.Text)
+      else json ("Error!" :: TS.Text)
   get "/favicon.ico" $ file "./Static/favicon.ico"
   get "/:id" $ do
     iD <- param "id"
@@ -202,6 +208,7 @@ webLoop port mode = scotty port $ do
     storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
     mapsToLists (a, b, c) = (M.toList a, M.toList b, M.toList c)
     listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.fromList c)
+    m_token = "EAADXPmCvIzUBAJsNSv4hbrFdvCXhhT5tpHoxbdW3YVjgWdjdkiudNjWLSo73ETD7nqyaneCutffik98dYE0mRImZCZB6ZBiZA87GKXAjwuGmRZCeXUxZA8pLHlF64evFiY1WFTeZALazOI3NxUXOwZAQTqkeuI7w5elrjZA8Shrin2wZDZD" :: TS.Text
 
 telegramLoop :: Mode -> IO ()
 telegramLoop mode = telegramLoop' mode M.empty (-1)
@@ -263,8 +270,8 @@ telegramLoop' mode maps n = do
     ir txt ii = InlineQueryResultArticle ii (Just txt) (Just txt) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     procQ qi qq s uid = do
       x <- randomIO :: IO Integer
-      rs <- answerInlineQuery token (AnswerInlineQueryRequest qi [ir (TS.concat [qq, " = ", s]) (TS.pack $ show x)] Nothing Nothing Nothing) 
-      case rs of 
+      rs <- answerInlineQuery token (AnswerInlineQueryRequest qi [ir (TS.concat [qq, " = ", s]) (TS.pack $ show x)] Nothing Nothing Nothing)
+      case rs of
            Right InlineQueryResponse { query_result = b} -> print b
            Left err -> print err
       nextIter (uid+1)
