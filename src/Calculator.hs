@@ -12,6 +12,7 @@ import Text.Blaze.Html5.Attributes
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 
 import qualified Data.Text as TS
+import qualified Data.Text.IO as TSIO
 import Data.Text.Encoding
 import qualified Data.Text.Lazy as T
 import qualified Data.ByteString.Lazy as B
@@ -36,6 +37,8 @@ import Data.Aeson (encode, decode)
 import Data.Aeson.Lens
 import System.Random
 import System.Directory
+import System.Environment
+import System.FilePath
 import Data.Time.Clock.POSIX
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Web.Telegram.API.Bot
@@ -163,7 +166,8 @@ webLoop port mode = scotty port $ do
               let sender = fromMaybe "" $ m ^? key "sender" . key "id" . _String
               let opts = NW.defaults & NW.param "qs" .~ [TS.concat ["{access_token : \"", m_token,"\"}"]]
               let resp = TS.concat ["{recipient : {id:\"", sender,"\"}", ", messageData: {text : \"", msg ,"\"}}"]
-              _ <- liftIO $ NW.postWith opts "https://graph.facebook.com/v2.6/me/messages" $ encodeUtf8 resp
+              r <- liftIO $ NW.postWith opts "https://graph.facebook.com/v2.6/me/messages" $ encodeUtf8 resp
+              liftIO $ print r
               return ()) msgs
     status $ Status 200 "Ok"
   get "/favicon.ico" $ file "./Static/favicon.ico"
@@ -229,7 +233,8 @@ telegramLoop mode = telegramLoop' mode M.empty (-1)
 
 telegramLoop' :: Mode -> Map Int Maps -> Int -> IO ()
 telegramLoop' mode maps n = do
-  updates <- getUpdates token (Just n) (Just 10) Nothing
+  tok <- token
+  updates <- getUpdates tok (Just n) (Just 10) Nothing
   case updates of
     Right UpdatesResponse { update_result = u } ->
       if not $ null u
@@ -269,14 +274,18 @@ telegramLoop' mode maps n = do
       t <- Web.Telegram.API.Bot.text mm
       let ch = chat mm
       return (t, chat_id ch)
-    token = Token "bot202491437:AAHMzKzAmcMaibK5O2fanEJbdb71S4IiOzA"
+    token = do
+      ep <- getExecutablePath
+      t <- TSIO.readFile $ takeDirectory ep </> "token"
+      return $ Token t
     printData mr = do
       print (message_id mr)
       print (Web.Telegram.API.Bot.text mr)
       print (user_id . from $ mr)
       print (chat_id . chat $ mr)
     procRes ch s m uid = do
-      rs <- sendMessage token (SendMessageRequest (TS.pack $ show ch) s Nothing Nothing Nothing Nothing)
+      t <- token
+      rs <- sendMessage t (SendMessageRequest (TS.pack $ show ch) s Nothing Nothing Nothing Nothing)
       case rs of
         Right MessageResponse { message_result = mr } -> printData mr
         Left err -> print err
@@ -284,7 +293,8 @@ telegramLoop' mode maps n = do
     ir txt ii = InlineQueryResultArticle ii (Just txt) (Just txt) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     procQ qi qq s uid = do
       x <- randomIO :: IO Integer
-      rs <- answerInlineQuery token (AnswerInlineQueryRequest qi [ir (TS.concat [qq, " = ", s]) (TS.pack $ show x)] Nothing Nothing Nothing)
+      t <- token
+      rs <- answerInlineQuery t (AnswerInlineQueryRequest qi [ir (TS.concat [qq, " = ", s]) (TS.pack $ show x)] Nothing Nothing Nothing)
       case rs of
            Right InlineQueryResponse { query_result = b} -> print b
            Left err -> print err
