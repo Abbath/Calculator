@@ -231,7 +231,7 @@ webLoop port mode = scotty port $ do
 telegramLoop :: Mode -> IO ()
 telegramLoop mode = telegramLoop' mode M.empty (-1)
 
-telegramLoop' :: Mode -> Map Int Maps -> Int -> IO ()
+telegramLoop' :: Mode -> Map Integer Maps -> Int -> IO ()
 telegramLoop' mode maps n = do
   tok <- token
   updates <- getUpdates tok (Just n) (Just 10) Nothing
@@ -273,7 +273,7 @@ telegramLoop' mode maps n = do
       mm <- m
       t <- Web.Telegram.API.Bot.text mm
       let ch = chat mm
-      return (t, chat_id ch)
+      return (t, fromIntegral $ chat_id ch)
     token = do
       ep <- getExecutablePath
       t <- TSIO.readFile $ takeDirectory ep </> "token"
