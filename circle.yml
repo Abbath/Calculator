@@ -7,8 +7,8 @@ dependencies:
     - sudo mv /tmp/stack /usr/bin/stack
   override:
     - stack setup +RTS -M1024m -K1024m 
-    - stack build --only-dependencies -j1
-
+    - stack build
+    
 test:
   override:
     - stack test
