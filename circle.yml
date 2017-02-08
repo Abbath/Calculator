@@ -2,11 +2,13 @@ dependencies:
   cache_directories:
     - "~/.stack"
   pre:
-    - wget https://github.com/commercialhaskell/stack/releases/download/v0.1.2.0/stack-0.1.2.0-x86_64-linux.gz -O /tmp/stack.gz
-    - gunzip /tmp/stack.gz && chmod +x /tmp/stack
-    - sudo mv /tmp/stack /usr/bin/stack
+    - sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 575159689BEFB442
+    - echo 'deb http://download.fpcomplete.com/ubuntu precise main'|sudo tee /etc/apt/sources.list.d/fpco.list
+    - sudo apt-get update && sudo apt-get install stack -y
+    - sudo rm /etc/alternatives/gcc
+    - sudo ln -s /usr/bin/gcc-4.8 /etc/alternatives/gcc
   override:
-    - stack setup +RTS -M1024m -K1024m 
+    - stack setup
     - stack build
     
 test:
