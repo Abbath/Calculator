@@ -1,5 +1,5 @@
 # Calculator
-
+[![CircleCI](https://circleci.com/gh/Abbath/Calculator.svg?style=shield)](https://circleci.com/gh/Abbath/Calculator)
 [![Code Climate](https://codeclimate.com/github/Abbath/Calculator/badges/gpa.svg)](https://codeclimate.com/github/Abbath/Calculator)
 
 A simple string calculator
