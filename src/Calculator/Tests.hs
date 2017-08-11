@@ -1,15 +1,15 @@
 module Calculator.Tests (testLoop) where
 
-import Data.Map.Strict (Map)
-import Control.Lens (_1, _3, (^.), (&), (%~))
-import qualified Data.Map.Strict as M
-import Calculator.Types (Expr(..), Assoc(..))
-import Calculator.Lexer
-import Calculator.Parser
-import Calculator.Evaluator
-import qualified Text.Megaparsec as MP
+import           Calculator.Evaluator
+import           Calculator.Lexer
 import qualified Calculator.MegaParser as CMP
-import Control.Monad.Reader
+import           Calculator.Parser
+import           Calculator.Types      (Assoc (..), Expr (..))
+import           Control.Lens          ((%~), (&), (^.), _1, _3)
+import           Control.Monad.Reader
+import           Data.Map.Strict       (Map)
+import qualified Data.Map.Strict       as M
+import qualified Text.Megaparsec       as MP
 
 data Backend = Internal | Mega deriving Show
 
@@ -38,9 +38,9 @@ loop (x:xs) maps bk = do
               Internal -> tokenize sample >>= parse (getPriorities $ maps^._3)
               Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sample++"\n"))
     --print e
-    let t = case e of 
-              Left err -> Left (err, maps) 
-              Right r -> eval maps r
+    let t = case e of
+              Left err -> Left (err, maps)
+              Right r  -> eval maps r
     case t of
       Right (r,m) -> do
         putStrLn $ if r == snd x
@@ -55,10 +55,9 @@ loop (x:xs) maps bk = do
     putStrLn "Empty!"
     loop xs maps bk
 
-
-errorToEither :: Either MP.ParseError Expr -> Either String Expr
+errorToEither :: Show a => Either a b -> Either String b
 errorToEither (Left err) = Left (show err)
-errorToEither (Right r) = Right r
+errorToEither (Right r)  = Right r
 
 tests :: Tests
 tests = [

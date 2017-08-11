@@ -1,47 +1,51 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap, telegramLoop) where
 
-import Web.Scotty
-import Network.Wai
-import Network.Wai.Middleware.Static
-import Network.HTTP.Types.Status
-import qualified Network.Wreq as NW
+import           Network.HTTP.Types.Status
+import           Network.Wai
+import           Network.Wai.Middleware.Static
+import qualified Network.Wreq                  as NW
+import           Web.Scotty
 
-import qualified Text.Blaze.Html5 as H
-import Text.Blaze.Html5.Attributes
-import Text.Blaze.Html.Renderer.Text (renderHtml)
+import           Text.Blaze.Html.Renderer.Text (renderHtml)
+import qualified Text.Blaze.Html5              as H
+import           Text.Blaze.Html5.Attributes
 
-import qualified Data.Text as TS
-import qualified Data.Text.IO as TSIO
-import Data.Text.Encoding
-import qualified Data.Text.Lazy as T
-import qualified Data.ByteString.Lazy as B
-import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Char8         as BS
+import qualified Data.ByteString.Lazy          as B
+import qualified Data.Text                     as TS
+import           Data.Text.Encoding
+import qualified Data.Text.IO                  as TSIO
+import qualified Data.Text.Lazy                as T
 
-import Data.Map.Strict (Map)
-import Control.Lens (_1, _3, (^.), (&), (%~), (^?), (.~))
-import qualified Data.Map.Strict as M
-import Calculator.Types (Expr(..), Assoc(..), ListTuple, showRational)
-import Calculator.Lexer
-import Calculator.Parser
-import Calculator.Evaluator
-import Calculator.Css
-import qualified Text.Megaparsec as MP
-import qualified Calculator.MegaParser as CMP
-import Control.Monad.Reader
-import System.Console.Haskeline
-import Control.Arrow (left)
-import Data.List (isPrefixOf)
-import Clay (render)
-import Data.Aeson (encode, decode)
-import Data.Aeson.Lens
-import System.Random
-import System.Directory
-import System.Environment
-import System.FilePath
-import Data.Time.Clock.POSIX
-import Data.Maybe (fromMaybe, isJust, isNothing)
-import Web.Telegram.API.Bot
+import           Calculator.Css
+import           Calculator.Evaluator
+import           Calculator.Lexer
+import qualified Calculator.MegaParser         as CMP
+import           Calculator.Parser
+import           Calculator.Types              (Assoc (..), Expr (..),
+                                                ListTuple, showRational)
+import           Clay                          (render)
+import           Control.Arrow                 (left)
+import           Control.Lens                  ((%~), (&), (.~), (^.), (^?), _1,
+                                                _3)
+import           Control.Monad.Reader
+import           Data.Aeson                    (decode, encode)
+import           Data.Aeson.Lens
+import           Data.List                     (isPrefixOf)
+import           Data.Map.Strict               (Map)
+import qualified Data.Map.Strict               as M
+import           Data.Maybe                    (fromMaybe, isJust, isNothing)
+import           Data.Time.Clock.POSIX
+import           Network.HTTP.Client           (Manager, newManager)
+import           Network.HTTP.Client.TLS       (tlsManagerSettings)
+import           System.Console.Haskeline
+import           System.Directory
+import           System.Environment
+import           System.FilePath
+import           System.Random
+import qualified Text.Megaparsec               as MP
+import           Web.Telegram.API.Bot
 
 data Mode = Internal | Megaparsec deriving Show
 
@@ -55,7 +59,7 @@ parseString m s ms = case m of
 evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
 evalExpr t maps = case t of
              Left err -> Left (err, maps)
-             Right r -> eval maps r
+             Right r  -> eval maps r
 
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
@@ -198,7 +202,7 @@ webLoop port mode = scotty port $ do
         rest <- liftIO $ BS.readFile logname
         env <- liftIO $ BS.readFile storagename
         let ms = case (decode (B.fromStrict env) :: Maybe ListTuple) of
-                   Just r -> listsToMaps r
+                   Just r  -> listsToMaps r
                    Nothing -> error "Cannot decode storage"
         let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
         let t = parseString mode (T.unpack fs) ms
@@ -229,14 +233,16 @@ webLoop port mode = scotty port $ do
     m_token = "EAADXPmCvIzUBAJsNSv4hbrFdvCXhhT5tpHoxbdW3YVjgWdjdkiudNjWLSo73ETD7nqyaneCutffik98dYE0mRImZCZB6ZBiZA87GKXAjwuGmRZCeXUxZA8pLHlF64evFiY1WFTeZALazOI3NxUXOwZAQTqkeuI7w5elrjZA8Shrin2zeds" :: TS.Text
 
 telegramLoop :: Mode -> IO ()
-telegramLoop mode = telegramLoop' mode M.empty (-1)
+telegramLoop mode = do
+  manager <- newManager tlsManagerSettings
+  telegramLoop' mode M.empty manager (-1)
 
-telegramLoop' :: Mode -> Map Integer Maps -> Int -> IO ()
-telegramLoop' mode maps n = do
+telegramLoop' :: Mode -> Map Integer Maps -> Manager -> Int -> IO ()
+telegramLoop' mode maps manager n = do
   tok <- token
-  updates <- getUpdates tok (Just n) (Just 10) Nothing
+  updates <- getUpdates tok (Just n) (Just 10) Nothing manager
   case updates of
-    Right UpdatesResponse { update_result = u } ->
+    Right Response { result = u } ->
       if not $ null u
         then do
           let Update { update_id = uid, message = msg, inline_query = iq} = head u
@@ -265,7 +271,7 @@ telegramLoop' mode maps n = do
       print err
       nextIter (-1)
   where
-    nextIter = telegramLoop' mode maps
+    nextIter = telegramLoop' mode maps manager
     unpackQuery q = do
       iq <- q
       return (query_id iq, query_query iq)
@@ -281,21 +287,21 @@ telegramLoop' mode maps n = do
     printData mr = do
       print (message_id mr)
       print (Web.Telegram.API.Bot.text mr)
-      print (user_id . from $ mr)
+      print (maybe 0 user_id . from $ mr)
       print (chat_id . chat $ mr)
     procRes ch s m uid = do
       t <- token
-      rs <- sendMessage t (SendMessageRequest (TS.pack $ show ch) s Nothing Nothing Nothing Nothing)
+      rs <- sendMessage t (SendMessageRequest (ChatId ch) s Nothing Nothing Nothing Nothing Nothing) manager
       case rs of
-        Right MessageResponse { message_result = mr } -> printData mr
-        Left err -> print err
-      telegramLoop' mode (M.insert ch m maps) (uid+1)
-    ir txt ii = InlineQueryResultArticle ii (Just txt) (Just txt) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+        Right Response { result = mr } -> printData mr
+        Left err                       -> print err
+      telegramLoop' mode (M.insert ch m maps) manager (uid+1)
+    ir txt ii = InlineQueryResultArticle ii (Just txt) (Just $ InputTextMessageContent txt Nothing Nothing) Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     procQ qi qq s uid = do
       x <- randomIO :: IO Integer
       t <- token
-      rs <- answerInlineQuery t (AnswerInlineQueryRequest qi [ir (TS.concat [qq, " = ", s]) (TS.pack $ show x)] Nothing Nothing Nothing)
+      rs <- answerInlineQuery t (AnswerInlineQueryRequest qi [ir (TS.concat [qq, " = ", s]) (TS.pack $ show x)] Nothing Nothing Nothing Nothing Nothing) manager
       case rs of
-           Right InlineQueryResponse { query_result = b} -> print b
-           Left err -> print err
+           Right Response { result = b} -> print b
+           Left err                     -> print err
       nextIter (uid+1)
