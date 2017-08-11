@@ -35,7 +35,7 @@ Exprs: Expr {$1}
 
 Expr:
     '-' Expr { UMinus $2}
-    | '(' Expr ')' {Par $2}
+    | '(' Exprs ')' {Par $2}
     | fn exprs ')' {FunCall $1 (reverse $2)}
     | num {Number $1}
     | var {Id $1}
@@ -43,9 +43,8 @@ Expr:
 vars : var {[$1]}
     | vars ',' var {$3 : $1}
 
-
-exprs : Expr {[$1]}
-    | exprs ',' Expr {$3 : $1}
+exprs : Exprs {[$1]}
+    | exprs ',' Exprs {$3 : $1}
 
 {
 parseError :: [Token] -> a

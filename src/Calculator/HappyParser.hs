@@ -52,7 +52,8 @@ action_8 (10) = happyShift action_7
 action_8 (12) = happyShift action_8
 action_8 (16) = happyShift action_9
 action_8 (20) = happyShift action_12
-action_8 (6) = happyGoto action_18
+action_8 (5) = happyGoto action_18
+action_8 (6) = happyGoto action_5
 action_8 _ = happyFail
 
 action_9 (9) = happyShift action_6
@@ -74,10 +75,12 @@ action_12 (10) = happyShift action_7
 action_12 (12) = happyShift action_8
 action_12 (16) = happyShift action_9
 action_12 (20) = happyShift action_12
-action_12 (6) = happyGoto action_13
+action_12 (5) = happyGoto action_13
+action_12 (6) = happyGoto action_5
 action_12 (8) = happyGoto action_14
 action_12 _ = happyFail
 
+action_13 (11) = happyShift action_19
 action_13 _ = happyReduce_14
 
 action_14 (13) = happyShift action_27
@@ -93,6 +96,7 @@ action_16 _ = happyFail
 
 action_17 _ = happyReduce_7
 
+action_18 (11) = happyShift action_19
 action_18 (13) = happyShift action_23
 action_18 _ = happyFail
 
@@ -135,9 +139,11 @@ action_28 (10) = happyShift action_7
 action_28 (12) = happyShift action_8
 action_28 (16) = happyShift action_9
 action_28 (20) = happyShift action_12
-action_28 (6) = happyGoto action_29
+action_28 (5) = happyGoto action_29
+action_28 (6) = happyGoto action_5
 action_28 _ = happyFail
 
+action_29 (11) = happyShift action_19
 action_29 _ = happyReduce_15
 
 action_30 (14) = happyShift action_36
@@ -252,7 +258,7 @@ happyReduction_7 _ _  = notHappyAtAll
 
 happyReduce_8 = happySpecReduce_3  6 happyReduction_8
 happyReduction_8 _
-	(HappyAbsSyn6  happy_var_2)
+	(HappyAbsSyn5  happy_var_2)
 	_
 	 =  HappyAbsSyn6
 		 (Par happy_var_2
@@ -299,14 +305,14 @@ happyReduction_13 (HappyTerminal (TIdent happy_var_3))
 happyReduction_13 _ _ _  = notHappyAtAll 
 
 happyReduce_14 = happySpecReduce_1  8 happyReduction_14
-happyReduction_14 (HappyAbsSyn6  happy_var_1)
+happyReduction_14 (HappyAbsSyn5  happy_var_1)
 	 =  HappyAbsSyn8
 		 ([happy_var_1]
 	)
 happyReduction_14 _  = notHappyAtAll 
 
 happyReduce_15 = happySpecReduce_3  8 happyReduction_15
-happyReduction_15 (HappyAbsSyn6  happy_var_3)
+happyReduction_15 (HappyAbsSyn5  happy_var_3)
 	_
 	(HappyAbsSyn8  happy_var_1)
 	 =  HappyAbsSyn8
