@@ -26,7 +26,8 @@ import           Calculator.Lexer
 import qualified Calculator.MegaParser         as CMP
 import           Calculator.Parser
 import           Calculator.Types              (Assoc (..), Expr (..),
-                                                ListTuple, showRational)
+                                                ListTuple, preprocess,
+                                                showRational)
 import           Clay                          (render)
 import           Control.Arrow                 (left)
 import           Control.Lens                  ((%~), (&), (.~), (^.), (^?), _1,
@@ -57,7 +58,7 @@ parseString m s ms = case m of
                          left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (s++"\n"))
                        Internal ->
                          tokenize s >>= parse (getPriorities $ ms^._3)
-                       AlexHappy -> Right $ HP.parse . alexScanTokens $ s
+                       AlexHappy -> Right $ preprocess . HP.parse . alexScanTokens $ s
 
 evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
 evalExpr t maps = case t of

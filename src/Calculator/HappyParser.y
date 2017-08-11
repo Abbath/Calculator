@@ -27,14 +27,15 @@ import Calculator.Types (Token(..), Expr(..), Assoc(..))
 All:
     let var '=' Exprs { Asgn $2 $4} 
     | fun fn vars ')' '=' Exprs { UDF $2 (reverse $3) $6}
-    | fop var '(' num ',' num ')' '=' Exprs {UDO $2 (truncate $4) (if $6 == 0 then L else R) $9 }
+    | fop op '(' num ',' num ')' '=' Exprs {UDO $2 (truncate $4) (if $6 == 0 then L else R) $9 }
     | Exprs {$1}
 
-Exprs: Expr {$1}
-    | Expr op Exprs {OpCall $2 $3 $1}
+Exprs:
+    Expr {$1}
+    | Expr op Exprs {OpCall $2 $1 $3}
 
 Expr:
-    '-' Expr {UMinus $2}
+    '-' Expr {UMinus $2} 
     | '(' Exprs ')' {Par $2}
     | fn exprs ')' {FunCall $1 $2}
     | num {Number $1}
