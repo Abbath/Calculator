@@ -25,7 +25,6 @@ tokens :-
     $alpha+ {\_ s -> TIdent s}
     $alpha+\( {\_ s -> TFIdent (init s)}
     \= {\_ _ -> TEqual}
-    ^\- {\_ _ -> TMinus}
     [\+\-\/\\\*\%\^\$\!\~\&\|\>\<]+ {\_ s -> TOp s}
     \, {\_ _ -> TComma}
 

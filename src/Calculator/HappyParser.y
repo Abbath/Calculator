@@ -16,7 +16,7 @@ import Calculator.Types (Token(..), Expr(..), Assoc(..))
     ')' { TRPar }
     ',' { TComma }
     '=' { TEqual }
-    '-' { TMinus }
+    '-' { TOp "-" }
     let { TLet }
     fun { TFun }
     fop { TEnd }
@@ -25,18 +25,18 @@ import Calculator.Types (Token(..), Expr(..), Assoc(..))
 %%
 
 All:
-    let var '=' Expr { Asgn $2 $4} 
-    | fun fn vars ')' '=' Expr { UDF $2 (reverse $3) $6}
-    | fop var '(' num ',' num ')' '=' Expr {UDO $2 (truncate $4) (if $6 == 0 then L else R) $9 }
+    let var '=' Exprs { Asgn $2 $4} 
+    | fun fn vars ')' '=' Exprs { UDF $2 (reverse $3) $6}
+    | fop var '(' num ',' num ')' '=' Exprs {UDO $2 (truncate $4) (if $6 == 0 then L else R) $9 }
     | Exprs {$1}
 
 Exprs: Expr {$1}
-    | Exprs op Expr {OpCall $2 $1 $3}
+    | Expr op Exprs {OpCall $2 $3 $1}
 
 Expr:
-    '-' Expr { UMinus $2}
+    '-' Expr {UMinus $2}
     | '(' Exprs ')' {Par $2}
-    | fn exprs ')' {FunCall $1 (reverse $2)}
+    | fn exprs ')' {FunCall $1 $2}
     | num {Number $1}
     | var {Id $1}
 
