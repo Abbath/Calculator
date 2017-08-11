@@ -1,5 +1,5 @@
 {
-{-# OPTIONS_GHC -fno-warn-unused-imports #-}
+{-# OPTIONS_GHC -fno-warn-name-shadowing -fno-warn-unused-imports #-}
 module Calculator.AlexLexer where
 import Calculator.Types
 }
@@ -11,17 +11,23 @@ $alpha = [a-zA-Z_]
 $decdigit = $ascdigit
 @decimal = $decdigit+
 @exponent = [eE] [\-\+]? @decimal
-@floating_point = @decimal \. @decimal @exponent? | @decimal @exponent
+@floating_point = @decimal \. @decimal @exponent? | @decimal @exponent | @decimal
 
 tokens :-
 
     $white  ;
-    @floating_point {\s -> TNumber $ readNumber s}
-    \(  {\_ -> TLPar}
-    \)  {\_ -> TRPar}
-    $alpha+ {\s -> TIdent s}
-    [\+\-\/\\\*\%\^\$\!\~\&\|\=\>\<]+ {\s -> TOp s}
-    \, {\_ -> TComma}
+    let {\_ _ -> TLet }
+    fun {\_ _ -> TFun }
+    op {\_ _ -> TEnd }
+    @floating_point {\_ s -> TNumber $ readNumber s}
+    \(  {\_ _ -> TLPar}
+    \)  {\_ _ -> TRPar}
+    $alpha+ {\_ s -> TIdent s}
+    $alpha+\( {\_ s -> TFIdent (init s)}
+    \= {\_ _ -> TEqual}
+    ^\- {\_ _ -> TMinus}
+    [\+\-\/\\\*\%\^\$\!\~\&\|\>\<]+ {\_ s -> TOp s}
+    \, {\_ _ -> TComma}
 
 {
 

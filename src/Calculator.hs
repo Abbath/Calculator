@@ -59,7 +59,6 @@ parseString m s ms = case m of
                          tokenize s >>= parse (getPriorities $ ms^._3)
                        AlexHappy -> Right $ HP.parse . alexScanTokens $ s
 
-
 evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
 evalExpr t maps = case t of
              Left err -> Left (err, maps)

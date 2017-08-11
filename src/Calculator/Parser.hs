@@ -32,7 +32,7 @@ stringify (x:xs) = str x ++ stringify xs
   str (TIdent s)  = " "++s++" "
   str (TOp s)     = " "++s++" "
   str TComma      = ", "
-  str TEnd        = ""
+  str _           = ""
 
 type ParseReader = ReaderT (Map String Int) (Except String) Expr
 
