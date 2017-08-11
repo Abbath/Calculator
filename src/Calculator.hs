@@ -18,8 +18,10 @@ import           Data.Text.Encoding
 import qualified Data.Text.IO                  as TSIO
 import qualified Data.Text.Lazy                as T
 
+import           Calculator.AlexLexer
 import           Calculator.Css
 import           Calculator.Evaluator
+import qualified Calculator.HappyParser        as HP
 import           Calculator.Lexer
 import qualified Calculator.MegaParser         as CMP
 import           Calculator.Parser
@@ -47,7 +49,7 @@ import           System.Random
 import qualified Text.Megaparsec               as MP
 import           Web.Telegram.API.Bot
 
-data Mode = Internal | Megaparsec deriving Show
+data Mode = Internal | Megaparsec | AlexHappy deriving Show
 
 parseString :: Mode -> String -> Maps -> Either String Expr
 parseString m s ms = case m of
@@ -55,6 +57,8 @@ parseString m s ms = case m of
                          left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (s++"\n"))
                        Internal ->
                          tokenize s >>= parse (getPriorities $ ms^._3)
+                       AlexHappy -> Right $ HP.parse . alexScanTokens $ s
+
 
 evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
 evalExpr t maps = case t of

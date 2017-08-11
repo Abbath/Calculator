@@ -16,6 +16,7 @@ cabal-version:        >=1.10
 executable Calculator
   main-is:              Main.hs
   build-depends:        base >= 4.7 && < 5
+                      , array
                       , containers
                       , lens
                       , mtl
@@ -47,6 +48,8 @@ executable Calculator
   default-language:     Haskell2010
   other-modules:        Calculator
                       , Calculator.Evaluator
+                      , Calculator.AlexLexer
+                      , Calculator.HappyParser
                       , Calculator.Lexer
                       , Calculator.Parser
                       , Calculator.Types
