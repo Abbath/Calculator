@@ -1,10 +1,10 @@
 module Calculator.Lexer (tokenize) where
 
-import Data.Maybe (fromMaybe)
-import Data.Char (isSpace, isAlpha, isDigit)
-import Control.Applicative ((<|>))
-import Calculator.Types (Token(..))
-import Control.Arrow (first)
+import           Calculator.Types    (Token (..))
+import           Control.Applicative ((<|>))
+import           Control.Arrow       (first)
+import           Data.Char           (isAlpha, isDigit, isSpace)
+import           Data.Maybe          (fromMaybe)
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><"

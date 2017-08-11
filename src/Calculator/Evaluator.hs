@@ -3,11 +3,11 @@ module Calculator.Evaluator (eval, getPriorities, FunMap, VarMap, OpMap, Maps) w
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
                                    preprocess, showRational)
 import           Control.Lens     ((%~), (&), (.~), (^.), _1, _2, _3)
+import           Data.Either      (rights)
+import           Data.List        (foldl')
 import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict  as M
 import           Data.Ratio
-import           Data.Either      (rights)
-import           Data.List        (foldl')
 
 type FunMap = Map (String, Int) ([String], Expr)
 type VarMap = Map String Rational
@@ -20,10 +20,10 @@ funNames = map (\(f,_) -> (f, f)) . M.keys
 goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
 goInside f ex = case ex of
   (OpCall op e1 e2) -> OpCall op <$> f e1 <*> f e2
-  (Par e) -> Par <$> f e
-  (UMinus e) -> UMinus <$> f e
-  (FunCall n e) -> FunCall n <$> mapM f e
-  e -> return e
+  (Par e)           -> Par <$> f e
+  (UMinus e)        -> UMinus <$> f e
+  (FunCall n e)     -> FunCall n <$> mapM f e
+  e                 -> return e
 
 substitute :: ([String], [Expr]) -> Expr -> Either String Expr
 substitute ([],[]) e = return e
@@ -67,7 +67,7 @@ catchVar (vm, fm) ex = case ex of
     in case a of
          Just n -> return $ Number n
          Nothing -> case b of
-                     Just s -> return $ Id s
+                     Just s  -> return $ Id s
                      Nothing -> Left $ "No such variable: " ++ i
   e -> goInside st e
     where st = catchVar (vm, fm)
@@ -113,7 +113,7 @@ eval maps ex = case ex of
     let de = derivative e (Id x)
     case de of
       Left err -> Left . mps $ err
-      Right r -> evm (UDF n [s] r)
+      Right r  -> evm (UDF n [s] r)
   UDF n s e                          -> do
     let newe = localize s e >>= catchVar (maps^._1, maps ^._2)
     case newe of
@@ -141,7 +141,7 @@ eval maps ex = case ex of
       let e = derivative a x
       case e of
         Left err -> Left . mps $ err
-        Right r ->  Left . mps . exprToString . preprocess $ r
+        Right r  ->  Left . mps . exprToString . preprocess $ r
   FunCall "int" [Id fun, a, b, s] -> do
       (a1,_) <- evm a
       (b1,_) <- evm b
@@ -230,7 +230,7 @@ eval maps ex = case ex of
   UMinus x         -> do {(n,_) <- evm x; return $ mps (-n)}
   Par e            -> evm e
   where
-    mte _ (Just x, m) = Right (x, m)
+    mte _ (Just x, m)  = Right (x, m)
     mte s (Nothing, _) = Left . mps $ s
     evm x = do
       (r,m) <- eval maps x

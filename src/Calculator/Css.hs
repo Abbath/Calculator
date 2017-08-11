@@ -1,19 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Calculator.Css where
 
-import Clay
+import           Clay
 
 getCss :: Css
-getCss = do 
+getCss = do
   h1 ? fontSize (px 24)
   body ? textAlign (alignSide sideCenter)
   input # "type=\"input\"" ? do
     width (px 600)
     height (px 50)
     fontSize (px 18)
-        
-postCss :: Css 
-postCss = do 
+
+postCss :: Css
+postCss = do
   h1 ? fontSize (px 24)
   body ? textAlign (alignSide sideCenter)
   input # "type=\"input\"" ? do
@@ -30,7 +30,7 @@ postCss = do
     fontFamily ["Tahoma"] [sansSerif]
   table ? do
     width (px 600)
-    "table-layout" -: "fixed"  
+    "table-layout" -: "fixed"
     textAlign (alignSide sideCenter)
     marginRight auto
     marginLeft auto

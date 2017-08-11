@@ -2,12 +2,12 @@
 
 module Calculator.Parser (parse) where
 
-import Calculator.Types
-import Control.Arrow (first)
-import Data.Map.Strict (Map)
-import Control.Monad.Reader
-import Control.Monad.Except
-import qualified Data.Map.Strict as M
+import           Calculator.Types
+import           Control.Arrow        (first)
+import           Control.Monad.Except
+import           Control.Monad.Reader
+import           Data.Map.Strict      (Map)
+import qualified Data.Map.Strict      as M
 
 checkOps :: [Token] -> Either String [Token]
 checkOps t = if snd . foldl f (TEnd, True) $ t
@@ -16,8 +16,8 @@ checkOps t = if snd . foldl f (TEnd, True) $ t
   where
     f (old, res) new  = (new, res && not (isOp new && old == new))
     isOp (TOp "=") = False
-    isOp (TOp _) = True
-    isOp _ = False
+    isOp (TOp _)   = True
+    isOp _         = False
 
 takeWithPriorities :: Int -> Map String Int -> [Token]
 takeWithPriorities n m = map (TOp . fst) . M.toList $ M.filter (== n) m
@@ -27,12 +27,12 @@ stringify [] = []
 stringify (x:xs) = str x ++ stringify xs
   where
   str (TNumber n) = " "++ showRational n ++ " "
-  str TLPar = "("
-  str TRPar = ")"
-  str (TIdent s) = " "++s++" "
-  str (TOp s) = " "++s++" "
-  str TComma = ", "
-  str TEnd = ""
+  str TLPar       = "("
+  str TRPar       = ")"
+  str (TIdent s)  = " "++s++" "
+  str (TOp s)     = " "++s++" "
+  str TComma      = ", "
+  str TEnd        = ""
 
 type ParseReader = ReaderT (Map String Int) (Except String) Expr
 
@@ -69,11 +69,11 @@ parseFunDec (TIdent name : TLPar : TIdent a : TComma : rest) = do
   return (name, a:x)
   where
   parseFunDec' y = case y of
-    [TIdent _] -> throwError "Missing bracket"
-    [TIdent _, TComma] -> throwError "Missing bracket"
-    [TIdent n, TRPar] -> return [n]
+    [TIdent _]                -> throwError "Missing bracket"
+    [TIdent _, TComma]        -> throwError "Missing bracket"
+    [TIdent n, TRPar]         -> return [n]
     (TIdent n : TComma : rst) -> (n:) <$> parseFunDec' rst
-    x -> throwError $ "Syntax error: " ++ stringify x
+    x                         -> throwError $ "Syntax error: " ++ stringify x
 parseFunDec s = throwError $ "Syntax error: " ++ stringify s
 
 parseToken :: [Token] -> ParseReader
@@ -88,7 +88,7 @@ parseToken str = case str of
     ps ss = let t = runExcept $ takePar ss
      in case t of
        Left err -> throwError err
-       Right r -> parseOp 1 . init . fst $ r
+       Right r  -> parseOp 1 . init . fst $ r
 
 parseFuncall ::  [Token] -> ReaderT (Map String Int) (Except String) [Expr]
 parseFuncall [TRPar] = return []
@@ -127,7 +127,7 @@ breakPar3 p (x:xs)
    (a,b) <- takePar xs
    r <- breakPar3 p b
    case r of
-       Nothing -> return Nothing
+       Nothing          -> return Nothing
        Just (y,match,z) -> return (Just (x : a ++ y, match, z))
   | p x        = return (Just ([],x,xs))
   | otherwise  = fmap (\(a,b,c) -> (x:a, b, c)) <$> breakPar3 p xs

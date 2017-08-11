@@ -1,10 +1,11 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric  #-}
 module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, preprocess, ListTuple, showRational) where
 
-import Data.List (intercalate)
-import GHC.Generics
-import Data.Aeson (ToJSON, FromJSON)
-import Data.Ratio
+import           Data.Aeson   (FromJSON, ToJSON)
+import           Data.List    (intercalate)
+import           Data.Ratio
+import           GHC.Generics
 
 data Token = TNumber Rational
            | TLPar
@@ -28,7 +29,7 @@ data Expr = Number Rational
           | Id String
           deriving (Eq, Show, Read, Generic)
 
-instance ToJSON Expr  
+instance ToJSON Expr
 
 instance FromJSON Expr
 
@@ -66,7 +67,7 @@ exprToString ex = case ex of
 
 unTOp :: Token -> String
 unTOp (TOp op) = op
-unTOp _ = error "Not a TOp"
+unTOp _        = error "Not a TOp"
 
 preprocess :: Expr -> Expr
 preprocess ex = simplify' ex ex
@@ -81,7 +82,7 @@ simplifyExpr ex = case ex of
   Par (UMinus e)                        -> UMinus (simplifyExpr e)
   Par e                                 -> Par (simplifyExpr e)
   UMinus (Par (UMinus e))               -> Par (simplifyExpr e)
-  UMinus (OpCall "^" e1 e2)             -> OpCall "^" (UMinus (simplifyExpr e1)) (simplifyExpr e2)
+  UMinus (OpCall op e1 e2)              -> OpCall op (UMinus (simplifyExpr e1)) (simplifyExpr e2)
   UMinus e                              -> UMinus (simplifyExpr e)
   OpCall "-" (Number 0.0) (OpCall op e1 e2) | op `elem` ["+","-"] ->
     OpCall op (simplifyExpr . UMinus $ e1) (simplifyExpr e2)
