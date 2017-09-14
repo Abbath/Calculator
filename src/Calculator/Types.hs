@@ -21,7 +21,7 @@ data Token = TNumber Rational
            | TFun
            deriving (Show, Eq, Ord)
 
-data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic,  ToJSON, FromJSON)
+data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
 
 data Expr = Number Rational
           | Asgn String Expr
