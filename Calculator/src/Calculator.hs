@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap, telegramLoop) where
+module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap, telegramLoop, telegramSimple) where
 
 import           Network.HTTP.Types.Status
 import           Network.Wai
@@ -29,7 +29,7 @@ import           Calculator.Types              (Assoc (..), Expr (..),
                                                 ListTuple, preprocess,
                                                 showRational)
 import           Clay                          (render)
-import           Control.Arrow                 (left)
+import           Control.Arrow                 (left, first, (***))
 import           Control.Lens                  ((%~), (&), (.~), (^.), (^?), _1,
                                                 _3)
 import           Control.Monad.Reader
@@ -49,6 +49,55 @@ import           System.FilePath
 import           System.Random
 import qualified Text.Megaparsec               as MP
 import           Web.Telegram.API.Bot
+
+import qualified Telegram.Bot.API                 as Telegram
+import           Telegram.Bot.Simple
+import           Telegram.Bot.Simple.Debug
+import           Telegram.Bot.Simple.UpdateParser
+
+data Model = Model { getMaps :: Maps }
+  deriving (Show)
+
+-- | Actions bot can perform.
+data Action
+  = NoAction    -- ^ Perform no action.
+  | Reply TS.Text  -- ^ Reply some text.
+  deriving (Show)
+
+-- | Bot application.
+bot :: BotApp Model Action
+bot = BotApp
+  { botInitialModel = Model (defVar, M.empty, opMap)
+  , botAction = flip handleUpdate
+  , botHandler = handleAction
+  , botJobs = []
+  }
+
+-- | How to process incoming 'Telegram.Update's
+-- and turn them into 'Action's.
+handleUpdate :: Model -> Telegram.Update -> Maybe Action
+handleUpdate _ = parseUpdate (Reply <$> Telegram.Bot.Simple.UpdateParser.text)
+
+-- | How to handle 'Action's.
+handleAction :: Action -> Model -> Eff Action Model
+handleAction NoAction model = pure model
+handleAction (Reply msg) model = model2 <# do
+  replyText response
+  pure NoAction
+  where (response, model2) = (TS.pack *** Model) $ either 
+          Prelude.id 
+          (first showRational) 
+          (parseEval Internal (getMaps model) (TS.unpack msg)) 
+
+-- | Run bot with a given 'Telegram.Token'.
+run :: Telegram.Token -> IO ()
+run token = do
+  env <- Telegram.defaultTelegramClientEnv token
+  startBot_ (traceBotDefault bot) env
+
+-- | Run bot using 'Telegram.Token' from @TELEGRAM_BOT_TOKEN@ environment.
+telegramSimple :: IO ()
+telegramSimple = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run
 
 data Mode = Internal | Megaparsec | AlexHappy deriving Show
 
@@ -89,6 +138,9 @@ completionList s = return $ map (\x -> Completion {replacement = x, display = x,
 completeName :: Monad m => CompletionFunc m
 completeName = completeWord Nothing " " completionList
 
+parseEval :: Mode -> Maps -> String -> Either (String, Maps) (Rational, Maps)
+parseEval md ms x = evalExpr (parseString md x ms) ms
+
 loop :: Mode -> Maps -> IO ()
 loop mode maps = runInputT (setComplete completeName $ defaultSettings { historyFile = Just "/home/dan/.mycalchist"}) (loop' mode maps)
   where
@@ -99,9 +151,7 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
       Nothing -> return ()
       Just "quit" -> return ()
       Just x -> do
-        let t = parseString md x ms
-        let res = evalExpr t ms
-        case res of
+        case parseEval md ms x of
           Left (err,m) -> do
             liftIO $ putStrLn err
             loop' md m

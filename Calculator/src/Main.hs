@@ -17,7 +17,7 @@ data Options = Options {
 options :: Parser Options
 options = Options
           <$> switch (long "megaparsec-backend" <> short 'm' <> help "Use Megaparsec backend")
-          <*> switch (long "alex-happy-backend" <> short 'x' <> help "Use Alex+Happy backend")
+          <*> switch (long "alex-happy-backend" <> short 'x' <> help "Use Alex+Happy backend (very experimental)")
           <*> switch (long "test" <> short 't' <> help "Run tests")
           <*> switch (long "cli" <> short 'c' <> help "Run console app")
           <*> switch (long "telegram" <> short 'g' <> help "Run Telegram bot")

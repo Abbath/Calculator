@@ -47,6 +47,7 @@ executable Calculator
                       , http-client
                       , http-client-tls
                       , parser-combinators
+                      , telegram-bot-simple
   hs-source-dirs:       src
   build-tools:          alex, happy
   default-language:     Haskell2010
