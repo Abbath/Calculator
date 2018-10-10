@@ -11,6 +11,7 @@ data Options = Options {
       test :: Bool,
       cli  :: Bool,
       tg   :: Bool,
+      tgs  :: Bool,
       port :: [Int]
     }
 
@@ -21,23 +22,25 @@ options = Options
           <*> switch (long "test" <> short 't' <> help "Run tests")
           <*> switch (long "cli" <> short 'c' <> help "Run console app")
           <*> switch (long "telegram" <> short 'g' <> help "Run Telegram bot")
+          <*> switch (long "telegram-simple" <> short 's' <> help "Run simple Telegram bot (only Internal backend supported)")
           <*> many (argument auto (metavar "PORT"))
 
 main :: IO ()
 main = do
   writeFile "ids" "[]"
-  Options m x t c g p <- execParser opts
-  case (m,x,t,c,g) of
-    (_,_,True,_,_)          -> testLoop
-    (True,_,_,_,True)       -> telegramLoop Megaparsec
-    (_,True,_,_,True)       -> telegramLoop AlexHappy
-    (False,False,_,_,True)  -> telegramLoop Internal
-    (True,_,_,False,_)      -> webLoop (portCheck p) Megaparsec
-    (_,True,_,False,_)      -> webLoop (portCheck p) AlexHappy
-    (False,False,_,False,_) -> webLoop (portCheck p) Internal
-    (True,_,_,True,_)       -> evalLoop Megaparsec
-    (_,True,_,True,_)       -> evalLoop AlexHappy
-    (False,False,_,True,_)  -> evalLoop Internal
+  Options m x t c g s p <- execParser opts
+  case (m,x,t,c,g,s) of
+    (_,_,True,_,_,_)          -> testLoop
+    (_,_,_,_,_,True)          -> telegramSimple
+    (True,_,_,_,True,_)       -> telegramLoop Megaparsec
+    (_,True,_,_,True,_)       -> telegramLoop AlexHappy
+    (False,False,_,_,True,_)  -> telegramLoop Internal
+    (True,_,_,False,_,_)      -> webLoop (portCheck p) Megaparsec
+    (_,True,_,False,_,_)      -> webLoop (portCheck p) AlexHappy
+    (False,False,_,False,_,_) -> webLoop (portCheck p) Internal
+    (True,_,_,True,_,_)       -> evalLoop Megaparsec
+    (_,True,_,True,_,_)       -> evalLoop AlexHappy
+    (False,False,_,True,_,_)  -> evalLoop Internal
   where opts = info (helper <*> options)
           ( fullDesc
             <> progDesc "Reads a character string and prints the result of calculation"
