@@ -1,0 +1,12 @@
+dependencies:
+  cache_directories:
+    - "~/.cabal"
+  pre:
+    - sudo add-apt-repository ppa:hvr/ghc
+    - sudo apt-get update && sudo apt-get install cabal-install ghc-8.4.3 -y
+  override:
+    - cabal new-build all
+    
+test:
+  override:
+    - cabal new-test
