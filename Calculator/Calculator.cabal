@@ -62,4 +62,4 @@ executable Calculator
                       , Calculator.MegaParser
                       , Calculator.Tests
                       , Calculator.Css
-  ghc-options:         -O2 -Wall -Werror
+  ghc-options:         -O2 -Wall -Werror -fno-warn-unused-matches
