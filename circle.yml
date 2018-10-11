@@ -4,6 +4,7 @@ dependencies:
   pre:
     - sudo add-apt-repository ppa:hvr/ghc -y
     - sudo apt-get update && sudo apt-get install cabal-install-2.4 ghc-8.4.3 -y
+    - cabal update
   override:
     - cabal new-build all
     
