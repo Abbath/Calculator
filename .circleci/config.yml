@@ -55,6 +55,7 @@ jobs:
     - run: cabal update
     - run: cabal --version
     - run: cabal install cabal-install
+    - run: ~/.cabal/bin/cabal update
     # This is based on your 1.0 configuration file or project settings
     - run: ~/.cabal/bin/cabal new-build Calculator
     # Save dependency cache
