@@ -52,7 +52,6 @@ import           Web.Telegram.API.Bot
 
 import qualified Telegram.Bot.API                 as Telegram
 import           Telegram.Bot.Simple
-import           Telegram.Bot.Simple.Debug
 import           Telegram.Bot.Simple.UpdateParser
 
 data Model = Model { getMaps :: Maps }
@@ -93,7 +92,7 @@ handleAction (Reply msg) model = model2 <# do
 run :: Telegram.Token -> IO ()
 run token = do
   env <- Telegram.defaultTelegramClientEnv token
-  startBot_ (traceBotDefault bot) env
+  startBot_ (conversationBot Telegram.updateChatId bot) env
 
 -- | Run bot using 'Telegram.Token' from @TELEGRAM_BOT_TOKEN@ environment.
 telegramSimple :: IO ()

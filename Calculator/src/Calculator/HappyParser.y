@@ -11,12 +11,12 @@ import Calculator.Types (Token(..), Expr(..), Assoc(..))
 %token 
     num { TNumber $$}
     var { TIdent $$ }
+    '-' { TOp "-" }
     op { TOp $$}
     '(' { TLPar }
     ')' { TRPar }
     ',' { TComma }
     '=' { TEqual }
-    '-' { TOp "-" }
     let { TLet }
     fun { TFun }
     fop { TEnd }
@@ -32,6 +32,7 @@ All:
 
 Exprs:
     Expr {$1}
+    | Expr '-' Exprs {OpCall "-" $1 $3}
     | Expr op Exprs {OpCall $2 $1 $3}
 
 Expr:
