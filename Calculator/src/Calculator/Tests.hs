@@ -10,6 +10,7 @@ import           Control.Monad.Reader
 import           Data.Map.Strict       (Map)
 import qualified Data.Map.Strict       as M
 import qualified Text.Megaparsec       as MP
+import           Control.Arrow         ((***))
 
 data Backend = Internal | Mega deriving Show
 
@@ -25,7 +26,7 @@ opMap = M.fromList [("=", f 0 R)
 
 getPrA :: OpMap -> Map String (Int, Assoc)
 getPrA om = let lst = M.toList om
-                ps = M.fromList $ map (\(s,(pa,_)) -> (s,pa)) lst
+                ps = M.fromList $ map (id *** fst ) lst
             in ps
 
 loop :: Tests -> Maps -> Backend -> IO ()
@@ -47,7 +48,7 @@ loop (x:xs) maps bk = do
         then "Passed: " ++ sample
         else "Failed: " ++ sample ++ " expected: " ++ show x ++ " received: " ++ show t
       loop xs (case t of
-        Right (r,m)  -> (m & _1 %~ M.insert "_" r)
+        Right (r,m)  -> m & _1 %~ M.insert "_" r
         Left (_,m) -> m) bk
     
   else do
