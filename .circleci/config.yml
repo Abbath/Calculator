@@ -54,6 +54,8 @@ jobs:
     - run: sudo apt-get update && sudo apt-get install cabal-install-2.4 ghc-8.4.3 -y
     - run: cabal update
     - run: cabal --version
+    - run: cabal install cabal-install
+    - run: cabal --version
     # This is based on your 1.0 configuration file or project settings
     - run: cabal new-build Calculator
     # Save dependency cache
