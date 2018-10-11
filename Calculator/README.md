@@ -32,6 +32,7 @@ Features
 * Outer variables' values are captured inside user defined functions
 * A signature of the user defined function consists of a name and arity
 * Megaparsec backend is available by running with `-m` or `--megaparsec-backend` command line flag
+* AlexHappy backend is available by running with `-x` or `--alex-happy-backend` command line flag
 * Web interface can be used by running with `-w` of `--web` command line flag. Web interface is available on 3000 port
 * Comments are supported under Megaparsec backend with syntax `#end comment` and `{inner comment}`
 * With Megaparsec backend you shall not define operator that starts with the same symbols as the operator with higher priority
@@ -44,4 +45,5 @@ Features
 Bugs & Todo
 --
 * Megaparsec backend has poor support of user defined operators
+* AlexHappy backend has poor support in general
 * Improve the derivatives calculation

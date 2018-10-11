@@ -13,7 +13,7 @@ import qualified Text.Megaparsec       as MP
 
 data Backend = Internal | Mega deriving Show
 
-type Tests = [(String, Rational)]
+type Tests = [(String, Either String Rational)]
 
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
@@ -41,16 +41,15 @@ loop (x:xs) maps bk = do
     let t = case e of
               Left err -> Left (err, maps)
               Right r  -> eval maps r
-    case t of
-      Right (r,m) -> do
-        putStrLn $ if r == snd x
+    let tt = either (Left . fst) (Right . fst) t          
+    do
+      putStrLn $ if tt == snd x
         then "Passed: " ++ sample
-        else "Failed: " ++ sample ++ " expected: " ++ show (snd x) ++ " received: " ++ show t
-        loop xs (m & _1 %~ M.insert "_" r) bk
-      Left (err,_) -> do
-        putStrLn err
-        print maps
-        loop xs maps bk
+        else "Failed: " ++ sample ++ " expected: " ++ show x ++ " received: " ++ show t
+      loop xs (case t of
+        Right (r,m)  -> (m & _1 %~ M.insert "_" r)
+        Left (_,m) -> m) bk
+    
   else do
     putStrLn "Empty!"
     loop xs maps bk
@@ -61,33 +60,33 @@ errorToEither (Right r)  = Right r
 
 tests :: Tests
 tests = [
-   ("_", 0)
-  ,("1", 1)
-  ,("_", 1)
-  ,("-1", -1)
-  ,("2+2", 4)
-  ,("2-2-2-2", -4)
-  ,("1024/2/2/2", 128)
-  ,("f(x) = x", 0)
-  ,("f(g,x) = g(x)", 1)
-  ,("f(sin,pi)", 0)
-  ,("p(x,y) = x - y", 2)
-  ,("p(2,2)", 0)
-  ,("&(1,0) = x - y", 13)
-  ,("2&2&2&2", -4)
-  ,("2&2-2&2", 0)
-  ,("&(2,0) = x - y", 14)
-  ,("2&2-2&2", -4)
-  ,("2^3^4", 2417851639229258349412352)
-  ,("2+2*2", 6)
-  ,("-((1))", -1)
-  ,("-1^2", 1)
-  ,("(2+2)*2", 8)
-  ,("x = 5",5)
-  ,("abs(-x)==x", 1)
-  ,("1!=2", 1)
-  ,("sin(pi)==0", 1)
-  ,("/= = !=", 14)
+   ("_", Right 0)
+  ,("1", Right 1)
+  ,("_", Right 1)
+  ,("-1", Right (-1))
+  ,("2+2", Right 4)
+  ,("2-2-2-2", Right (-4))
+  ,("1024/2/2/2", Right 128)
+  ,("f(x) = x", Left "Function f/1")
+  ,("f(g,x) = g(x)", Left "Function f/2")
+  ,("f(sin,pi)", Right 0)
+  ,("p(x,y) = x - y", Left "Function p/2")
+  ,("p(2,2)", Right 0)
+  ,("&(1,0) = x - y", Left "Operator & p=1 a=left")
+  ,("2&2&2&2", Right (-4))
+  ,("2&2-2&2", Right 0)
+  ,("&(2,0) = x - y", Left "Operator & p=2 a=left")
+  ,("2&2-2&2", Right (-4))
+  ,("2^3^4", Right 2417851639229258349412352)
+  ,("2+2*2", Right 6)
+  ,("-((1))", Right (-1))
+  ,("-1^2", Right 1)
+  ,("(2+2)*2", Right 8)
+  ,("x = 5",Left "Constant x=5")
+  ,("abs(-x)==x", Right 1)
+  ,("1!=2", Right 1)
+  ,("sin(pi)==0", Right 1)
+  ,("/= = !=", Left "Operator alias /= = !=")
   ]
 
 defVar :: VarMap

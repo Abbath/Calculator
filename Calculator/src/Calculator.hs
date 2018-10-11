@@ -123,7 +123,7 @@ opMap = M.fromList [("=", f 0 R)
 
 getPrA :: OpMap -> Map String (Int, Assoc)
 getPrA om = let lst = M.toList om
-                ps = M.fromList $ map (\(s,(pa,_)) -> (s,pa)) lst
+                ps = M.fromList $ map (Prelude.id *** fst) lst
             in ps
 
 getNames :: [String]
@@ -180,17 +180,6 @@ updateIDS i = do
        then BS.writeFile "ids" $ BS.pack $ show $ map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
        else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
 
-bannedIPs :: [String]
-bannedIPs = ["117.136.234.6", "117.135.250.134"]
-
-theseFaggots :: Show a => a -> Bool
-theseFaggots sa = let ss = show sa
-                      (s1,rest) = break (=='.') ss
-                      s2 = takeWhile (/='.') $ tail rest
-                      n1 = read s1 :: Int
-                      n2 = read s2 :: Int
-                  in n1 == 117 && n2 >= 128 && n2 < 192
-
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = scotty port $ do
   middleware $ staticPolicy (noDots >-> addBase "Static/images") -- for future
@@ -198,17 +187,15 @@ webLoop port mode = scotty port $ do
     req <- request
     let sa = remoteHost req
     liftIO $ print sa
-    if takeWhile (/=':') (show sa) `elem` bannedIPs || theseFaggots sa
-      then status $ Status 500 "Nope!"
-      else do
-        let x = liftIO (randomIO :: IO Integer)
-        y <- x
-        f <- liftIO $ findFile ["."] ("log" ++ show y ++ ".dat")
-        if isJust f
-          then redirect "/"
-          else do
-            liftIO $ updateIDS (abs y)
-            redirect $ T.append "/" $ T.pack (show $ abs y)
+    do
+      let x = liftIO (randomIO :: IO Integer)
+      y <- x
+      f <- liftIO $ findFile ["."] ("log" ++ show y ++ ".dat")
+      if isJust f
+        then redirect "/"
+        else do
+          liftIO $ updateIDS (abs y)
+          redirect $ T.append "/" $ T.pack (show $ abs y)
   get "/webhook" $ do
     vt <- param "hub.verify_token"
     c <- param "hub.challenge"
