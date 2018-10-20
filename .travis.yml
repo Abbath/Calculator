@@ -70,7 +70,7 @@ install:
 script:
   - |
     if [ -z "$STACK_YAML" ]; then
-      cabal exec Calculator -- -t
+      cabal new-run Calculator -- -t
     else
       stack exec Calculator -- -t
     fi
