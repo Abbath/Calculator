@@ -29,7 +29,7 @@ import           Calculator.Types              (Assoc (..), Expr (..),
                                                 ListTuple, preprocess,
                                                 showRational)
 import           Clay                          (render)
-import           Control.Arrow                 (left, first, (***))
+import           Control.Arrow                 (left, first, (***), second)
 import           Control.Lens                  ((%~), (&), (.~), (^.), (^?), _1,
                                                 _3)
 import           Control.Monad.Reader
@@ -54,8 +54,7 @@ import qualified Telegram.Bot.API                 as Telegram
 import           Telegram.Bot.Simple
 import           Telegram.Bot.Simple.UpdateParser
 
-data Model = Model { getMaps :: Maps }
-  deriving (Show)
+newtype Model = Model {getMaps :: Maps}
 
 -- | Actions bot can perform.
 data Action
@@ -123,7 +122,7 @@ opMap = M.fromList [("=", f 0 R)
 
 getPrA :: OpMap -> Map String (Int, Assoc)
 getPrA om = let lst = M.toList om
-                ps = M.fromList $ map (Prelude.id *** fst) lst
+                ps = M.fromList $ map (second fst) lst
             in ps
 
 getNames :: [String]
@@ -149,8 +148,7 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
     case input of
       Nothing -> return ()
       Just "quit" -> return ()
-      Just x -> do
-        case parseEval md ms x of
+      Just x -> case parseEval md ms x of
           Left (err,m) -> do
             liftIO $ putStrLn err
             loop' md m

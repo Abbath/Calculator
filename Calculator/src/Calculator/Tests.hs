@@ -10,7 +10,7 @@ import           Control.Monad.Reader
 import           Data.Map.Strict       (Map)
 import qualified Data.Map.Strict       as M
 import qualified Text.Megaparsec       as MP
-import           Control.Arrow         ((***))
+import           Control.Arrow         (second)
 
 data Backend = Internal | Mega deriving Show
 
@@ -26,7 +26,7 @@ opMap = M.fromList [("=", f 0 R)
 
 getPrA :: OpMap -> Map String (Int, Assoc)
 getPrA om = let lst = M.toList om
-                ps = M.fromList $ map (id *** fst ) lst
+                ps = M.fromList $ map (second fst ) lst
             in ps
 
 loop :: Tests -> Maps -> Backend -> IO ()

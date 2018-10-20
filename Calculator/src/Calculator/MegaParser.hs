@@ -10,6 +10,8 @@ import qualified Data.Map.Strict      as M
 import           Data.Scientific
 import           Text.Megaparsec
 import           Control.Monad.Combinators.Expr
+import           Data.Functor (($>))
+
 
 parser :: PReader Expr
 parser = sc *> expr <* eof
@@ -52,8 +54,7 @@ udfExpr = do
   name <- identifier
   args <- parens $ sepBy1 identifier comma
   void eq
-  e    <- expr2
-  return $ UDF name args e
+  UDF name args <$> expr2 
 
 udoExpr :: PReader Expr
 udoExpr = do
@@ -78,8 +79,7 @@ assignExpr :: PReader Expr
 assignExpr = do
   name <- identifier
   void eq
-  e <- expr2
-  return $ Asgn name e
+  Asgn name <$> expr2
 
 funcallExpr :: PReader Expr
 funcallExpr = do
@@ -94,7 +94,7 @@ opcallExpr = do
 
 operators :: [[Operator PReader Expr]]
 operators =
-  [[Prefix (try (symbol "-") *> pure UMinus)]
+  [[Prefix (try (symbol "-") $> UMinus)]
   ,[sop InfixR "^"]
   ,[sop InfixL "*", sop InfixL "/" {-((symbol "/" <* notFollowedBy (symbol "=")) *> pure (OpCall "/"))-}]
   ,[sop InfixL "+", sop InfixL "-"]
@@ -102,11 +102,11 @@ operators =
   , sop InfixL "<", sop InfixL ">"
   , sop InfixL "==", sop InfixL "!="]
   ]
-  where sop i s = i (try (exactOper s ) *> pure (OpCall s))
+  where sop i s = i (try (exactOper s ) $> OpCall s)
 
 genOp :: String -> (Int, Assoc) -> Operator PReader Expr
-genOp s (_,L) = InfixL (try (symbol s) *> pure (OpCall s))
-genOp s (_,R) = InfixR (try (symbol s) *> pure (OpCall s))
+genOp s (_,L) = InfixL (try (symbol s) $> OpCall s)
+genOp s (_,R) = InfixR (try (symbol s) $> OpCall s)
 
 insertOps :: [[Operator PReader Expr]] -> Map String (Int, Assoc) -> [[Operator PReader Expr]]
 insertOps [[]] _ =  [[]]

@@ -8,7 +8,7 @@ import           Data.List        (foldl')
 import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict  as M
 import           Data.Ratio
-import           Control.Arrow    ((***))
+import           Control.Arrow    (second)
 
 type FunMap = Map (String, Int) ([String], Expr)
 type VarMap = Map String Rational
@@ -101,7 +101,7 @@ pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
 
 getPriorities :: OpMap -> Map String Int
 getPriorities om = let lst = M.toList om
-                       ps = M.fromList $ map (id *** (fst . fst)) lst
+                       ps = M.fromList $ map (second (fst . fst)) lst
                    in ps
 
 eval :: Maps -> Expr -> Either (String, Maps) (Rational, Maps)

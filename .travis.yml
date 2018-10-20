@@ -36,15 +36,7 @@ matrix:
         - cabal-install-head
 
   - ghc: 8.4.4
-    env: GHCVER='8.4.4' STACK_YAML="$TRAVIS_BUILD_DIR/stack.yaml"
-    os: linux
-    addons:
-      apt:
-        packages:
-        - libgmp-dev
-
-  - ghc: 8.6.1
-    env: GHCVER='8.6.1' STACK_YAML="$TRAVIS_BUILD_DIR/stack-$GHCVER.yaml"
+    env: GHCVER='8.4.4' STACK_YAML="$TRAVIS_BUILD_DIR/Calculator/stack.yaml"
     os: linux
     addons:
       apt:
