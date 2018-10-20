@@ -9,6 +9,7 @@ cache:
   - "$HOME/.cabal"
   - "$HOME/.stack"
   - "$TRAVIS_BUILD_DIR/.stack-work"
+  - "$TRAVIS_BUILD_DIR/Calculator/.stack-work"
 
 matrix:
   include:
