@@ -11,6 +11,7 @@ import           Data.Map.Strict       (Map)
 import qualified Data.Map.Strict       as M
 import qualified Text.Megaparsec       as MP
 import           Control.Arrow         (second)
+import           System.Exit           (exitWith, ExitCode (ExitFailure), exitSuccess)
 
 data Backend = Internal | Mega deriving Show
 
@@ -29,9 +30,9 @@ getPrA om = let lst = M.toList om
                 ps = M.fromList $ map (second fst ) lst
             in ps
 
-loop :: Tests -> Maps -> Backend -> IO ()
-loop [] _ _ = return ()
-loop (x:xs) maps bk = do
+loop :: Tests -> Maps -> Backend -> Int -> IO Int
+loop [] _ _ n = return n
+loop (x:xs) maps bk n = do
   let sample = fst x
   if not $ null sample
   then do
@@ -44,16 +45,20 @@ loop (x:xs) maps bk = do
               Right r  -> eval maps r
     let tt = either (Left . fst) (Right . fst) t          
     do
-      putStrLn $ if tt == snd x
-        then "Passed: " ++ sample
-        else "Failed: " ++ sample ++ " expected: " ++ show x ++ " received: " ++ show t
+      new_n <- if tt == snd x
+        then do
+          putStrLn $ "Passed: " ++ sample
+          return 0
+        else do
+          putStrLn $ "Failed: " ++ sample ++ " expected: " ++ show x ++ " received: " ++ show t
+          return 1
       loop xs (case t of
         Right (r,m)  -> m & _1 %~ M.insert "_" r
-        Left (_,m) -> m) bk
+        Left (_,m) -> m) bk (n + new_n)
     
   else do
     putStrLn "Empty!"
-    loop xs maps bk
+    loop xs maps bk n
 
 errorToEither :: Show a => Either a b -> Either String b
 errorToEither (Left err) = Left (show err)
@@ -95,5 +100,9 @@ defVar = M.fromList [("pi", toRational (pi :: Double)), ("e", toRational . exp $
 
 testLoop :: IO ()
 testLoop = do
-  loop tests (defVar, M.empty, opMap) Internal
-  loop tests (defVar, M.empty, opMap) Mega
+  n1 <- loop tests (defVar, M.empty, opMap) Internal 0
+  n2 <- loop tests (defVar, M.empty, opMap) Mega 0
+  let n = n1 + n2
+  if n == 0
+    then exitSuccess
+    else exitWith $ ExitFailure n
