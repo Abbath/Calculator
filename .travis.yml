@@ -14,7 +14,7 @@ matrix:
   include:
   
   - ghc: 8.4.4
-    env: GHCVER='8.4.3' CABALVER='head'
+    env: GHCVER='8.4.4' CABALVER='head'
     os: linux
     addons:
       apt:
@@ -36,7 +36,7 @@ matrix:
         - cabal-install-head
 
   - ghc: 8.4.4
-    env: GHCVER='8.4.3' STACK_YAML="$TRAVIS_BUILD_DIR/stack.yaml"
+    env: GHCVER='8.4.4' STACK_YAML="$TRAVIS_BUILD_DIR/stack.yaml"
     os: linux
     addons:
       apt:
