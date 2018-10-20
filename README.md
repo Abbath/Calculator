@@ -1,4 +1,5 @@
 # Calculator
+[![Build Status](https://travis-ci.org/Abbath/Calculator.svg?branch=master)](https://travis-ci.org/Abbath/Calculator)
 [![CircleCI](https://circleci.com/gh/Abbath/Calculator.svg?style=shield)](https://circleci.com/gh/Abbath/Calculator)
 [![Code Climate](https://codeclimate.com/github/Abbath/Calculator/badges/gpa.svg)](https://codeclimate.com/github/Abbath/Calculator)
 
