@@ -5,6 +5,7 @@ import           Calculator
 import           Calculator.Tests
 import           Options.Applicative
 import           Data.Semigroup ((<>))
+import           Control.Monad
 
 data Options = Options {
       mp   :: Bool,

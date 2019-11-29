@@ -39,7 +39,8 @@ import           Servant.Client
 import qualified Servant.Client.Core                   as Core
 import           Servant.Client.Internal.HttpClient    (catchConnectionError,
                                                         clientResponseToResponse,
-                                                        requestToClientRequest)
+                                                        requestToClientRequest, mkFailureResponse)
+import Control.Exception                                                  
 
 -- | A type that can be converted to a multipart/form-data value.
 class ToMultipartFormData a where
@@ -75,21 +76,21 @@ performRequest' requestToClientRequest' reqMethod req = do
   eResponse <- liftIO $ catchConnectionError $ Client.httpLbs request m
   case eResponse of
     Left err ->
-      throwError . ConnectionError $ pack $ show err
+      throwError . ConnectionError $ toException err
 
     Right response -> do
       let status = Client.responseStatus response
           body = Client.responseBody response
           hdrs = Client.responseHeaders response
           status_code = statusCode status
-          coreResponse = clientResponseToResponse response
+          coreResponse = clientResponseToResponse id response
       ct <- case lookup "Content-Type" $ Client.responseHeaders response of
                  Nothing -> pure $ "application"//"octet-stream"
                  Just t -> case parseAccept t of
                    Nothing -> throwError $ InvalidContentTypeHeader coreResponse
                    Just t' -> pure t'
       unless (status_code >= 200 && status_code < 300) $
-        throwError $ FailureResponse coreResponse
+        throwError $ mkFailureResponse reqHost req coreResponse
       return (status_code, body, ct, hdrs, response)
 
 -- copied `performRequestCT` from servant-0.11, then modified so it takes a variant of `requestToClientRequest`
@@ -102,7 +103,7 @@ performRequestCT' requestToClientRequest' ct reqMethod req = do
   let acceptCTS = contentTypes ct
   (_status, respBody, respCT, hdrs, _response) <-
     performRequest' requestToClientRequest' reqMethod (req { Core.requestAccept = Sequence.fromList $ NonEmpty.toList acceptCTS })
-  let coreResponse = clientResponseToResponse _response
+  let coreResponse = clientResponseToResponse id _response
   unless (any (matches respCT) acceptCTS) $ throwError $ UnsupportedContentType respCT coreResponse
   case mimeUnrender ct respBody of
     Left err -> throwError $ DecodeFailure (pack err) coreResponse
