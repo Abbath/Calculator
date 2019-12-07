@@ -32,7 +32,9 @@ main = do
   Options m x t c g s p <- execParser opts
   case (m,x,t,c,g,s) of
     (_,_,True,_,_,_)          -> testLoop
-    (_,_,_,_,_,True)          -> telegramSimple
+    (True,_,_,_,_,True)       -> telegramSimple Megaparsec
+    (_,True,_,_,_,True)       -> telegramSimple AlexHappy
+    (False,False,_,_,_,True)  -> telegramSimple Internal
     (True,_,_,_,True,_)       -> telegramLoop Megaparsec
     (_,True,_,_,True,_)       -> telegramLoop AlexHappy
     (False,False,_,_,True,_)  -> telegramLoop Internal

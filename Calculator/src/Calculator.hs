@@ -65,11 +65,11 @@ data Action
   deriving (Show)
 
 -- | Bot application.
-bot :: BotApp Model Action
-bot = BotApp
+bot :: Mode -> BotApp Model Action
+bot mode = BotApp
   { botInitialModel = Model (defVar, M.empty, opMap)
   , botAction = flip handleUpdate
-  , botHandler = handleAction
+  , botHandler = handleAction mode
   , botJobs = []
   }
 
@@ -79,25 +79,25 @@ handleUpdate :: Model -> Telegram.Update -> Maybe Action
 handleUpdate _ = parseUpdate (Reply <$> Telegram.Bot.Simple.UpdateParser.text)
 
 -- | How to handle 'Action's.
-handleAction :: Action -> Model -> Eff Action Model
-handleAction NoAction model = pure model
-handleAction (Reply msg) model = model2 <# do
+handleAction :: Mode -> Action -> Model -> Eff Action Model
+handleAction _ NoAction model = pure model
+handleAction mode (Reply msg) model = model2 <# do
   replyText response
   pure NoAction
   where (response, model2) = (TS.pack *** Model) $ either 
           Prelude.id 
           (first showRational) 
-          (parseEval Internal (getMaps model) (TS.unpack msg)) 
+          (parseEval mode (getMaps model) (TS.unpack msg)) 
 
 -- | Run bot with a given 'Telegram.Token'.
-run :: Telegram.Token -> IO ()
-run token = do
+run :: Mode -> Telegram.Token -> IO ()
+run mode token = do
   env <- Telegram.defaultTelegramClientEnv token
-  startBot_ (conversationBot Telegram.updateChatId bot) env
+  startBot_ (conversationBot Telegram.updateChatId (bot mode)) env
 
 -- | Run bot using 'Telegram.Token' from @TELEGRAM_BOT_TOKEN@ environment.
-telegramSimple :: IO ()
-telegramSimple = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run
+telegramSimple :: Mode -> IO ()
+telegramSimple mode = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run mode
 
 data Mode = Internal | Megaparsec | AlexHappy deriving Show
 

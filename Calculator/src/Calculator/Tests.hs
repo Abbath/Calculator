@@ -102,7 +102,9 @@ defVar = M.fromList [("pi", toRational (pi :: Double)), ("e", toRational . exp $
 
 testLoop :: IO ()
 testLoop = do
+  putStrLn "Internal parser:"
   n1 <- loop tests (defVar, M.empty, opMap) Internal 0
+  putStrLn "\nMega parser:"
   n2 <- loop tests (defVar, M.empty, opMap) Mega 0
   let n = n1 + n2
   if n == 0
