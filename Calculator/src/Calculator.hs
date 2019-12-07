@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TupleSections #-}
 module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap, telegramLoop, telegramSimple) where
 
 import           Network.HTTP.Types.Status
@@ -33,6 +33,8 @@ import           Control.Arrow                 (left, first, (***), second)
 import           Control.Lens                  ((%~), (&), (.~), (^.), (^?), _1,
                                                 _3)
 import           Control.Monad.Reader
+import           Control.Monad.State           
+import           Control.Monad.Except          
 import           Data.Aeson                    (decode, encode)
 import           Data.Aeson.Lens
 import           Data.List                     (isPrefixOf)
@@ -107,10 +109,12 @@ parseString m s ms = case m of
                          tokenize s >>= parse (getPriorities $ ms^._3)
                        AlexHappy -> Right $ preprocess . HP.parse . alexScanTokens $ s
 
-evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
-evalExpr t maps = case t of
-             Left err -> Left (err, maps)
-             Right r  -> eval maps r
+evalExprS :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
+evalExprS t maps = either (Left . (,maps)) (\e -> (\(r, s) -> either (Left . (,s)) (Right . (,s)) r) $ getShit e) t
+  where getShit e = let a = runExceptT (evalS e) in runState a maps
+
+-- evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
+-- evalExpr t maps = either (Left . (,maps)) (eval  maps) t
 
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
@@ -137,7 +141,7 @@ completeName :: Monad m => CompletionFunc m
 completeName = completeWord Nothing " " completionList
 
 parseEval :: Mode -> Maps -> String -> Either (String, Maps) (Rational, Maps)
-parseEval md ms x = evalExpr (parseString md x ms) ms
+parseEval md ms x = evalExprS (parseString md x ms) ms
 
 loop :: Mode -> Maps -> IO ()
 loop mode maps = runInputT (setComplete completeName $ defaultSettings { historyFile = Just "/home/dan/.mycalchist"}) (loop' mode maps)
@@ -181,7 +185,7 @@ updateIDS i = do
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = scotty port $ do
   middleware $ staticPolicy (noDots >-> addBase "Static/images") -- for future
-  get "/" $ do
+  Web.Scotty.get "/" $ do
     req <- request
     let sa = remoteHost req
     liftIO $ print sa
@@ -194,7 +198,7 @@ webLoop port mode = scotty port $ do
         else do
           liftIO $ updateIDS (abs y)
           redirect $ T.append "/" $ T.pack (show $ abs y)
-  get "/webhook" $ do
+  Web.Scotty.get "/webhook" $ do
     vt <- param "hub.verify_token"
     c <- param "hub.challenge"
     if vt == m_token
@@ -212,8 +216,8 @@ webLoop port mode = scotty port $ do
               liftIO $ print r
               return ()) msgs
     status $ Status 200 "Ok"
-  get "/favicon.ico" $ file "./Static/favicon.ico"
-  get "/:id" $ do
+  Web.Scotty.get "/favicon.ico" $ file "./Static/favicon.ico"
+  Web.Scotty.get "/:id" $ do
     iD <- param "id"
     liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
     liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
@@ -244,7 +248,7 @@ webLoop port mode = scotty port $ do
                    Nothing -> error "Cannot decode storage"
         let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
         let t = parseString mode (T.unpack fs) ms
-        let res = evalExpr t ms
+        let res = evalExprS t ms
         let txt = case res of
                     Left (err, m) -> do
                       storeMaps storagename m
@@ -292,14 +296,14 @@ telegramLoop' mode maps manager n = do
           then do
             let sm = drop 6 smm
             let t = parseString mode sm chat_maps
-            let res = evalExpr t chat_maps
+            let res = evalExprS t chat_maps
             case res of
               Left (err,m) -> procRes ch (TS.pack err) m uid
               Right (r, m) -> procRes ch (TS.pack $ showRational r) (m & _1 %~ M.insert "_" r) uid
           else if qi /= "empty"
                 then do
                   let t = parseString mode (TS.unpack qq) (defVar, M.empty, opMap)
-                  let res = evalExpr t (defVar, M.empty, opMap)
+                  let res = evalExprS t (defVar, M.empty, opMap)
                   case res of
                     Left (err, _) -> procQ qi qq (TS.pack err) uid
                     Right (r, _) -> procQ qi qq (TS.pack $ showRational r) uid
