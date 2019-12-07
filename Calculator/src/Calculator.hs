@@ -243,9 +243,10 @@ webLoop port mode = scotty port $ do
         let storagename = "storage" ++ T.unpack iD ++ ".dat"
         rest <- liftIO $ BS.readFile logname
         env <- liftIO $ BS.readFile storagename
-        let ms = case (decode (B.fromStrict env) :: Maybe ListTuple) of
-                   Just r  -> listsToMaps r
-                   Nothing -> error "Cannot decode storage"
+        let ms = maybe 
+                  (error "Cannot decode storage") 
+                  listsToMaps 
+                  (decode (B.fromStrict env) :: Maybe ListTuple)
         let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
         let t = parseString mode (T.unpack fs) ms
         let res = evalExprS t ms
@@ -304,9 +305,7 @@ telegramLoop' mode maps manager n = do
                 then do
                   let t = parseString mode (TS.unpack qq) (defVar, M.empty, opMap)
                   let res = evalExprS t (defVar, M.empty, opMap)
-                  case res of
-                    Left (err, _) -> procQ qi qq (TS.pack err) uid
-                    Right (r, _) -> procQ qi qq (TS.pack $ showRational r) uid
+                  procQ qi qq (TS.pack $ either fst (showRational . fst) res) uid
                 else nextIter (uid+1)
         else nextIter (-1)
     Left err -> do

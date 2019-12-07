@@ -1,3 +1,16 @@
 .stack-work
 TAGS
 dist-newstyle
+.ghc.environment.x86_64-linux-8.4.3
+.ghc.environment.x86_64-linux-8.6.5
+a.txt
+cabal.project.local
+cci-config-generator.sh
+log3124809741043618712.dat
+log3816937395577334565.dat
+storage3124809741043618712.dat
+storage3816937395577334565.dat
+.vscode/settings.json
+Calculator/log5960299462469462690.dat
+Calculator/stack.yaml.lock
+Calculator/storage5960299462469462690.dat

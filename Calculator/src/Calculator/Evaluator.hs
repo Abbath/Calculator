@@ -1,4 +1,4 @@
-module Calculator.Evaluator (eval, evalS, getPriorities, FunMap, VarMap, OpMap, Maps, Result2) where
+module Calculator.Evaluator (evalS, getPriorities, FunMap, VarMap, OpMap, Maps, Result2) where
 
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
                                    preprocess, showRational)
@@ -163,6 +163,11 @@ evalS ex = case ex of
     t1 <- evm e
     throwError $ show (numerator t1) ++ " / " ++ show (denominator t1)
   FunCall f [e1, e2] | M.member f intFuns -> evalInt f e1 e2
+  FunCall name [a]   | M.member name mathFuns -> do
+    let fun = mathFuns M.! name
+    n <- evm a
+    return $ toRational . (\x -> if abs x <= sin pi then 0 else x) . fun . fromRational $ n
+  FunCall n [a,b] | M.member n compFuns -> cmp n a b compFuns
   FunCall "if" [a,b,c] -> do
     cond <- evm a
     if cond /= 0
@@ -251,166 +256,6 @@ evalS ex = case ex of
          then throwError "Too much!"
          else return (f t1 t2)
     procListElem m fun n = evalState (runExceptT (evm (FunCall fun [Number n]))) m
-
-eval :: Maps -> Expr -> Either (String, Maps) (Rational, Maps)
-eval maps ex = case ex of
-  Asgn s _ | s `elem` ["pi","e","_"] -> msgmap maps $ "Cannot change a constant value: " ++ s
-  Asgn s e                           -> do
-    (r,_) <- evm e
-    Left ("Constant " ++ s ++ "=" ++ showRational r, maps & _1 %~ M.insert s r)
-  UDF n [s] (FunCall "df" [e, Id x]) | s == x -> do
-    let de = derivative e (Id x)
-    case de of
-      Left err -> Left . mps $ err
-      Right r  -> evm (UDF n [s] r)
-  UDF n s e                          -> do
-    let newe = localize s e >>= catchVar (maps^._1, maps ^._2)
-    case newe of
-      Left err -> Left . mps $ err
-      Right r -> do
-        let newmap = M.insert (n, length s) (map ('@':) s, r) $ maps^._2
-        Left ("Function " ++ n ++ "/" ++ show (length s), maps & _2 .~ newmap)
-  UDO n (-1) _ e@(OpCall op _ _) ->
-    case M.lookup op (maps^._3) of
-      Just ((p, a), _) -> do
-        let newmap = M.insert n ((p, a), e) (maps^._3)
-        Left ("Operator alias " ++ n ++ " = " ++ op, maps & _3 .~ newmap)
-      Nothing -> Left . mps $ "No such operator: " ++ op
-  UDO n p a e
-    | M.member n mathOps || M.member n compOps || n == "=" -> Left . mps $ "Can not redefine the embedded operator: " ++ n
-    | p < 1 || p > 4 ->  Left . mps $ "Bad priority: " ++ show p
-    |otherwise -> do
-        let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
-        case t of
-          Left err -> Left . mps $ err
-          Right r -> do
-            let newmap = M.insert n ((p, a), r) (maps^._3)
-            Left ("Operator " ++ n ++ " p=" ++ show p ++ " a=" ++ (if a == L then "left" else "right"), maps & _3 .~ newmap)
-  FunCall "df" [a,x] -> do
-      let e = derivative a x
-      case e of
-        Left err -> Left . mps $ err
-        Right r  ->  Left . mps . exprToString . preprocess $ r
-  FunCall "int" [Id fun, a, b, s] -> do
-      (a1,_) <- evm a
-      (b1,_) <- evm b
-      (s1,_) <- evm s
-      let list = [a1,a1+s1..b1-s1]
-      return (foldl' (\acc (next,_) -> acc + s1 * next) 0
-              . rights
-              . map (\n -> procListElem fun (n+1/2*s1))
-              $ list, maps)
-  FunCall "atan" [OpCall "/" e1 e2] -> do
-    (t1,_) <- evm e1
-    (t2,_) <- evm e2
-    return (toRational $ atan2 (fromRational t1 :: Double) (fromRational t2 :: Double), maps)
-  FunCall "prat" [e] -> do
-    (t1,_) <- evm e
-    Left . mps $ show (numerator t1) ++ " / " ++ show (denominator t1)
-  FunCall f [e1, e2] | M.member f intFuns -> evalInt f e1 e2
-  FunCall name [a]   | M.member name mathFuns -> do
-    let fun = mathFuns M.! name
-    (n,_) <- evm a
-    return $ mps $ toRational . (\x -> if abs x <= sin pi then 0 else x) . fun . fromRational $ n
-  FunCall n [a,b] | M.member n compFuns -> cmp n a b compFuns
-  FunCall "if" [a,b,c] -> do
-    (cond,_) <- evm a
-    if cond /= 0
-    then evm b
-    else evm c
-  FunCall name e ->
-    case (M.lookup (name, length e) (maps^._2) :: Maybe ([String],Expr)) of
-      Just (al, expr) -> do
-        let expr1 = substitute (al, e) expr
-        case expr1 of
-          Right r -> do
-            (a,_) <- evm r
-            return $ mps a
-          Left err -> Left . mps $ err
-      Nothing -> case name of
-        ('@':r) -> Left . mps $ "Expression instead of a function name: " ++ r ++ "/" ++ show (length e)
-        _ -> Left . mps $ "No such function: " ++ name ++ "/" ++ show (length e)
-  Id s     -> mte ("No such variable: " ++ s) $ mps (M.lookup s (maps^._1) :: Maybe Rational)
-  Number x -> return $ mps x
-  OpCall op1 x s@(OpCall op2 y z) -> do
-    let pr = getPriorities (maps^._3)
-    let a = M.lookup op1 pr
-    let b = M.lookup op2 pr
-    if a == b
-    then case a of
-      Nothing -> Left . mps $ "No such operators: " ++ op1 ++ " " ++ op2
-      Just _ -> do
-        let ((_, asc1), _) = (maps^._3) M.! op1
-        let ((_, asc2), _) = (maps^._3) M.! op2
-        case (asc1, asc2) of
-          (L, L) -> evm $ OpCall op2 (OpCall op1 x y) z
-          (R, R) -> do
-            (tmp,_) <- evm s
-            evm $ OpCall op1 x (Number tmp)
-          _ -> Left . mps $ "Operators with a different associativity: " ++ op1 ++ " and " ++ op2
-    else do
-      (tmp,_) <- evm s
-      evm $ OpCall op1 x (Number tmp)
-  oc@(OpCall "/" x y) -> do
-    (n,_) <- evm y
-    (n1,_) <- evm x
-    if n == 0 then Left . mps $ "Division by zero: " ++ exprToString oc else return $ mps (n1 / n)
-  oc@(OpCall "%" x y) -> do
-    (n,_) <- evm y
-    (n1,_) <- evm x
-    if n == 0
-    then Left . mps $ "Division by zero: " ++ exprToString oc
-    else return $ mps (fromInteger $ mod (floor n1) (floor n))
-  OpCall op x y | M.member op compOps -> cmp op x y compOps
-  OpCall op x y | M.member op mathOps -> eval' ( mathOps M.! op) op x y
-  OpCall op x y  ->
-    case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc),Expr)) of
-      Just (_, expr) -> do
-        let expr1 = substitute (["@x", "@y"], [x,y]) expr
-        case expr1 of
-         Right e -> do
-           (a,_) <- evm e
-           return $ mps a
-         Left err -> Left . mps $ err
-      Nothing -> case op of
-        ('@':r) -> Left . mps $ "Expression instead of a function name: " ++ r ++ "/2"
-        _ -> Left . mps $ "No such operator: " ++ op ++ "/2"
-  UMinus (OpCall "^" x y) -> evm $ OpCall "^" (UMinus x) y
-  UMinus x         -> do {(n,_) <- evm x; return $ mps (-n)}
-  Par e            -> evm e
-  where
-    mte _ (Just x, m)  = Right (x, m)
-    mte s (Nothing, _) = Left . mps $ s
-    evm x = do
-      (r,m) <- eval maps x
-      if r > tooBig
-         then Left . mps $ "Too much!"
-         else return (r,m)
-    mps x = (x, maps)
-    cmp op x y mp = do
-      let fun = mp M.! op
-      (n,_) <- evm x
-      (n1,_) <- evm y
-      return $ if fun n n1
-        then mps 1
-        else mps 0
-    eval' :: (Rational -> Rational -> Rational) -> String -> Expr -> Expr -> Either (String, Maps) (Rational, Maps)
-    eval' f op x y = do
-      (t1,_) <- evm x
-      (t2,_) <- evm y
-      if ( op == "^" && logBase 10 (fromRational t1 :: Double) * (fromRational t2 :: Double) > 2408240) ||
-         f t1 t2 > tooBig
-         then Left . mps $ "Too much!"
-         else return (f t1 t2, maps)
-    evalInt f x y = do
-      (t1,_) <- evm x
-      (t2,_) <- evm y
-      if denominator t1 == 1 && denominator t2 == 1
-         then return $ mps (toRational $ (intFuns M.! f) (numerator t1) (numerator t2))
-         else Left $ mps "Cannot use integral function on real numbers!"
-    msgmap m s = Left (s, m)
-    tooBig = 2^(8000000 :: Integer) :: Rational
-    procListElem fun n = evm (FunCall fun [Number n])
 
 derivative :: Expr -> Expr -> Either String Expr
 derivative e x = case e of

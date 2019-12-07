@@ -7,6 +7,8 @@ import           Calculator.Parser
 import           Calculator.Types      (Assoc (..), Expr (..))
 import           Control.Lens          ((%~), (&), (^.), _1, _3)
 import           Control.Monad.Reader
+import           Control.Monad.State
+import           Control.Monad.Except
 import           Data.Map.Strict       (Map)
 import qualified Data.Map.Strict       as M
 import qualified Text.Megaparsec       as MP
@@ -41,9 +43,9 @@ loop (x:xs) maps bk n = do
               Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sample++"\n"))
     --print e
     let t = case e of
-              Left err -> Left (err, maps)
-              Right r  -> eval maps r
-    let tt = either (Left . fst) (Right . fst) t          
+              Left err -> (Left err, maps)
+              Right r  -> runState (runExceptT (evalS r)) maps 
+    let tt = either Left Right (fst t)          
     do
       new_n <- if tt == snd x
         then do
@@ -53,8 +55,8 @@ loop (x:xs) maps bk n = do
           putStrLn $ "Failed: " ++ sample ++ " expected: " ++ show x ++ " received: " ++ show t
           return 1
       loop xs (case t of
-        Right (r,m)  -> m & _1 %~ M.insert "_" r
-        Left (_,m) -> m) bk (n + new_n)
+        (Right r,m)  -> m & _1 %~ M.insert "_" r
+        (Left _,m) -> m) bk (n + new_n)
     
   else do
     putStrLn "Empty!"
