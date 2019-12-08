@@ -1,82 +1,226 @@
-# This configuration was automatically generated from a CircleCI 1.0 config.
-# It should include any build commands you had along with commands that CircleCI
-# inferred from your project structure. We strongly recommend you read all the
-# comments in this file to understand the structure of CircleCI 2.0, as the idiom
-# for configuration has changed substantially in 2.0 to allow arbitrary jobs rather
-# than the prescribed lifecycle of 1.0. In general, we recommend using this generated
-# configuration as a reference rather than using it in production, though in most
-# cases it should duplicate the execution of your original 1.0 config.
+# packcheck-0.4.2
+# You can use any of the options supported by packcheck as environment
+# variables here.  See https://github.com/composewell/packcheck for all
+# options and their explanation.
+
 version: 2
-jobs:
-  build:
-    working_directory: ~/Abbath/Calculator
-    parallelism: 4
-    shell: /bin/bash --login
-    # CircleCI 2.0 does not support environment variables that refer to each other the same way as 1.0 did.
-    # If any of these refer to each other, rewrite them so that they don't or see https://circleci.com/docs/2.0/env-vars/#interpolating-environment-variables-to-set-other-environment-variables .
+
+#-----------------------------------------------------------------------------
+# Packcheck global environment variables
+#-----------------------------------------------------------------------------
+
+env: &env
     environment:
-      CIRCLE_ARTIFACTS: /tmp/circleci-artifacts
-      CIRCLE_TEST_REPORTS: /tmp/circleci-test-results
-    # In CircleCI 1.0 we used a pre-configured image with a large number of languages and other packages.
-    # In CircleCI 2.0 you can now specify your own image, or use one of our pre-configured images.
-    # The following configuration line tells CircleCI to use the specified docker image as the runtime environment for you job.
-    # We have selected a pre-built image that mirrors the build environment we use on
-    # the 1.0 platform, but we recommend you choose an image more tailored to the needs
-    # of each job. For more information on choosing an image (or alternatively using a
-    # VM instead of a container) see https://circleci.com/docs/2.0/executor-types/
-    # To see the list of pre-built images that CircleCI provides for most common languages see
-    # https://circleci.com/docs/2.0/circleci-images/
+      # ------------------------------------------------------------------------
+      # Common options
+      # ------------------------------------------------------------------------
+      # GHC_OPTIONS: "-Werror"
+      CABAL_REINIT_CONFIG: "y"
+      LC_ALL: "C.UTF-8"
+
+      # ------------------------------------------------------------------------
+      # What to build
+      # ------------------------------------------------------------------------
+      # DISABLE_TEST: "y"
+      # DISABLE_BENCH: "y"
+      # DISABLE_DOCS: "y"
+      # DISABLE_SDIST_BUILD: "y"
+      # DISABLE_DIST_CHECKS: "y"
+      ENABLE_INSTALL: "y"
+
+      # ------------------------------------------------------------------------
+      # stack options
+      # ------------------------------------------------------------------------
+      # Note requiring a specific version of stack using STACKVER may fail due to
+      # github API limit while checking and upgrading/downgrading to the specific
+      # version.
+      #STACKVER: "1.6.5"
+      #STACK_UPGRADE: "y"
+      #RESOLVER: "lts-12"
+
+      # ------------------------------------------------------------------------
+      # cabal options
+      # ------------------------------------------------------------------------
+      CABAL_CHECK_RELAX: "y"
+      CABAL_NO_SANDBOX: "y"
+      CABAL_HACKAGE_MIRROR: "hackage.haskell.org:http://hackage.fpcomplete.com"
+
+      # ------------------------------------------------------------------------
+      # Where to find the required tools
+      # ------------------------------------------------------------------------
+      PATH: /opt/ghc/bin:/sbin:/usr/sbin:/bin:/usr/bin
+      #TOOLS_DIR: /opt
+
+      # ------------------------------------------------------------------------
+      # Location of packcheck.sh (the shell script invoked to perform CI tests ).
+      # ------------------------------------------------------------------------
+      # You can either commit the packcheck.sh script at this path in your repo or
+      # you can use it by specifying the PACKCHECK_REPO_URL option below in which
+      # case it will be automatically copied from the packcheck repo to this path
+      # during CI tests. In any case it is finally invoked from this path.
+      PACKCHECK: "./packcheck.sh"
+      # If you have not committed packcheck.sh in your repo at PACKCHECK
+      # then it is automatically pulled from this URL.
+      PACKCHECK_GITHUB_URL: "https://raw.githubusercontent.com/harendra-kumar/packcheck"
+      PACKCHECK_GITHUB_COMMIT: "3d48b1711a099fb30fe202b620f6fcf70ed3410b"
+
     docker:
-    - image: circleci/build-image:ubuntu-14.04-XXL-upstart-1189-5614f37
-      command: /sbin/init
-    steps:
-    # Machine Setup
-    #   If you break your build into multiple jobs with workflows, you will probably want to do the parts of this that are relevant in each
-    # The following `checkout` command checks out your code to your working directory. In 1.0 we did this implicitly. In 2.0 you can choose where in the course of a job your code should be checked out.
-    - checkout
-    # Prepare for artifact and test results  collection equivalent to how it was done on 1.0.
-    # In many cases you can simplify this from what is generated here.
-    # 'See docs on artifact collection here https://circleci.com/docs/2.0/artifacts/'
-    - run: mkdir -p $CIRCLE_ARTIFACTS $CIRCLE_TEST_REPORTS
-    # Dependencies
-    #   This would typically go in either a build or a build-and-test job when using workflows
-    # Restore the dependency cache
-    - restore_cache:
-        keys:
-        # This branch if available
-        - v1-dep-{{ .Branch }}-
-        # Default branch if not
-        - v1-dep-master-
-        # Any branch if there are none on the default branch - this should be unnecessary if you have your default branch configured correctly
-        - v1-dep-
-    # This is based on your 1.0 configuration file or project settings
-    - run: sudo add-apt-repository ppa:hvr/ghc -y
-    - run: sudo apt-get update && sudo apt-get install cabal-install-2.4 ghc-8.4.3 -y
-    - run: cabal update
-    - run: cabal --version
-    - run: cabal install cabal-install
-    - run: ~/.cabal/bin/cabal update
-    # This is based on your 1.0 configuration file or project settings
-    - run: ~/.cabal/bin/cabal new-build Calculator
-    # Save dependency cache
-    - save_cache:
-        key: v1-dep-{{ .Branch }}-{{ epoch }}
-        paths:
-        # This is a broad list of cache paths to include many possible development environments
-        # You can probably delete some of these entries
-        # These cache paths were specified in the 1.0 config
+      - image: debian:stretch
+
+#-----------------------------------------------------------------------------
+# Common utility stuff, not to be modified usually
+#-----------------------------------------------------------------------------
+
+preinstall: &preinstall
+  run: |
+        apt-get update
+        # required for https/cache save and restore
+        apt-get install -y ca-certificates
+        # For ghc and cabal-install packages from haskell.org
+        # gnupg is required for apt-key to work
+        apt-get install -y gnupg
+        apt-key adv --keyserver keyserver.ubuntu.com  --recv-keys BA3CBA3FFE22B574
+        echo "deb http://downloads.haskell.org/debian stretch main" >> /etc/apt/sources.list
+        apt-get update
+        # required for packcheck
+        apt-get install -y curl
+        # required for outbound https for stack and for stack setup
+        apt-get install -y netbase xz-utils make
+        # If a custom stack-yaml is specified, replace the default with that
+        if test -e "$STACK_YAML"; then rm -f stack.yaml && ln -sv $STACK_YAML stack.yaml; else true; fi
+        unset STACK_YAML
+        # Get packcheck if needed
+        CURL=$(which curl)
+        PACKCHECK_URL=${PACKCHECK_GITHUB_URL}/${PACKCHECK_GITHUB_COMMIT}/packcheck.sh
+        if test ! -e "$PACKCHECK"; then $CURL -sL -o "$PACKCHECK" $PACKCHECK_URL; fi;
+        chmod +x $PACKCHECK
+restore: &restore
+  # Needs to happen after installing ca-certificates
+  restore_cache:
+    key: v1-{{ .Environment.CIRCLE_JOB }}-{{ .Branch }}
+
+save: &save
+  save_cache:
+      key: v1-{{ .Environment.CIRCLE_JOB }}-{{ .Branch }}
+      paths:
         - ~/.cabal
-    # Test
-    #   This would typically be a build job when using workflows, possibly combined with build
-    # This is based on your 1.0 configuration file or project settings
-    - run: ~/.cabal/bin/cabal new-exec Calculator -- -t
-    # Teardown
-    #   If you break your build into multiple jobs with workflows, you will probably want to do the parts of this that are relevant in each
-    # Save test results
-    - store_test_results:
-        path: /tmp/circleci-test-results
-    # Save artifacts
-    - store_artifacts:
-        path: /tmp/circleci-artifacts
-    - store_artifacts:
-        path: /tmp/circleci-test-results
+        - ~/.ghc
+        - ~/.local
+        - ~/.stack
+
+#-----------------------------------------------------------------------------
+# Build matrix
+#-----------------------------------------------------------------------------
+
+jobs:
+  cabal-ghc-8-6-5:
+      <<: *env
+      steps:
+        - checkout
+        - *preinstall
+        - *restore
+        - run: |
+              apt-get install -y ghc-8.6.5
+              apt-get install -y cabal-install-2.4
+              bash -c "$PACKCHECK cabal-v2"
+        - *save
+  cabal-ghc-8-4-4:
+      <<: *env
+      steps:
+        - checkout
+        - *preinstall
+        - *restore
+        - run: |
+              apt-get install -y ghc-8.4.4
+              apt-get install -y cabal-install-2.4
+              bash -c "$PACKCHECK cabal-v2"
+        - *save
+  cabal-ghc-8-2-2:
+      <<: *env
+      steps:
+        - checkout
+        - *preinstall
+        - *restore
+        - run: |
+              apt-get install -y ghc-8.2.2
+              apt-get install -y cabal-install-2.4
+              bash -c "$PACKCHECK cabal-v2"
+        - *save
+  cabal-ghc-8-0-2:
+      <<: *env
+      steps:
+        - checkout
+        - *preinstall
+        - *restore
+        - run: |
+              apt-get install -y ghc-8.0.2
+              apt-get install -y cabal-install-2.4
+              bash -c "$PACKCHECK cabal-v2"
+        - *save
+  cabal-ghc-7-10-3:
+      <<: *env
+      steps:
+        - checkout
+        - *preinstall
+        - *restore
+        - run: |
+              apt-get install -y ghc-7.10.3
+              apt-get install -y cabal-install-2.4
+              bash -c "$PACKCHECK cabal-v2"
+        - *save
+  stack-ghc-8-4:
+      <<: *env
+      steps:
+        - checkout
+        - *preinstall
+        - *restore
+        - run: |
+            apt-get install -y ghc-8.4.4
+            apt-get install -y cabal-install-2.4
+            bash -c "$PACKCHECK stack RESOLVER=lts-12"
+        - *save
+  stack-ghc-8-2:
+      <<: *env
+      steps:
+        - checkout
+        - *preinstall
+        - *restore
+        - run: |
+            apt-get install -y ghc-8.2.2
+            apt-get install -y cabal-install-2.4
+            bash -c "$PACKCHECK stack RESOLVER=lts-11"
+        - *save
+  coveralls-ghc-8-2-2:
+      <<: *env
+      steps:
+        - checkout
+        - *preinstall
+        - *restore
+        - run:
+            environment:
+              # Please change the repo token to your repo token
+              COVERALLS_OPTIONS: "--repo-token=YvxdfMiOmfq0limz6nLd4DxiC1RBQJ4dA --coverage-mode=StrictlyFullLines --exclude-dir=test test"
+            command: |
+              apt-get install -y ghc-8.2.2
+              apt-get install -y cabal-install-2.4
+              # required by hpc-coveralls
+              apt-get install -y libcurl4-gnutls-dev
+              apt-get install -y git
+              bash -c "$PACKCHECK cabal-v1"
+        - *save
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      # Uncomment the configs that you want to enable
+      - cabal-ghc-8-6-5
+      #- cabal-ghc-8-4-4
+      #- cabal-ghc-8-2-2
+      #- cabal-ghc-8-0-2
+      #- cabal-ghc-7-10-3
+      #- stack-ghc-8-4
+      #- stack-ghc-8-2
+      # IMPORTANT: Please change the --repo-token to your repo token
+      # in COVERALLS_OPTIONS above before enabling this.
+      #- coveralls-ghc-8-2-2
