@@ -8,5 +8,4 @@ ratings:
   paths: 
     - "Calculator/**.hs"
 exclude_patterns:
- - "AlexLexer.hs"
- - "HappyParser.hs"
+ - "templates/**.hs"
