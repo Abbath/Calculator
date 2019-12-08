@@ -10,3 +10,5 @@ ratings:
 exclude_patterns:
  - "**/AlexLexer.hs"
  - "**/HappyParser.hs"
+ - "telegram-api-0.7.2.0/**"
+ - "telegram-bot-simple-0.2.0/**"
