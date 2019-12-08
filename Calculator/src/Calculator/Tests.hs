@@ -2,20 +2,22 @@ module Calculator.Tests (testLoop) where
 
 import           Calculator.Evaluator
 import           Calculator.Lexer
-import qualified Calculator.MegaParser as CMP
-import           Calculator.Parser
-import           Calculator.Types      (Assoc (..), Expr (..))
-import           Control.Lens          ((%~), (&), (^.), _1, _3)
-import           Control.Monad.Reader
-import           Control.Monad.State
-import           Control.Monad.Except
-import           Data.Map.Strict       (Map)
-import qualified Data.Map.Strict       as M
-import qualified Text.Megaparsec       as MP
-import           Control.Arrow         (second)
-import           System.Exit           (exitWith, ExitCode (ExitFailure), exitSuccess)
+import           Calculator.AlexLexer
+import qualified Calculator.MegaParser   as CMP
+import           Calculator.Parser  
+import           Calculator.Types        (Assoc (..), Expr (..), preprocess)
+import           Control.Lens            ((%~), (&), (^.), _1, _3)
+import           Control.Monad.Reader  
+import           Control.Monad.State  
+import           Control.Monad.Except  
+import           Data.Map.Strict         (Map)
+import qualified Data.Map.Strict         as M
+import qualified Text.Megaparsec         as MP
+import qualified Calculator.HappyParser  as HP
+import           Control.Arrow           (second)
+import           System.Exit             (exitWith, ExitCode (ExitFailure), exitSuccess)
 
-data Backend = Internal | Mega deriving Show
+data Backend = Internal | Mega | AH deriving Show
 
 type Tests = [(String, Either String Rational)]
 
@@ -41,6 +43,7 @@ loop (x:xs) maps bk n = do
     let e = case bk of
               Internal -> tokenize sample >>= parse (getPriorities $ maps^._3)
               Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sample++"\n"))
+              AH -> Right $ preprocess . HP.parse . alexScanTokens $ sample
     --print e
     let t = case e of
               Left err -> (Left err, maps)
@@ -97,6 +100,37 @@ tests = [
   ,("/= = !=", Left "Operator alias /= = !=")
   ]
 
+testsAH :: Tests
+testsAH = [
+     ("_", Right 0)
+    ,("1", Right 1)
+    ,("_", Right 1)
+    ,("-1", Right (-1))
+    ,("2+2", Right 4)
+    ,("2-2-2-2", Right (-4))
+    ,("1024/2/2/2", Right 128)
+    ,("fun f(x) = x", Left "Function f/1")
+    ,("fun f(g,x) = g(x)", Left "Function f/2")
+    -- ,("f(sin,pi)", Right 0)
+    ,("fun p(x,y) = x - y", Left "Function p/2")
+    ,("p(2,2)", Right 0)
+    ,("op &(1,0) = x - y", Left "Operator & p=1 a=left")
+    ,("2&2&2&2", Right (-4))
+    ,("2&2-2&2", Right 0)
+    ,("op &(2,0) = x - y", Left "Operator & p=2 a=left")
+    ,("2&2-2&2", Right (-4))
+    ,("2^3^4", Right 2417851639229258349412352)
+    ,("2+2*2", Right 6)
+    ,("-((1))", Right (-1))
+    ,("-1^2", Right 1)
+    ,("(2+2)*2", Right 8)
+    ,("let x = 5",Left "Constant x=5")
+    ,("abs(-x) == x", Right 1)
+    ,("1!=2", Right 1)
+    ,("sin(pi)==0", Right 1)
+    -- ,("op /= = !=", Left "Operator alias /= = !=")
+    ]
+
 defVar :: VarMap
 defVar = M.fromList [("pi", toRational (pi :: Double)), ("e", toRational . exp $ (1.0 :: Double)), ("_",0.0)]
 
@@ -106,7 +140,9 @@ testLoop = do
   n1 <- loop tests (defVar, M.empty, opMap) Internal 0
   putStrLn "\nMega parser:"
   n2 <- loop tests (defVar, M.empty, opMap) Mega 0
-  let n = n1 + n2
+  putStrLn "\nAlexHappy parser:"
+  n3 <- loop testsAH (defVar, M.empty, opMap) AH 0
+  let n = n1 + n2 + n3
   if n == 0
     then exitSuccess
     else exitWith $ ExitFailure n

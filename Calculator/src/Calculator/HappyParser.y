@@ -12,6 +12,7 @@ import Calculator.Types (Token(..), Expr(..), Assoc(..))
     num { TNumber $$}
     var { TIdent $$ }
     '-' { TOp "-" }
+    '!' {TOp "!" }
     op { TOp $$}
     '(' { TLPar }
     ')' { TRPar }
@@ -33,6 +34,8 @@ All:
 Exprs:
     Expr {$1}
     | Expr '-' Exprs {OpCall "-" $1 $3}
+    | Expr '=' '=' Exprs {OpCall "==" $1 $4}
+    | Expr '!' '=' Exprs {OpCall "!=" $1 $4}
     | Expr op Exprs {OpCall $2 $1 $3}
 
 Expr:

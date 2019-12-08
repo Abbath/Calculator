@@ -69,6 +69,7 @@ test-suite Test
   main-is:              MainTest.hs
   hs-source-dirs:       src
   default-language:     Haskell2010
+  build-tools:          alex, happy
   build-depends:        base >= 4.7 && < 5
                       , array
                       , containers
@@ -91,5 +92,7 @@ test-suite Test
                       , Calculator.Parser
                       , Calculator.Tests
                       , Calculator.Types
+                      , Calculator.AlexLexer
+                      , Calculator.HappyParser
 
   
