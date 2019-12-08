@@ -1,4 +1,4 @@
----
+version: "2"
 engines:
   fixme:
     enabled: true
@@ -7,7 +7,6 @@ engines:
 ratings:
   paths: 
     - "Calculator/**.hs"
-exclude_paths: []
 exclude_patterns:
  - "AlexLexer.hs"
  - "HappyParser.hs"
