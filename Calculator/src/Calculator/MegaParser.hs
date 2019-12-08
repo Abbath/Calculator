@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings  #-}
 module Calculator.MegaParser (parser) where
 
 import           Calculator.MegaLexer
@@ -11,7 +12,7 @@ import           Data.Scientific
 import           Text.Megaparsec
 import           Control.Monad.Combinators.Expr
 import           Data.Functor (($>))
-
+import           Data.Text    (Text)
 
 parser :: PReader Expr
 parser = sc *> expr <* eof
@@ -72,7 +73,7 @@ udoExpr = do
     (Right int, Left db)   -> ret int db  name e
     (Left d1, Left d2)     -> ret (floor d1) d2  name e
   where
-    ret :: Integer -> Double -> String -> Expr -> PReader Expr
+    ret :: Integer -> Double -> Text -> Expr -> PReader Expr
     ret a b n e = return $ UDO n (fromInteger a) (if b == 0 then L else R) e
 
 assignExpr :: PReader Expr
@@ -104,11 +105,11 @@ operators =
   ]
   where sop i s = i (try (exactOper s ) $> OpCall s)
 
-genOp :: String -> (Int, Assoc) -> Operator PReader Expr
+genOp :: Text -> (Int, Assoc) -> Operator PReader Expr
 genOp s (_,L) = InfixL (try (symbol s) $> OpCall s)
 genOp s (_,R) = InfixR (try (symbol s) $> OpCall s)
 
-insertOps :: [[Operator PReader Expr]] -> Map String (Int, Assoc) -> [[Operator PReader Expr]]
+insertOps :: [[Operator PReader Expr]] -> Map Text(Int, Assoc) -> [[Operator PReader Expr]]
 insertOps [[]] _ =  [[]]
 insertOps ops m | M.null m = ops
 insertOps ops m = let (k,a) = M.elemAt 0 m

@@ -2,6 +2,8 @@
 {-# OPTIONS_GHC -fno-warn-name-shadowing -fno-warn-unused-imports #-}
 module Calculator.AlexLexer where
 import Calculator.Types
+import Data.Bifunctor (bimap)
+import qualified Data.Text as T
 }
 
 %wrapper "posn"
@@ -22,10 +24,10 @@ tokens :-
     @floating_point {\_ s -> TNumber $ readNumber s}
     \(  {\_ _ -> TLPar}
     \)  {\_ _ -> TRPar}
-    $alpha+ {\_ s -> TIdent s}
-    $alpha+\( {\_ s -> TFIdent (init s)}
+    $alpha+ {\_ s -> TIdent (T.pack s)}
+    $alpha+\( {\_ s -> TFIdent (T.init . T.pack $ s)}
     \= {\_ _ -> TEqual}
-    [\+\-\/\\\*\%\^\$\!\~\&\|\>\<]+ {\_ s -> TOp s}
+    [\+\-\/\\\*\%\^\$\!\~\&\|\>\<]+ {\_ s -> TOp (T.pack s)}
     \, {\_ _ -> TComma}
 
 {

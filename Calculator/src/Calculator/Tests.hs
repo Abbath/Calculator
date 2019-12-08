@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings  #-}
 module Calculator.Tests (testLoop) where
 
 import           Calculator.Evaluator
@@ -5,7 +6,7 @@ import           Calculator.Lexer
 import           Calculator.AlexLexer
 import qualified Calculator.MegaParser   as CMP
 import           Calculator.Parser  
-import           Calculator.Types        (Assoc (..), Expr (..), preprocess)
+import           Calculator.Types        (Assoc (..), Expr (..), preprocess, showT)
 import           Control.Lens            ((%~), (&), (^.), _1, _3)
 import           Control.Monad.Reader  
 import           Control.Monad.State  
@@ -16,10 +17,13 @@ import qualified Text.Megaparsec         as MP
 import qualified Calculator.HappyParser  as HP
 import           Control.Arrow           (second)
 import           System.Exit             (exitWith, ExitCode (ExitFailure), exitSuccess)
+import           Data.Text.IO            as TIO
+import           Data.Text               (Text)
+import qualified Data.Text               as T
 
 data Backend = Internal | Mega | AH deriving Show
 
-type Tests = [(String, Either String Rational)]
+type Tests = [(Text, Either Text Rational)]
 
 opMap :: OpMap
 opMap = M.fromList [("=", f 0 R)
@@ -29,7 +33,7 @@ opMap = M.fromList [("=", f 0 R)
   , ("^", f 4 R)]
   where f p a = ((p, a), Number 0)
 
-getPrA :: OpMap -> Map String (Int, Assoc)
+getPrA :: OpMap -> Map Text (Int, Assoc)
 getPrA om = let lst = M.toList om
                 ps = M.fromList $ map (second fst ) lst
             in ps
@@ -38,12 +42,12 @@ loop :: Tests -> Maps -> Backend -> Int -> IO Int
 loop [] _ _ n = return n
 loop (x:xs) maps bk n = do
   let sample = fst x
-  if not $ null sample
+  if not $ T.null sample
   then do
     let e = case bk of
               Internal -> tokenize sample >>= parse (getPriorities $ maps^._3)
-              Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sample++"\n"))
-              AH -> Right $ preprocess . HP.parse . alexScanTokens $ sample
+              Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sample <> "\n"))
+              AH -> Right $ preprocess . HP.parse . alexScanTokens $ T.unpack sample
     --print e
     let t = case e of
               Left err -> (Left err, maps)
@@ -52,21 +56,21 @@ loop (x:xs) maps bk n = do
     do
       new_n <- if tt == snd x
         then do
-          putStrLn $ "Passed: " ++ sample
+          TIO.putStrLn $ "Passed: " <> sample
           return 0
         else do
-          putStrLn $ "Failed: " ++ sample ++ " expected: " ++ show x ++ " received: " ++ show t
+          TIO.putStrLn $ "Failed: " <> sample <> " expected: " <> showT x <> " received: " <> showT t
           return 1
       loop xs (case t of
         (Right r,m)  -> m & _1 %~ M.insert "_" r
         (Left _,m) -> m) bk (n + new_n)
     
   else do
-    putStrLn "Empty!"
+    TIO.putStrLn "Empty!"
     loop xs maps bk n
 
-errorToEither :: Show a => Either a b -> Either String b
-errorToEither (Left err) = Left (show err)
+errorToEither :: Show a => Either a b -> Either Text b
+errorToEither (Left err) = Left (showT err)
 errorToEither (Right r)  = Right r
 
 tests :: Tests
@@ -136,11 +140,11 @@ defVar = M.fromList [("pi", toRational (pi :: Double)), ("e", toRational . exp $
 
 testLoop :: IO ()
 testLoop = do
-  putStrLn "Internal parser:"
+  TIO.putStrLn "Internal parser:"
   n1 <- loop tests (defVar, M.empty, opMap) Internal 0
-  putStrLn "\nMega parser:"
+  TIO.putStrLn "\nMega parser:"
   n2 <- loop tests (defVar, M.empty, opMap) Mega 0
-  putStrLn "\nAlexHappy parser:"
+  TIO.putStrLn "\nAlexHappy parser:"
   n3 <- loop testsAH (defVar, M.empty, opMap) AH 0
   let n = n1 + n2 + n3
   if n == 0

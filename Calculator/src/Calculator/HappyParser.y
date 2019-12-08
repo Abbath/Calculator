@@ -1,7 +1,9 @@
 {
+{-# LANGUAGE OverloadedStrings #-}
 module Calculator.HappyParser where
 import Calculator.AlexLexer
 import Calculator.Types (Token(..), Expr(..), Assoc(..))
+import qualified Data.Text as T
 }
 
 %name parse 
@@ -12,7 +14,7 @@ import Calculator.Types (Token(..), Expr(..), Assoc(..))
     num { TNumber $$}
     var { TIdent $$ }
     '-' { TOp "-" }
-    '!' {TOp "!" }
+    '!' {TOp  "!" }
     op { TOp $$}
     '(' { TLPar }
     ')' { TRPar }

@@ -1,7 +1,8 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Calculator.Evaluator (evalS, getPriorities, FunMap, VarMap, OpMap, Maps, Result2) where
 
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
-                                   preprocess, showRational)
+                                   preprocess, showRational, showT)
 import           Control.Lens     ((%~), (&), (.~), (^.), _1, _2, _3)
 import           Data.Either      (rights)
 import           Data.List        (foldl')
@@ -11,16 +12,18 @@ import           Data.Ratio
 import           Control.Arrow    (second)
 import           Control.Monad.State
 import           Control.Monad.Except
+import           Data.Text        (Text)
+import qualified Data.Text        as T
 
-type FunMap = Map (String, Int) ([String], Expr)
-type VarMap = Map String Rational
-type OpMap = Map String ((Int, Assoc), Expr)
+type FunMap = Map (Text, Int) ([Text], Expr)
+type VarMap = Map Text Rational
+type OpMap = Map Text ((Int, Assoc), Expr)
 type Maps = (VarMap, FunMap, OpMap)
 
-funNames :: FunMap -> [(String, String)]
+funNames :: FunMap -> [(Text, Text)]
 funNames = map (\(f,_) -> (f, f)) . M.keys
 
-goInside :: (Expr -> Either String Expr) -> Expr -> Either String Expr
+goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
   (OpCall op e1 e2) -> OpCall op <$> f e1 <*> f e2
   (Par e)           -> Par <$> f e
@@ -28,10 +31,10 @@ goInside f ex = case ex of
   (FunCall n e)     -> FunCall n <$> mapM f e
   e                 -> return e
 
-substitute :: ([String], [Expr]) -> Expr -> Either String Expr
+substitute :: ([Text], [Expr]) -> Expr -> Either Text Expr
 substitute ([],[]) e = return e
 substitute (x,y) _ | length x /= length y =
-  Left $ "Bad argument number: " ++ show(length y) ++ " instead of " ++ show(length x)
+  Left $ "Bad argument number: " <> showT (length y) <> " instead of " <> showT (length x)
 substitute (x:xs, y:ys) (Id i) = if i == x
                                     then return $ case y of
                                                            n@(Number _) -> n
@@ -49,51 +52,51 @@ substitute s@(_:xs, _:ys) (FunCall n e) = do
   substitute (xs, ys) (FunCall n t)
 substitute s ex = goInside (substitute s) ex
 
-localize :: [String] -> Expr -> Either String Expr
+localize :: [Text] -> Expr -> Either Text Expr
 localize [] e = return e
-localize (x:xs) (Id i) = if i == x then return $ Id ('@':i) else localize xs (Id i)
+localize (x:xs) (Id i) = if i == x then return $ Id (T.cons '@' i) else localize xs (Id i)
 localize s@(x:xs) (FunCall nm e) = if nm == x
-  then FunCall ('@':nm) <$> mapM (localize s) e
+  then FunCall (T.cons '@' nm) <$> mapM (localize s) e
   else do
     t <- mapM (localize s) e
     localize xs (FunCall nm t)
 localize s ex = goInside (localize s) ex
 
-catchVar :: (VarMap, FunMap) -> Expr -> Either String Expr
+catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
 catchVar (vm, fm) ex = case ex of
-  (Id i@('@':_)) -> return $ Id i
+  (Id i) | T.head i == '@' -> return $ Id i
   (Id i) ->
     let a = M.lookup i vm :: Maybe Rational
         getNames = map (\f -> (f,f)) . M.keys
         fNames = getNames mathFuns ++ getNames intFuns ++ getNames compFuns
-        b = lookup i (funNames fm ++ fNames) :: Maybe String
+        b = lookup i (funNames fm ++ fNames) :: Maybe Text
     in case a of
          Just n -> return $ Number n
          Nothing -> case b of
                      Just s  -> return $ Id s
-                     Nothing -> Left $ "No such variable: " ++ i
+                     Nothing -> Left $ "No such variable: " <> i
   e -> goInside st e
     where st = catchVar (vm, fm)
 
-compFuns :: Map String (Rational -> Rational -> Bool)
+compFuns :: Map Text (Rational -> Rational -> Bool)
 compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(==))
   ,("ne",(/=)), ("le",(<=)), ("ge",(>=))]
 
-compOps :: Map String (Rational -> Rational -> Bool)
+compOps :: Map Text (Rational -> Rational -> Bool)
 compOps = M.fromList [("<",(<)), (">",(>)), ("==",(==))
   ,("!=",(/=)), ("<=",(<=)), (">=",(>=))]
 
-mathFuns :: Map String (Double -> Double)
+mathFuns :: Map Text (Double -> Double)
 mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
         ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs)]
 
-intFuns :: Map String (Integer -> Integer -> Integer)
+intFuns :: Map Text (Integer -> Integer -> Integer)
 intFuns = M.fromList [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem)]
 
 fmod :: Rational -> Rational -> Rational
 fmod x y = fromInteger $ mod (floor x) (floor y)
 
-mathOps :: Map String (Rational -> Rational -> Rational)
+mathOps :: Map Text (Rational -> Rational -> Rational)
 mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow)]
 
 pow :: Rational -> Rational -> Rational
@@ -101,21 +104,21 @@ pow a b | denominator a ==1 && denominator b == 1 && numerator b < 0 = toRationa
 pow a b | denominator a == 1 && denominator b == 1 = toRational $ numerator a ^ numerator b
 pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
 
-getPriorities :: OpMap -> Map String Int
+getPriorities :: OpMap -> Map Text Int
 getPriorities om = let lst = M.toList om
                        ps = M.fromList $ map (second (fst . fst)) lst
                    in ps
 
--- type Result = StateT Maps (Except String)
-type Result2 = ExceptT String (State Maps)
+-- type Result = StateT Maps (Except Text)
+type Result2 = ExceptT Text (State Maps)
 
 evalS :: Expr -> Result2 Rational
 evalS ex = case ex of
-  Asgn s _ | s `elem` ["pi", "e", "_"] -> throwError $ "Cannot change a constant value: " ++ s
+  Asgn s _ | s `elem` ["pi", "e", "_"] -> throwError $ "Cannot change a constant value: " <> s
   Asgn s e -> do
     r <- evm e
     modify (\maps -> maps & _1 %~ M.insert s r)
-    throwError ("Constant " ++ s ++ "=" ++ showRational r)
+    throwError ("Constant " <> s <> "=" <> showRational r)
   UDF n [s] (FunCall "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
     either throwError (evm . UDF n [s]) de
@@ -123,27 +126,27 @@ evalS ex = case ex of
     maps <- get
     let newe = localize s e >>= catchVar (maps^._1, maps ^._2)
     either throwError (\r -> do
-      let newmap = M.insert (n, length s) (map ('@':) s, r) $ maps^._2
+      let newmap = M.insert (n, length s) (map (T.cons '@') s, r) $ maps^._2
       modify (\m -> m & _2 .~ newmap)
-      throwError ("Function " ++ n ++ "/" ++ show (length s))) newe
+      throwError ("Function " <> n <> "/" <> showT (length s))) newe
   UDO n (-1) _ e@(OpCall op _ _) -> do
     maps <- get
     case M.lookup op (maps^._3) of
       Just ((p, a), _) -> do
         let newmap = M.insert n ((p, a), e) (maps^._3)
         modify (\m -> m & _3 .~ newmap)
-        throwError ("Operator alias " ++ n ++ " = " ++ op)
-      Nothing -> throwError $ "No such operator: " ++ op
+        throwError ("Operator alias " <> n <> " = " <> op)
+      Nothing -> throwError $ "No such operator: " <> op
   UDO n p a e
-    | M.member n mathOps || M.member n compOps || n == "=" -> throwError $ "Can not redefine the embedded operator: " ++ n
-    | p < 1 || p > 4 ->  throwError $ "Bad priority: " ++ show p
+    | M.member n mathOps || M.member n compOps || n == "=" -> throwError $ "Can not redefine the embedded operator: " <> n
+    | p < 1 || p > 4 ->  throwError $ "Bad priority: " <> showT p
     | otherwise -> do
         maps <- get
         let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
         either throwError (\r -> do
           let newmap = M.insert n ((p, a), r) (maps^._3)
           modify (\m -> m & _3 .~ newmap)
-          throwError ("Operator " ++ n ++ " p=" ++ show p ++ " a=" ++ (if a == L then "left" else "right"))) t
+          throwError ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
   FunCall "df" [a,x] -> do
       let e = derivative a x
       either throwError (throwError . exprToString . preprocess) e
@@ -161,7 +164,7 @@ evalS ex = case ex of
     return . toRational $ atan2 (fromRational t1 :: Double) (fromRational t2 :: Double)
   FunCall "prat" [e] -> do
     t1 <- evm e
-    throwError $ show (numerator t1) ++ " / " ++ show (denominator t1)
+    throwError $ showT (numerator t1) <> " / " <> showT (denominator t1)
   FunCall f [e1, e2] | M.member f intFuns -> evalInt f e1 e2
   FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
@@ -175,16 +178,16 @@ evalS ex = case ex of
       else evm c
   FunCall name e -> do
     maps <- get
-    case (M.lookup (name, length e) (maps^._2) :: Maybe ([String],Expr)) of
+    case (M.lookup (name, length e) (maps^._2) :: Maybe ([Text],Expr)) of
       Just (al, expr) -> do
         let expr1 = substitute (al, e) expr
         either throwError evm expr1
       Nothing -> case name of
-        ('@':r) -> throwError $ "Expression instead of a function name: " ++ r ++ "/" ++ show (length e)
-        _ -> throwError $ "No such function: " ++ name ++ "/" ++ show (length e)
+        x | T.head x == '@' -> throwError $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
+        _ -> throwError $ "No such function: " <> name <> "/" <> showT (length e)
   Id s     -> do 
     maps <- get
-    mte ("No such variable: " ++ s) (M.lookup s (maps^._1) :: Maybe Rational)
+    mte ("No such variable: " <> s) (M.lookup s (maps^._1) :: Maybe Rational)
   Number x -> return x
   OpCall op1 x s@(OpCall op2 y z) -> do
     maps <- get
@@ -193,24 +196,24 @@ evalS ex = case ex of
     let b = M.lookup op2 pr
     if a == b
     then case a of
-      Nothing -> throwError $ "No such operators: " ++ op1 ++ " " ++ op2
+      Nothing -> throwError $ "No such operators: " <> op1 <> " " <> op2
       Just _ -> do
         let ((_, asc1), _) = (maps^._3) M.! op1
         let ((_, asc2), _) = (maps^._3) M.! op2
         case (asc1, asc2) of
           (L, L) -> evm $ OpCall op2 (OpCall op1 x y) z
           (R, R) -> evm s >>= evm . OpCall op1 x . Number
-          _ -> throwError $ "Operators with a different associativity: " ++ op1 ++ " and " ++ op2
+          _ -> throwError $ "Operators with a different associativity: " <> op1 <> " and " <> op2
     else evm s >>= evm . OpCall op1 x . Number
   oc@(OpCall "/" x y) -> do
     n <- evm y
     n1 <- evm x
-    if n == 0 then throwError $ "Division by zero: " ++ exprToString oc else return (n1 / n)
+    if n == 0 then throwError $ "Division by zero: " <> exprToString oc else return (n1 / n)
   oc@(OpCall "%" x y) -> do
     n <- evm y
     n1 <- evm x
     if n == 0
-    then throwError $ "Division by zero: " ++ exprToString oc
+    then throwError $ "Division by zero: " <> exprToString oc
     else return (fromInteger $ mod (floor n1) (floor n))
   OpCall op x y | M.member op compOps -> cmp op x y compOps
   OpCall op x y | M.member op mathOps -> eval' ( mathOps M.! op) op x y
@@ -221,8 +224,8 @@ evalS ex = case ex of
         let expr1 = substitute (["@x", "@y"], [x,y]) expr
         either throwError evm expr1
       Nothing -> case op of
-        ('@':r) -> throwError $ "Expression instead of a function name: " ++ r ++ "/2"
-        _ -> throwError $ "No such operator: " ++ op ++ "/2"
+        opn | T.head opn == '@' -> throwError $ "Expression instead of a function name: " <> T.tail opn <> "/2"
+        _ -> throwError $ "No such operator: " <> op <> "/2"
   UMinus (OpCall "^" x y) -> evm $ OpCall "^" (UMinus x) y
   UMinus x         -> (0-) <$> evm x
   Par e            -> evm e
@@ -247,7 +250,7 @@ evalS ex = case ex of
       if denominator t1 == 1 && denominator t2 == 1
          then return . toRational $ (intFuns M.! f) (numerator t1) (numerator t2)
          else throwError "Cannot use integral function on real numbers!"
-    eval' :: (Rational -> Rational -> Rational) -> String -> Expr -> Expr -> Result2 Rational
+    eval' :: (Rational -> Rational -> Rational) -> Text -> Expr -> Expr -> Result2 Rational
     eval' f op x y = do
       t1 <- evm x
       t2 <- evm y
@@ -257,7 +260,7 @@ evalS ex = case ex of
          else return (f t1 t2)
     procListElem m fun n = evalState (runExceptT (evm (FunCall fun [Number n]))) m
 
-derivative :: Expr -> Expr -> Either String Expr
+derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of
   Par ex -> Par <$> derivative ex x
   UMinus ex -> UMinus <$> derivative ex x

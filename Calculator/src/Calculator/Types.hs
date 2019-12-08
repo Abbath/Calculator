@@ -1,18 +1,20 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric  #-}
-module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, preprocess, ListTuple, showRational) where
+{-# LANGUAGE OverloadedStrings  #-}
+module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, preprocess, ListTuple, showRational, showT) where
 
 import           Data.Aeson   (FromJSON, ToJSON)
-import           Data.List    (intercalate)
 import           Data.Ratio
+import           Data.Text    (Text)
+import qualified Data.Text    as T
 import           GHC.Generics
 
 data Token = TNumber Rational
            | TLPar
            | TRPar
-           | TIdent String
-           | TFIdent String
-           | TOp String
+           | TIdent Text
+           | TFIdent Text
+           | TOp Text
            | TComma
            | TEqual
            | TMinus
@@ -24,21 +26,21 @@ data Token = TNumber Rational
 data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
 
 data Expr = Number Rational
-          | Asgn String Expr
-          | UDF String [String] Expr
-          | UDO String Int Assoc Expr
-          | OpCall String Expr Expr
+          | Asgn Text Expr
+          | UDF Text [Text] Expr
+          | UDO Text Int Assoc Expr
+          | OpCall Text Expr Expr
           | UMinus Expr
           | Par Expr
-          | FunCall String [Expr]
-          | Id String
+          | FunCall Text [Expr]
+          | Id Text
           deriving (Eq, Show, Read, Generic)
 
 instance ToJSON Expr
 
 instance FromJSON Expr
 
-type ListTuple =  ([(String, Rational)], [((String, Int), ([String], Expr))], [(String, ((Int, Assoc), Expr))])
+type ListTuple =  ([(Text, Rational)], [((Text, Int), ([Text], Expr))], [(Text, ((Int, Assoc), Expr))])
 
 -- instance Show Expr where
 --   show = showExpr 0
@@ -58,19 +60,22 @@ type ListTuple =  ([(String, Rational)], [((String, Int), ([String], Expr))], [(
 --   in replicate n ' ' ++ suf
 --   where s = showExpr (n+1)
 
-exprToString :: Expr -> String
+showT :: Show a => a -> Text
+showT = T.pack . show
+
+exprToString :: Expr -> Text
 exprToString ex = case ex of
-  UDF n a e       -> n ++ "("++ intercalate ", " a ++ ")" ++ " = " ++ exprToString e
-  UDO n p a e     -> n ++ "("++ show p ++ ", " ++ show (if a == L then 0 :: Double else 1) ++ ")" ++ " = " ++  exprToString e
-  Asgn i e        -> i ++ " = " ++ exprToString e
-  Number x        -> show . (fromRational :: Rational -> Double) $ x
-  Par e           -> "(" ++ exprToString e ++ ")"
-  UMinus e        -> "(-" ++ exprToString e ++ ")"
-  OpCall op e1 e2 -> "(" ++ exprToString e1 ++ op ++ exprToString e2 ++ ")"
-  FunCall n e     -> n ++ "(" ++ intercalate ", " (map exprToString e) ++ ")"
+  UDF n a e       -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
+  UDO n p a e     -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Double else 1) <> ")" <> " = " <>  exprToString e
+  Asgn i e        -> i <> " = " <> exprToString e
+  Number x        -> T.pack $ show . (fromRational :: Rational -> Double) $ x
+  Par e           -> "(" <> exprToString e <> ")"
+  UMinus e        -> "(-" <> exprToString e <> ")"
+  OpCall op e1 e2 -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
+  FunCall n e     -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
   Id s            -> s
 
-unTOp :: Token -> String
+unTOp :: Token -> Text
 unTOp (TOp op) = op
 unTOp _        = error "Not a TOp"
 
@@ -105,5 +110,5 @@ simplifyExpr ex = case ex of
   FunCall name e                        -> FunCall name (map simplifyExpr e)
   x                                     -> x
 
-showRational :: Rational -> String
-showRational r = if denominator r == 1 then show $ numerator r else show (fromRational r :: Double)
+showRational :: Rational -> Text
+showRational r = if denominator r == 1 then showT $ numerator r else showT (fromRational r :: Double)

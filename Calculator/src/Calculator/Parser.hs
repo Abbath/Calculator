@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 
 module Calculator.Parser
   ( parse
@@ -10,8 +10,10 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Data.Map.Strict      (Map)
 import qualified Data.Map.Strict      as M
+import           Data.Text            (Text)
+import qualified Data.Text            as T
 
-checkOps :: [Token] -> Either String [Token]
+checkOps :: [Token] -> Either Text [Token]
 checkOps t =
   if snd . foldl f (TEnd, True) $ t
     then Right t
@@ -22,22 +24,22 @@ checkOps t =
     isOp (TOp _)   = True
     isOp _         = False
 
-takeWithPriorities :: Int -> Map String Int -> [Token]
+takeWithPriorities :: Int -> Map Text Int -> [Token]
 takeWithPriorities n m = map (TOp . fst) . M.toList $ M.filter (== n) m
 
-stringify :: [Token] -> String
-stringify [] = []
-stringify (x:xs) = str x ++ stringify xs
+stringify :: [Token] -> Text
+stringify [] = T.empty
+stringify (x:xs) = str x <> stringify xs
   where
-    str (TNumber n) = " " ++ showRational n ++ " "
+    str (TNumber n) = " " <> showRational n <> " "
     str TLPar       = "("
     str TRPar       = ")"
-    str (TIdent s)  = " " ++ s ++ " "
-    str (TOp s)     = " " ++ s ++ " "
+    str (TIdent s)  = " " <> s <> " "
+    str (TOp s)     = " " <> s <> " "
     str TComma      = ", "
     str _           = ""
 
-type ParseReader = ReaderT (Map String Int) (Except String) Expr
+type ParseReader = ReaderT (Map Text Int) (Except Text) Expr
 
 parseOp :: Int -> [Token] -> ParseReader
 parseOp 0 [TOp alias, TOp "=", TOp op] =
@@ -74,7 +76,7 @@ parseOp l s = do
     Just (s1, op, s2) ->
       OpCall <$> pure (unTOp op) <*> parseOp (l + 1) s1 <*> parseOp l s2
 
-parseFunDec :: [Token] -> Except String (String, [String])
+parseFunDec :: [Token] -> Except Text (Text, [Text])
 parseFunDec [TIdent name, TLPar, TIdent a, TRPar] = return (name, [a])
 parseFunDec (TIdent name:TLPar:TIdent a:TComma:rest) = do
   x <- parseFunDec' rest
@@ -86,8 +88,8 @@ parseFunDec (TIdent name:TLPar:TIdent a:TComma:rest) = do
         [TIdent _, TComma]    -> throwError "Missing bracket"
         [TIdent n, TRPar]     -> return [n]
         (TIdent n:TComma:rst) -> (n :) <$> parseFunDec' rst
-        x                     -> throwError $ "Syntax error: " ++ stringify x
-parseFunDec s = throwError $ "Syntax error: " ++ stringify s
+        x                     -> throwError $ "Syntax error: " <> stringify x
+parseFunDec s = throwError $ "Syntax error: " <> stringify s
 
 parseToken :: [Token] -> ParseReader
 parseToken str =
@@ -97,7 +99,7 @@ parseToken str =
     (TIdent name:TLPar:rest) -> FunCall name <$> parseFuncall rest
     [TNumber n]              -> return $ Number n
     (TLPar:rest)             -> Par <$> ps rest
-    x                        -> throwError $ "Syntax error: " ++ stringify x
+    x                        -> throwError $ "Syntax error: " <> stringify x
   where
     ps ss =
       let t = runExcept $ takePar ss
@@ -105,7 +107,7 @@ parseToken str =
            Left err -> throwError err
            Right r  -> parseOp 1 . init . fst $ r
 
-parseFuncall :: [Token] -> ReaderT (Map String Int) (Except String) [Expr]
+parseFuncall :: [Token] -> ReaderT (Map Text Int) (Except Text) [Expr]
 parseFuncall [TRPar] = return []
 parseFuncall s = do
   (s1, s2) <- lift $ breakPar (== TComma) s
@@ -118,11 +120,11 @@ parseFuncall s = do
                   else parseOp 1 s1
            else (:) <$> parseOp 1 s1 <*> parseFuncall (tail s2)
 
-takePar :: [Token] -> Except String ([Token], [Token])
+takePar :: [Token] -> Except Text ([Token], [Token])
 takePar = takePar' (1 :: Integer) []
   where
     takePar' 0 acc s = return (reverse acc, s)
-    takePar' n _ [] = throwError $ "Parentheses mismatch: " ++ show n
+    takePar' n _ [] = throwError $ "Parentheses mismatch: " <> showT n
     takePar' n acc (x:xs) =
       case x of
         TRPar -> tp (n - 1)
@@ -131,7 +133,7 @@ takePar = takePar' (1 :: Integer) []
       where
         tp m = takePar' m (x : acc) xs
 
-breakPar :: (Token -> Bool) -> [Token] -> Except String ([Token], [Token])
+breakPar :: (Token -> Bool) -> [Token] -> Except Text ([Token], [Token])
 breakPar _ [] = return ([], [])
 breakPar p xs@(x:xs')
   | x == TLPar = do
@@ -143,7 +145,7 @@ breakPar p xs@(x:xs')
 
 breakPar3 :: (Token -> Bool)
           -> [Token]
-          -> Except String (Maybe ([Token], Token, [Token]))
+          -> Except Text (Maybe ([Token], Token, [Token]))
 breakPar3 _ [] = return Nothing
 breakPar3 p (x:xs)
   | x == TLPar = do
@@ -155,7 +157,7 @@ breakPar3 p (x:xs)
   | p x = return (Just ([], x, xs))
   | otherwise = fmap (\(a, b, c) -> (x : a, b, c)) <$> breakPar3 p xs
 
-parse :: Map String Int -> [Token] -> Either String Expr
+parse :: Map Text Int -> [Token] -> Either Text Expr
 parse m s = do
   s1 <- checkOps s
   preprocess <$> runExcept (runReaderT (parseOp 0 s1) m)

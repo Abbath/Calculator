@@ -27,7 +27,7 @@ import qualified Calculator.MegaParser         as CMP
 import           Calculator.Parser
 import           Calculator.Types              (Assoc (..), Expr (..),
                                                 ListTuple, preprocess,
-                                                showRational)
+                                                showRational, showT)
 import           Clay                          (render)
 import           Control.Arrow                 (left, first, (***), second)
 import           Control.Lens                  ((%~), (&), (.~), (^.), (^?), _1,
@@ -84,10 +84,10 @@ handleAction _ NoAction model = pure model
 handleAction mode (Reply msg) model = model2 <# do
   replyText response
   pure NoAction
-  where (response, model2) = (TS.pack *** Model) $ either 
+  where (response, model2) = (Prelude.id *** Model) $ either 
           Prelude.id 
           (first showRational) 
-          (parseEval mode (getMaps model) (TS.unpack msg)) 
+          (parseEval mode (getMaps model) msg) 
 
 -- | Run bot with a given 'Telegram.Token'.
 run :: Mode -> Telegram.Token -> IO ()
@@ -101,15 +101,15 @@ telegramSimple mode = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run mode
 
 data Mode = Internal | Megaparsec | AlexHappy deriving Show
 
-parseString :: Mode -> String -> Maps -> Either String Expr
+parseString :: Mode -> TS.Text -> Maps -> Either TS.Text Expr
 parseString m s ms = case m of
                        Megaparsec ->
-                         left show (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (s++"\n"))
+                         left showT (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (s <> "\n"))
                        Internal ->
                          tokenize s >>= parse (getPriorities $ ms^._3)
-                       AlexHappy -> Right $ preprocess . HP.parse . alexScanTokens $ s
+                       AlexHappy -> Right $ preprocess . HP.parse . alexScanTokens $ TS.unpack s
 
-evalExprS :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
+evalExprS :: Either TS.Text Expr -> Maps -> Either (TS.Text, Maps) (Rational, Maps)
 evalExprS t maps = either (Left . (,maps)) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
   where getShit e = let a = runExceptT (evalS e) in runState a maps
 
@@ -124,7 +124,7 @@ opMap = M.fromList [("=", f 0 R)
   , ("^", f 4 R)]
   where f p a = ((p, a), Number 0)
 
-getPrA :: OpMap -> Map String (Int, Assoc)
+getPrA :: OpMap -> Map TS.Text (Int, Assoc)
 getPrA om = let lst = M.toList om
                 ps = M.fromList $ map (second fst) lst
             in ps
@@ -140,7 +140,7 @@ completionList s = return $ map (\x -> Completion {replacement = x, display = x,
 completeName :: Monad m => CompletionFunc m
 completeName = completeWord Nothing " " completionList
 
-parseEval :: Mode -> Maps -> String -> Either (String, Maps) (Rational, Maps)
+parseEval :: Mode -> Maps -> TS.Text -> Either (TS.Text, Maps) (Rational, Maps)
 parseEval md ms x = evalExprS (parseString md x ms) ms
 
 loop :: Mode -> Maps -> IO ()
@@ -152,12 +152,12 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
     case input of
       Nothing -> return ()
       Just "quit" -> return ()
-      Just x -> case parseEval md ms x of
+      Just x -> case parseEval md ms (TS.pack x) of
           Left (err,m) -> do
-            liftIO $ putStrLn err
+            liftIO $ TSIO.putStrLn err
             loop' md m
           Right (r, m) -> do
-            liftIO . putStrLn $ showRational r
+            liftIO . TSIO.putStrLn $ showRational r
             loop' md $ m & _1 %~ M.insert "_" r
 
 defVar :: VarMap
@@ -248,15 +248,15 @@ webLoop port mode = scotty port $ do
                   listsToMaps 
                   (decode (B.fromStrict env) :: Maybe ListTuple)
         let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
-        let t = parseString mode (T.unpack fs) ms
+        let t = parseString mode fs ms
         let res = evalExprS t ms
         let txt = case res of
                     Left (err, m) -> do
                       storeMaps storagename m
-                      return $ (T.toStrict fs, TS.pack err) : lg
+                      return $ (fs, err) : lg
                     Right (r, m) -> do
                       storeMaps storagename (m & _1 %~ M.insert "_" r)
-                      return $ (T.toStrict fs , TS.pack $ showRational r) : lg
+                      return $ (fs , showRational r) : lg
         rtxt <- liftIO txt
         liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
         html $ renderHtml
@@ -292,20 +292,20 @@ telegramLoop' mode maps manager n = do
           let (tt,ch) = fromMaybe ("0",-1001040733151) (unpackTheMessage msg)
           let (qi, qq) = fromMaybe ("empty","0") (unpackQuery iq)
           let chat_maps = fromMaybe (defVar, M.empty, opMap) $ M.lookup (toInteger ch) maps
-          let smm = TS.unpack tt
-          if "/calc " `isPrefixOf` smm
+          let smm = tt
+          if "/calc " `TS.isPrefixOf` smm
           then do
-            let sm = drop 6 smm
+            let sm = TS.drop 6 smm
             let t = parseString mode sm chat_maps
             let res = evalExprS t chat_maps
             case res of
-              Left (err,m) -> procRes ch (TS.pack err) m uid
-              Right (r, m) -> procRes ch (TS.pack $ showRational r) (m & _1 %~ M.insert "_" r) uid
+              Left (err,m) -> procRes ch err m uid
+              Right (r, m) -> procRes ch (showRational r) (m & _1 %~ M.insert "_" r) uid
           else if qi /= "empty"
                 then do
-                  let t = parseString mode (TS.unpack qq) (defVar, M.empty, opMap)
+                  let t = parseString mode qq (defVar, M.empty, opMap)
                   let res = evalExprS t (defVar, M.empty, opMap)
-                  procQ qi qq (TS.pack $ either fst (showRational . fst) res) uid
+                  procQ qi qq (either fst (showRational . fst) res) uid
                 else nextIter (uid+1)
         else nextIter (-1)
     Left err -> do
