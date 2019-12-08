@@ -52,7 +52,7 @@ loop (x:xs) maps bk n = do
     let t = case e of
               Left err -> (Left err, maps)
               Right r  -> runState (runExceptT (evalS r)) maps 
-    let tt = either Left Right (fst t)          
+    let tt = fst t          
     do
       new_n <- if tt == snd x
         then do

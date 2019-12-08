@@ -250,13 +250,13 @@ webLoop port mode = scotty port $ do
         let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
         let t = parseString mode fs ms
         let res = evalExprS t ms
-        let txt = case res of
-                    Left (err, m) -> do
-                      storeMaps storagename m
-                      return $ (fs, err) : lg
-                    Right (r, m) -> do
-                      storeMaps storagename (m & _1 %~ M.insert "_" r)
-                      return $ (fs , showRational r) : lg
+        let txt = let (ress, mps) = either 
+                        Prelude.id 
+                        (\(r, m) -> (showRational r, m & _1 %~ M.insert "_" r)) 
+                        res
+                  in do
+                      storeMaps storagename mps
+                      return $ (fs, ress) : lg
         rtxt <- liftIO txt
         liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
         html $ renderHtml
@@ -333,9 +333,7 @@ telegramLoop' mode maps manager n = do
     procRes ch s m uid = do
       t <- token
       rs <- sendMessage t (SendMessageRequest (ChatId ch) s Nothing Nothing Nothing Nothing Nothing) manager
-      case rs of
-        Right Response { result = mr } -> printData mr
-        Left err                       -> print err
+      either print (\Response { result = mr } -> printData mr) rs
       telegramLoop' mode (M.insert (toInteger ch) m maps) manager (uid+1)
     ir txt ii = InlineQueryResultArticle ii (Just txt) (Just $ InputTextMessageContent txt Nothing Nothing) Nothing Nothing Nothing Nothing Nothing Nothing Nothing
     procQ qi qq s uid = do

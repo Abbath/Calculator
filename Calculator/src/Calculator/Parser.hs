@@ -101,11 +101,7 @@ parseToken str =
     (TLPar:rest)             -> Par <$> ps rest
     x                        -> throwError $ "Syntax error: " <> stringify x
   where
-    ps ss =
-      let t = runExcept $ takePar ss
-      in case t of
-           Left err -> throwError err
-           Right r  -> parseOp 1 . init . fst $ r
+    ps = either throwError (parseOp 1 . init . fst) . runExcept . takePar
 
 parseFuncall :: [Token] -> ReaderT (Map Text Int) (Except Text) [Expr]
 parseFuncall [TRPar] = return []
