@@ -51,10 +51,10 @@ commands:
           command: |
             set -e
             cabal v2-update
-            cabal v2-build -w ghc-<< parameters.ghcversion >> -j2 --disable-optimization --dependencies-only --enable-tests --enable-benchmarks
-            cabal v2-build -w ghc-<< parameters.ghcversion >> -j2 --disable-optimization --enable-tests --enable-benchmarks 2>build.log
+            cabal v2-build -w ghc-<< parameters.ghcversion >> -j2 --disable-optimization --dependencies-only --enable-tests --enable-benchmarks Calculator
+            cabal v2-build -w ghc-<< parameters.ghcversion >> -j2 --disable-optimization --enable-tests --enable-benchmarks Calculator 2>build.log
             cat build.log
-            cabal v2-test -w ghc-<< parameters.ghcversion >> -j2 --disable-optimization --enable-tests
+            cabal v2-test -w ghc-<< parameters.ghcversion >> -j2 --disable-optimization --enable-tests Calculator
       - *save
 
 #-----------------------------------------------------------------------------
