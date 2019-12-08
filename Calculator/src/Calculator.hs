@@ -110,7 +110,7 @@ parseString m s ms = case m of
                        AlexHappy -> Right $ preprocess . HP.parse . alexScanTokens $ s
 
 evalExprS :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
-evalExprS t maps = either (Left . (,maps)) (\e -> (\(r, s) -> either (Left . (,s)) (Right . (,s)) r) $ getShit e) t
+evalExprS t maps = either (Left . (,maps)) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
   where getShit e = let a = runExceptT (evalS e) in runState a maps
 
 -- evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)

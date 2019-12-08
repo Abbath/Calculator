@@ -224,7 +224,7 @@ evalS ex = case ex of
         ('@':r) -> throwError $ "Expression instead of a function name: " ++ r ++ "/2"
         _ -> throwError $ "No such operator: " ++ op ++ "/2"
   UMinus (OpCall "^" x y) -> evm $ OpCall "^" (UMinus x) y
-  UMinus x         -> fmap (0-) $ evm x
+  UMinus x         -> (0-) <$> evm x
   Par e            -> evm e
   where
     mte s = maybe (throwError s) return
