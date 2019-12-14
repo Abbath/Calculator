@@ -52,6 +52,7 @@ executable Calculator
   build-tools:          alex, happy
   default-language:     Haskell2010
   other-modules:        Calculator
+                      , Calculator.HomebrewLexer
                       , Calculator.Evaluator
                       , Calculator.AlexLexer
                       , Calculator.HappyParser
@@ -86,6 +87,7 @@ test-suite Test
                       , scientific
                       , parser-combinators
   other-modules:        Calculator.Evaluator
+                      , Calculator.HomebrewLexer
                       , Calculator.Lexer
                       , Calculator.MegaLexer
                       , Calculator.MegaParser

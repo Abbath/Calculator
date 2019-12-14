@@ -22,9 +22,10 @@ import           Calculator.AlexLexer
 import           Calculator.Css
 import           Calculator.Evaluator
 import qualified Calculator.HappyParser        as HP
-import           Calculator.Lexer
+-- import           Calculator.Lexer
 import qualified Calculator.MegaParser         as CMP
 import           Calculator.Parser
+import           Calculator.HomebrewLexer
 import           Calculator.Types              (Assoc (..), Expr (..),
                                                 ListTuple, preprocess,
                                                 showRational, showT)
@@ -106,7 +107,7 @@ parseString m s ms = case m of
                        Megaparsec ->
                          left showT (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (s <> "\n"))
                        Internal ->
-                         tokenize s >>= parse (getPriorities $ ms^._3)
+                         tloop s >>= parse (getPriorities $ ms^._3)
                        AlexHappy -> Right $ preprocess . HP.parse . alexScanTokens $ TS.unpack s
 
 evalExprS :: Either TS.Text Expr -> Maps -> Either (TS.Text, Maps) (Rational, Maps)

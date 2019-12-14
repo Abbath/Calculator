@@ -2,7 +2,7 @@
 module Calculator.Tests (testLoop) where
 
 import           Calculator.Evaluator
-import           Calculator.Lexer
+import           Calculator.HomebrewLexer
 import           Calculator.AlexLexer
 import qualified Calculator.MegaParser   as CMP
 import           Calculator.Parser  
@@ -45,7 +45,7 @@ loop (x:xs) maps bk n = do
   if not $ T.null sample
   then do
     let e = case bk of
-              Internal -> tokenize sample >>= parse (getPriorities $ maps^._3)
+              Internal -> tloop sample >>= parse (getPriorities $ maps^._3)
               Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sample <> "\n"))
               AH -> Right $ preprocess . HP.parse . alexScanTokens $ T.unpack sample
     --print e
