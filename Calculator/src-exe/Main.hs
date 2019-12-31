@@ -52,3 +52,4 @@ main = do
         portCheck []    = 3000
         portCheck [_,_] = error "Yup. Its an Easter egg!"
         portCheck _     = error "There are too many args!"
+
