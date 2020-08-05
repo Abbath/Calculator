@@ -12,10 +12,11 @@ import           Data.Map.Strict      (Map)
 import qualified Data.Map.Strict      as M
 import           Data.Text            (Text)
 import qualified Data.Text            as T
+import           Data.List
 
 checkOps :: [Token] -> Either Text [Token]
 checkOps t =
-  if snd . foldl f (TEnd, True) $ t
+  if snd . foldl' f (TEnd, True) $ t
     then Right t
     else Left "Two operators in a row"
   where
@@ -74,7 +75,7 @@ parseOp l s = do
     Just ([], _, _) -> throwError "Empty first argument"
     Just (_, _, []) -> throwError "Empty second argument"
     Just (s1, op, s2) ->
-      OpCall <$> pure (unTOp op) <*> parseOp (l + 1) s1 <*> parseOp l s2
+      OpCall (unTOp op) <$> parseOp (l + 1) s1 <*> parseOp l s2
 
 parseFunDec :: [Token] -> Except Text (Text, [Text])
 parseFunDec [TIdent name, TLPar, TIdent a, TRPar] = return (name, [a])
@@ -125,7 +126,7 @@ takePar = takePar' (1 :: Integer) []
       case x of
         TRPar -> tp (n - 1)
         TLPar -> tp (n + 1)
-        _     -> tp n
+        _any  -> tp n
       where
         tp m = takePar' m (x : acc) xs
 

@@ -30,7 +30,7 @@ import           Calculator.Types              (Assoc (..), Expr (..),
                                                 ListTuple, preprocess,
                                                 showRational, showT)
 import           Clay                          (render)
-import           Control.Arrow                 (left, first, (***), second)
+import           Control.Arrow                 (left, first, second)
 import           Control.Lens                  ((%~), (&), (.~), (^.), (^?), _1,
                                                 _3)
 import           Control.Monad.Reader
@@ -51,6 +51,7 @@ import           System.Environment
 import           System.FilePath
 import           System.Random
 import qualified Text.Megaparsec               as MP
+import           Text.Read                     (readMaybe)
 import           Web.Telegram.API.Bot
 
 import qualified Telegram.Bot.API                 as Telegram
@@ -62,7 +63,7 @@ newtype Model = Model {getMaps :: Maps}
 -- | Actions bot can perform.
 data Action
   = NoAction    -- ^ Perform no action.
-  | Reply TS.Text  -- ^ Reply some text.
+  | Reply !TS.Text  -- ^ Reply some text.
   deriving (Show)
 
 -- | Bot application.
@@ -85,7 +86,7 @@ handleAction _ NoAction model = pure model
 handleAction mode (Reply msg) model = model2 <# do
   replyText response
   pure NoAction
-  where (response, model2) = (Prelude.id *** Model) $ either 
+  where (response, model2) = second Model $ either 
           Prelude.id 
           (first showRational) 
           (parseEval mode (getMaps model) msg) 
@@ -170,8 +171,9 @@ evalLoop m = Calculator.loop m (defVar, M.empty, opMap)
 updateIDS :: Integer -> IO ()
 updateIDS i = do
     f <- BS.readFile "ids"
-    let ids = read (BS.unpack f) :: [(Integer, Integer)]
+    let idsm = readMaybe (BS.unpack f) :: Maybe [(Integer, Integer)]
     tm <- round `fmap` getPOSIXTime
+    let ids = fromMaybe [] idsm
     mapM_ (\(_, ff) -> do
              let logname = "log" ++ show ff ++ ".dat";
              let storagename = "storage" ++ show ff ++ ".dat"
@@ -287,9 +289,9 @@ telegramLoop' mode maps manager n = do
   updates <- getUpdates tok (Just n) (Just 10) Nothing manager
   case updates of
     Right Response { result = u } ->
-      if not $ null u
-        then do
-          let Update { update_id = uid, message = msg, inline_query = iq} = head u
+      case u of 
+        (x:_) -> do
+          let Update { update_id = uid, message = msg, inline_query = iq} = x
           let (tt,ch) = fromMaybe ("0",-1001040733151) (unpackTheMessage msg)
           let (qi, qq) = fromMaybe ("empty","0") (unpackQuery iq)
           let chat_maps = fromMaybe (defVar, M.empty, opMap) $ M.lookup (toInteger ch) maps
@@ -300,15 +302,15 @@ telegramLoop' mode maps manager n = do
             let t = parseString mode sm chat_maps
             let res = evalExprS t chat_maps
             case res of
-              Left (err,m) -> procRes ch err m uid
-              Right (r, m) -> procRes ch (showRational r) (m & _1 %~ M.insert "_" r) uid
+              Left  (err, m) -> procRes ch err m uid
+              Right (r, m)   -> procRes ch (showRational r) (m & _1 %~ M.insert "_" r) uid
           else if qi /= "empty"
                 then do
                   let t = parseString mode qq (defVar, M.empty, opMap)
                   let res = evalExprS t (defVar, M.empty, opMap)
                   procQ qi qq (either fst (showRational . fst) res) uid
                 else nextIter (uid+1)
-        else nextIter (-1)
+        _ -> nextIter (-1)
     Left err -> do
       print err
       nextIter (-1)

@@ -6,13 +6,13 @@ import           Calculator.Tests
 import           Options.Applicative
 
 data Options = Options {
-      mp   :: Bool,
-      ah   :: Bool,
-      test :: Bool,
-      cli  :: Bool,
-      tg   :: Bool,
-      tgs  :: Bool,
-      port :: [Int]
+      mp   :: !Bool,
+      ah   :: !Bool,
+      test :: !Bool,
+      cli  :: !Bool,
+      tg   :: !Bool,
+      tgs  :: !Bool,
+      port :: ![Int]
     }
 
 options :: Parser Options
@@ -28,21 +28,23 @@ options = Options
 main :: IO ()
 main = do
   writeFile "ids" "[]"
-  Options m x t c g s p <- execParser opts
-  case (m,x,t,c,g,s) of
-    (_,_,True,_,_,_)          -> testLoop
-    (True,_,_,_,_,True)       -> telegramSimple Megaparsec
-    (_,True,_,_,_,True)       -> telegramSimple AlexHappy
-    (False,False,_,_,_,True)  -> telegramSimple Internal
-    (True,_,_,_,True,_)       -> telegramLoop Megaparsec
-    (_,True,_,_,True,_)       -> telegramLoop AlexHappy
-    (False,False,_,_,True,_)  -> telegramLoop Internal
-    (True,_,_,False,_,_)      -> webLoop (portCheck p) Megaparsec
-    (_,True,_,False,_,_)      -> webLoop (portCheck p) AlexHappy
-    (False,False,_,False,_,_) -> webLoop (portCheck p) Internal
-    (True,_,_,True,_,_)       -> evalLoop Megaparsec
-    (_,True,_,True,_,_)       -> evalLoop AlexHappy
-    (False,False,_,True,_,_)  -> evalLoop Internal
+  -- Options m x t c g s p <- execParser opts
+  opts2 <- execParser opts
+  let p = port opts2
+  case opts2 of
+    Options _ _ True _ _ _ _          -> testLoop
+    Options True _ _ _ _ True _       -> telegramSimple Megaparsec
+    Options _ True _ _ _ True _       -> telegramSimple AlexHappy
+    Options False False _ _ _ True _  -> telegramSimple Internal
+    Options True _ _ _ True _ _       -> telegramLoop Megaparsec
+    Options _ True _ _ True _ _       -> telegramLoop AlexHappy
+    Options False False _ _ True _ _  -> telegramLoop Internal
+    Options True _ _ False _ _ _      -> webLoop (portCheck p) Megaparsec
+    Options _ True _ False _ _ _      -> webLoop (portCheck p) AlexHappy
+    Options False False _ False _ _ _ -> webLoop (portCheck p) Internal
+    Options True _ _ True _ _ _       -> evalLoop Megaparsec
+    Options _ True _ True _ _ _       -> evalLoop AlexHappy
+    Options False False _ True _ _ _  -> evalLoop Internal
   where opts = info (helper <*> options)
           ( fullDesc
             <> progDesc "Reads a character string and prints the result of calculation"
