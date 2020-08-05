@@ -4,7 +4,6 @@ module Main where
 import           Calculator
 import           Calculator.Tests
 import           Options.Applicative
-import           Data.Semigroup ((<>))
 
 data Options = Options {
       mp   :: Bool,

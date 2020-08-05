@@ -27,6 +27,7 @@ defaultTelegramClientEnv token = ClientEnv
   <$> newManager tlsManagerSettings
   <*> pure (botBaseUrl token)
   <*> pure Nothing
+  <*> pure defaultMakeClientRequest
 
 defaultRunBot :: Token -> ClientM a -> IO (Either ClientError a)
 defaultRunBot token bot = do
