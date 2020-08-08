@@ -2,13 +2,13 @@ cradle:
     multi:
     - path: "dist-newstyle"
       config: { cradle: { none:  } }
-    - path: "./"
+    - path: "./Calculator"
       config: 
         cradle:
           cabal:
-            - path: "./src"
+            - path: "./Calculator/src"
               component: "lib:Calculator"
-            - path: "./src-exe"
+            - path: "./Calculator/src-exe"
               component: "exe:Calculator"
-            - path: "./src-test"
+            - path: "./Calculator/src-test"
               component: "test:Test"
