@@ -1,8 +1,14 @@
 cradle:
-  cabal:
-    - path: "./src"
-      component: "lib:Calculator"
-    - path: "./src-exe"
-      component: "exe:Calculator"
-    - path: "./src-test"
-      component: "test:Test"
+    multi:
+    - path: "dist-newstyle"
+      config: { cradle: { none:  } }
+    - path: "./"
+      config: 
+        cradle:
+          cabal:
+            - path: "./src"
+              component: "lib:Calculator"
+            - path: "./src-exe"
+              component: "exe:Calculator"
+            - path: "./src-test"
+              component: "test:Test"
