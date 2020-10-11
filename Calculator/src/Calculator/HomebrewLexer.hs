@@ -123,7 +123,7 @@ wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
 
 numba :: Parser Token
-numba = TNumber . toRational <$> (wsBracket doubleLiteral)
+numba = TNumber . toRational <$> wsBracket doubleLiteral
 
 lpar :: Parser Token
 lpar = TLPar <$ wsBracket (charP '(')

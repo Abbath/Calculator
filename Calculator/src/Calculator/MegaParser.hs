@@ -53,7 +53,7 @@ parExpr = do
 udfExpr :: PReader Expr
 udfExpr = do
   name <- identifier
-  args <- parens $ sepBy1 identifier comma
+  args <- parens $ sepBy identifier comma
   void eq
   UDF name args <$> expr2 
 
@@ -85,7 +85,7 @@ assignExpr = do
 funcallExpr :: PReader Expr
 funcallExpr = do
   fname <- identifier
-  args <- parens (sepBy1 expr2 comma) <* notFollowedBy (symbol "=" <* notFollowedBy (symbol "="))
+  args <- parens (sepBy expr2 comma) <* notFollowedBy (symbol "=" <* notFollowedBy (symbol "="))
   return $ FunCall fname args
 
 opcallExpr :: PReader Expr

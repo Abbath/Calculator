@@ -12,7 +12,7 @@ import           Calculator.Types
 import           Control.Monad.Reader
 import           Data.Map.Strict      (Map)
 import qualified Data.Map.Strict      as M
--- import           Data.Scientific
+import           Data.Scientific
 -- import           Control.Monad.Combinators.Expr
 -- import           Data.Functor (($>))
 import qualified Data.Text as T
@@ -57,46 +57,89 @@ instance Alternative Parser where
   (Parser p1) <|> (Parser p2) =
     Parser $ \input -> p1 input <|> p2 input
 
-type PReader = ReaderT (Map Text (Int, Assoc)) Parser
-
-parser :: PReader Expr
+parser :: Parser Expr
 parser = expr 
 
-expr :: PReader Expr
+expr :: Parser Expr
 expr =  udfExpr <|> udoExpr <|> assignExpr <|> opAliasExpr <|> expr2
 
-expr2 :: PReader Expr
+expr2 :: Parser Expr
 expr2 =  opcallExpr <|> parExpr <|> funcallExpr <|> expr3
 
-expr3 :: PReader Expr
+expr3 :: Parser Expr
 expr3 = parExpr <|> funcallExpr <|> idExpr <|> numExpr
 
-opAliasExpr :: PReader Expr
+opAliasExpr :: Parser Expr
 opAliasExpr = do
   op1 <- operator
   void eq
   op2 <- operator
   return $ UDO op1 (-1) L (OpCall op2 (Id "@x") (Id "@y"))
 
-operator :: Token -> PReader Text
-operator (TOp op) = return op
-operator _ = 
--- numExpr :: PReader Expr
--- numExpr = do
---   n <- number
---   case floatingOrInteger n of
---     Right int -> return $ Number (fromIntegral (int :: Integer))
---     Left doub -> return $ Number (toRational (doub :: Double))
+operator :: Parser Text
+operator = exctractOp <$> parseIf "operator" isTOp
+  where isTOp (TOp _) = True
+        isTOp _ = False
+        exctractOp (TOp op) = op
+        exctractOp _ = ""
 
--- idExpr :: PReader Expr
--- idExpr = do
---   name <- identifier <* notFollowedBy (symbol "(")
---   return $ Id name
+parseIf :: Text -> (Token -> Bool) -> Parser Token
+parseIf desc f =
+  Parser $ \input ->
+    case input of
+      (inputUncons -> Just (y, ys))
+        | f y -> Right (ys, y)
+        | otherwise ->
+          Left $
+          ParserError
+            (inputLoc input)
+            ("Expected " <> desc <> ", but found shit")
+      _ ->
+        Left $
+        ParserError
+          (inputLoc input)
+          ("Expected " <> desc <> ", but reached end of string")
 
--- parExpr :: PReader Expr
--- parExpr = do
---   ex <- parens expr2
---   return $ Par ex
+numExpr :: Parser Expr
+numExpr = Number <$> number
+
+number :: Parser Rational
+number = exctractNum <$> parseIf "number" isTNumber
+  where isTNumber (TNumber _) = True
+        isTNumber _ = False
+        exctractNum (TNumber n) = n
+        exctractNum _ = ""
+
+idExpr :: Parser Expr
+idExpr = Id <$> identifier 
+
+identifier :: Parser Text
+identifier = exctractId <$> parseIf "id" isTIdent
+  where isTIdent (TIdent _) = True
+        isTIdent _ = False
+        exctractId (TIdent _id) = _id
+        exctractId _ = ""
+
+parExpr :: Parser Expr
+parExpr = do
+  parLeft
+  ex <- expr2
+  parRight
+  return $ Par ex
+
+parLeft :: Parser ()
+parLeft = do
+    parseIf "(" isParLeft
+    return ()
+  where isParLeft TLPar = True
+        isParLeft _ = False
+
+parRight :: Parser ()
+parRight = do
+    parseIf "(" isParRight
+    return ()
+  where isParRight TRPar = True
+        isParRight _ = False
 
 -- udfExpr :: PReader Expr
 -- udfExpr = do
