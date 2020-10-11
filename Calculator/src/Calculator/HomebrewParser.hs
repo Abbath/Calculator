@@ -1,38 +1,86 @@
--- module Calculator.HomebrewParser (parser) where
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE OverloadedStrings #-}
+module Calculator.HomebrewParser (parser) where
 
--- import           Calculator.HomebrewLexer 
--- import           Calculator.Types
+import           Control.Applicative
+
+import           Calculator.HomebrewLexer 
+import           Calculator.Types
 -- import           Control.Lens         ((%~), (&))
 -- import           Control.Lens.At
--- import           Control.Monad.Reader
--- import           Data.Map.Strict      (Map)
--- import qualified Data.Map.Strict      as M
+import           Control.Monad.Reader
+import           Data.Map.Strict      (Map)
+import qualified Data.Map.Strict      as M
 -- import           Data.Scientific
 -- import           Control.Monad.Combinators.Expr
 -- import           Data.Functor (($>))
--- import           Data.Text    (Text)
+import qualified Data.Text as T
+import           Data.Text    (Text)
 
--- type PReader = ReaderT (Map Text (Int, Assoc)) Parser
+data Input = Input
+  { inputLoc :: Int
+  , inputStr :: [Token]
+  } deriving (Show, Eq)
 
--- parser :: PReader Expr
--- parser = ws *> expr <* eof
+inputUncons :: Input -> Maybe (Token, Input)
+inputUncons (Input _ [])   = Nothing
+inputUncons (Input loc (x:xs)) = Just (x, Input (loc + 1) xs)
 
--- expr :: PReader Expr
--- expr =  try udfExpr <|> try udoExpr <|> try assignExpr <|> try opAliasExpr <|> expr2
+data ParserError = ParserError Int Text deriving (Show)
 
--- expr2 :: PReader Expr
--- expr2 =  try opcallExpr <|> try parExpr <|> try funcallExpr <|> expr3
+newtype Parser a = Parser
+  { runParser :: Input -> Either ParserError (Input, a)
+  }
 
--- expr3 :: PReader Expr
--- expr3 = try parExpr <|> try funcallExpr <|> try idExpr <|> numExpr
+instance Functor Parser where
+  fmap f (Parser p) =
+    Parser $ \input -> do
+      (input', x) <- p input
+      return (input', f x)
 
--- opAliasExpr :: PReader Expr
--- opAliasExpr = do
---   op1 <- operator
---   void eq
---   op2 <- operator
---   return $ UDO op1 (-1) L (OpCall op2 (Id "@x") (Id "@y"))
+instance Applicative Parser where
+  pure x = Parser $ \input -> Right (input, x)
+  (Parser p1) <*> (Parser p2) =
+    Parser $ \input -> do
+      (input', f) <- p1 input
+      (input'', a) <- p2 input'
+      return (input'', f a)
 
+instance {-# OVERLAPPING #-} Alternative (Either ParserError) where
+  empty = Left $ ParserError 0 "empty"
+  Left _ <|> e2 = e2
+  e1 <|> _ = e1
+
+instance Alternative Parser where
+  empty = Parser $ const empty
+  (Parser p1) <|> (Parser p2) =
+    Parser $ \input -> p1 input <|> p2 input
+
+type PReader = ReaderT (Map Text (Int, Assoc)) Parser
+
+parser :: PReader Expr
+parser = expr 
+
+expr :: PReader Expr
+expr =  udfExpr <|> udoExpr <|> assignExpr <|> opAliasExpr <|> expr2
+
+expr2 :: PReader Expr
+expr2 =  opcallExpr <|> parExpr <|> funcallExpr <|> expr3
+
+expr3 :: PReader Expr
+expr3 = parExpr <|> funcallExpr <|> idExpr <|> numExpr
+
+opAliasExpr :: PReader Expr
+opAliasExpr = do
+  op1 <- operator
+  void eq
+  op2 <- operator
+  return $ UDO op1 (-1) L (OpCall op2 (Id "@x") (Id "@y"))
+
+operator :: Token -> PReader Text
+operator (TOp op) = return op
+operator _ = 
 -- numExpr :: PReader Expr
 -- numExpr = do
 --   n <- number

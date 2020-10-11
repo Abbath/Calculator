@@ -1,5 +1,5 @@
 name:                 Calculator
-version:              0.5.1.0
+version:              0.6.0.0
 synopsis:             Calculator
 -- description:
 -- license:
@@ -28,50 +28,51 @@ library
                       , Calculator.MegaLexer
                       , Calculator.MegaParser
                       , Calculator.Css
-  build-depends:      base >= 4.7 && < 5
-                      , array
-                      , containers
-                      , lens
-                      , mtl
-                      , megaparsec
-                      , ieee754
-                      , haskeline
-                      , text
-                      , blaze-html
-                      , scotty
-                      , clay
-                      , aeson
-                      , bytestring
-                      , wai-middleware-static
-                      , integration
-                      , random
-                      , directory
-                      , time
-                      , wai
-                      , http-types
-                      , telegram-api
-                      , wreq
-                      , lens-aeson
-                      , filepath
-                      , scientific
-                      , http-client
-                      , http-client-tls
-                      , parser-combinators
-                      , telegram-bot-simple
+  build-depends:      aeson
+                    , array
+                    , base >= 4.7 && < 5
+                    , blaze-html
+                    , bytestring
+                    , clay
+                    , containers
+                    , directory
+                    , filepath
+                    , haskeline
+                    , http-client
+                    , http-client-tls
+                    , http-types
+                    , ieee754
+                    , integration
+                    , lens
+                    , lens-aeson
+                    , megaparsec
+                    , mtl
+                    , optparse-applicative
+                    , parser-combinators
+                    , random
+                    , scientific
+                    , scotty
+                    , telegram-api
+                    , telegram-bot-simple
+                    , text
+                    , time
+                    , wai
+                    , wai-middleware-static
+                    , wreq
   hs-source-dirs:       src
   build-tools:          alex, happy
   default-language:     Haskell2010
-  ghc-options:         -O2 -Wall -Werror -fno-warn-unused-matches
+  ghc-options:         -O2 -Wall -fno-warn-unused-matches
                        -fwrite-ide-info -hiedir=.hie
 
 executable Calculator
   main-is:              Main.hs
-  build-depends:        base >= 4.7 && < 5
-                        , optparse-applicative
-                        , Calculator
+  build-depends:        Calculator
+                      , base >= 4.7 && < 5
+                      , optparse-applicative
   hs-source-dirs:       src-exe
   default-language:     Haskell2010
-  ghc-options:         -O2 -Wall -Werror -fno-warn-unused-matches
+  ghc-options:         -O2 -Wall -fno-warn-unused-matches
                        -fwrite-ide-info -hiedir=.hie
 
 test-suite Test
@@ -79,8 +80,9 @@ test-suite Test
   main-is:              MainTest.hs
   hs-source-dirs:       src-test
   default-language:     Haskell2010
-  build-depends:        base >= 4.7 && < 5
-                        , Calculator
+  build-depends:        Calculator
+                      , base >= 4.7 && < 5
+                      , optparse-applicative >= 0.15.1.0
 
 
   
