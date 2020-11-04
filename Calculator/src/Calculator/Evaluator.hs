@@ -169,7 +169,10 @@ evalS ex = case ex of
   FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
     n <- evm a
-    return $ toRational . (\x -> if abs x <= sin pi then 0 else x) . fun . fromRational $ n
+    let r = (\x -> if abs x <= sin pi then 0 else x) . fun . fromRational $ n
+    if isNaN r 
+      then throwError "NaN"
+      else return $ toRational r 
   FunCall n [a,b] | M.member n compFuns -> cmp n a b compFuns
   FunCall "if" [a,b,c] -> do
     cond <- evm a
