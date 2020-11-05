@@ -62,14 +62,14 @@ commands:
 #-----------------------------------------------------------------------------
 
 jobs:
-  cabal-ghc-8_6_5:
+  cabal-ghc-8_8_4:
       <<: *env
       steps:
           - cabal_build:
-              ghcversion: 8.6.5
+              ghcversion: 8.8.4
 
 workflows:
   version: "2.1"
   build:
     jobs:
-      - cabal-ghc-8_6_5
+      - cabal-ghc-8_8_4
