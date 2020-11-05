@@ -8,7 +8,7 @@ jobs:
       - checkout
       - restore_cache:
           name: Restore Cached Artifacts
-          key: haskell-artifacts-{{ checksum "circleci-cabal.cabal" }}
+          key: haskell-artifacts-{{ checksum "Calculator/Calculator.cabal" }}
       - run:
           name: Update Dependencies
           command: cabal new-update && cabal new-install --lib
