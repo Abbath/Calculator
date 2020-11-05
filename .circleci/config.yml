@@ -13,17 +13,17 @@ jobs:
           name: Update Dependencies
           command: cabal new-update && cabal new-install Calculator --lib
       - run:
-          name: Build
-          command: cabal new-build
+          name: Build 
+          command: cabal new-build Calculator
       - run:
           name: Build Tests
-          command: cabal new-build --enable-tests
+          command: cabal new-build Calculator --enable-tests
       - save_cache:
           name: Cache Artifacts
-          key: haskell-artifacts-{{ checksum "circleci-cabal.cabal" }}
+          key: haskell-artifacts-{{ checksum "Calculator/Calculator.cabal" }}
           paths:
             - "/root/.cabal"
             - "dist-newstyle"
       - run:
           name: Run Tests
-          command: cabal new-test --enable-tests --test-show-details=streaming
+          command: cabal new-test Calculator --enable-tests --test-show-details=streaming
