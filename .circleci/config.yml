@@ -11,7 +11,7 @@ jobs:
           key: haskell-artifacts-{{ checksum "Calculator/Calculator.cabal" }}
       - run:
           name: Update Dependencies
-          command: cabal new-update && cabal new-install --lib
+          command: cabal new-update && cabal new-install Calculator --lib
       - run:
           name: Build
           command: cabal new-build
