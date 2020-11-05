@@ -1,75 +1,29 @@
-version: "2.1"
-
-env: &env
-    environment:
-      LC_ALL: "C.UTF-8"
-    docker:
-      - image: fpco/stack-build:lts-13
-
-#-----------------------------------------------------------------------------
-# Common utility stuff, not to be modified usually
-#-----------------------------------------------------------------------------
-
-preinstall: &preinstall
-  run: |
-      echo 'export PATH=/opt/cabal/bin:/opt/ghc/bin:$PATH' >> $BASH_ENV
-      source $BASH_ENV
-      apt-get update
-
-restore: &restore
-  # Needs to happen after installing ca-certificates
-  restore_cache:
-    key: v1-{{ .Environment.CIRCLE_JOB }}-{{ .Branch }}
-
-save: &save
-  save_cache:
-      key: v1-{{ .Environment.CIRCLE_JOB }}-{{ .Branch }}
-      paths:
-        - ~/.cabal
-        - ~/.ghc
-        - ~/.local
-        - ~/.stack
-
-commands:
-  cabal_build:
-    parameters:
-      ghcversion:
-        type: string
-    steps:
-      - checkout
-      - *preinstall
-      - *restore
-      - run:
-          name: install cabal
-          command: apt-get install -y cabal-install-2.4
-      - run:
-          name: install ghc
-          command: |
-            apt-get install -y ghc-<< parameters.ghcversion >>
-      - run:
-          name: build and test project
-          command: |
-            set -e
-            cabal v2-update
-            cabal v2-build -w ghc-<< parameters.ghcversion >> -j2 --disable-optimization --dependencies-only --enable-tests --enable-benchmarks Calculator
-            cabal v2-build -w ghc-<< parameters.ghcversion >> -j2 --disable-optimization --enable-tests --enable-benchmarks Calculator 2>build.log
-            cat build.log
-            cabal v2-test -w ghc-<< parameters.ghcversion >> -j2 --disable-optimization --enable-tests Calculator
-      - *save
-
-#-----------------------------------------------------------------------------
-# Build matrix
-#-----------------------------------------------------------------------------
+version: 2.1
 
 jobs:
-  cabal-ghc-8_8_4:
-      <<: *env
-      steps:
-          - cabal_build:
-              ghcversion: 8.8.4
-
-workflows:
-  version: "2.1"
   build:
-    jobs:
-      - cabal-ghc-8_8_4
+    docker:
+      - image: haskell:8.8.4
+    steps:
+      - checkout
+      - restore_cache:
+          name: Restore Cached Artifacts
+          key: haskell-artifacts-{{ checksum "circleci-cabal.cabal" }}
+      - run:
+          name: Update Dependencies
+          command: cabal new-update && cabal new-install --lib
+      - run:
+          name: Build
+          command: cabal new-build
+      - run:
+          name: Build Tests
+          command: cabal new-build --enable-tests
+      - save_cache:
+          name: Cache Artifacts
+          key: haskell-artifacts-{{ checksum "circleci-cabal.cabal" }}
+          paths:
+            - "/root/.cabal"
+            - "dist-newstyle"
+      - run:
+          name: Run Tests
+          command: cabal new-test --enable-tests --test-show-details=streaming
