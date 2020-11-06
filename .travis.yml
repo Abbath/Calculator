@@ -7,58 +7,31 @@ git:
 cache:
   directories:
   - "$HOME/.cabal"
-  - "$HOME/.stack"
-  - "$TRAVIS_BUILD_DIR/.stack-work"
-  - "$TRAVIS_BUILD_DIR/Calculator/.stack-work"
+  - "$TRAVIS_BUILD_DIR/dist-newstyle"
 
 matrix:
   include:
   
-  - ghc: 8.4.4
-    env: GHCVER='8.4.4' CABALVER='head'
+  - ghc: 8.8.4
+    env: GHCVER='8.8.4' CABALVER='head'
     os: linux
     addons:
       apt:
         sources:
         - hvr-ghc
         packages:
-        - ghc-8.4.4
-        - cabal-install-head
-
-  - ghc: 8.6.5
-    env: GHCVER='8.6.5' CABALVER='head'
-    os: linux
-    addons:
-      apt:
-        sources:
-        - hvr-ghc
-        packages:
-        - ghc-8.6.5
+        - ghc-8.8.4
         - cabal-install-head
 
 install:
   - |
-    if [ -z "$STACK_YAML" ]; then
-      export PATH="/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH"
-      echo $PATH
-      cabal new-update
-      cabal new-build Calculator
-    else
-      mkdir -p ~/.local/bin
-      export PATH="$HOME/.local/bin:$PATH"
-      travis_retry curl -L 'https://www.stackage.org/stack/linux-x86_64' | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
-      stack --version
-      stack setup --no-terminal --install-cabal 2.2.0.1
-      stack ghc -- --version
-      stack build --only-dependencies --no-terminal
-    fi
+    export PATH="/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH"
+    echo $PATH
+    cabal new-update
+    cabal new-build Calculator --enable-tests
 script:
   - |
-    if [ -z "$STACK_YAML" ]; then
-      cabal new-exec Calculator -- -t
-    else
-      stack exec Calculator -- -t
-    fi
+    cabal new-test Calculator --enable-tests --test-show-details=streaming
 
 notifications:  
   email: 
