@@ -55,7 +55,7 @@ parseOp 0 (TOp op:TLPar:TNumber p:TComma:TNumber a:TRPar:TOp "=":rest) =
               then L
               else R) <$>
          parseOp 1 rest
-parseOp 0 x@(TIdent _:TLPar:TIdent _:_) = do
+parseOp 0 x@(TIdent _:TLPar:_) = do
   (a, b) <- lift $ breakPar (== TOp "=") x
   if null b
     then parseOp 1 x
@@ -66,7 +66,7 @@ parseOp 0 (TIdent s:TOp "=":rest) = Asgn s <$> parseOp 1 rest
 parseOp 0 s = parseOp 1 s
 parseOp 2 (TOp "+":rest) = parseOp 2 rest
 parseOp 2 (TOp "-":rest) = fmap UMinus (parseOp 2 rest)
-parseOp 5 s = parseToken s
+parseOp 7 s = parseToken s
 parseOp l s = do
   m <- ask
   r <- lift $ breakPar3 (`elem` takeWithPriorities l m) s
@@ -78,6 +78,7 @@ parseOp l s = do
       OpCall (unTOp op) <$> parseOp (l + 1) s1 <*> parseOp l s2
 
 parseFunDec :: [Token] -> Except Text (Text, [Text])
+parseFunDec [TIdent name, TLPar, TRPar] = return (name, [])
 parseFunDec [TIdent name, TLPar, TIdent a, TRPar] = return (name, [a])
 parseFunDec (TIdent name:TLPar:TIdent a:TComma:rest) = do
   x <- parseFunDec' rest
@@ -89,18 +90,18 @@ parseFunDec (TIdent name:TLPar:TIdent a:TComma:rest) = do
         [TIdent _, TComma]    -> throwError "Missing bracket"
         [TIdent n, TRPar]     -> return [n]
         (TIdent n:TComma:rst) -> (n :) <$> parseFunDec' rst
-        x                     -> throwError $ "Syntax error: " <> stringify x
-parseFunDec s = throwError $ "Syntax error: " <> stringify s
+        x                     -> throwError $ "Syntax error in function declaration (mild): " <> stringify x
+parseFunDec s = throwError $ "Syntax error in function declaration (severe): " <> stringify s
 
 parseToken :: [Token] -> ParseReader
 parseToken str =
   case str of
-    []                       -> throwError "Syntax error"
+    []                       -> throwError "Empty"
     [TIdent s]               -> return $ Id s
     (TIdent name:TLPar:rest) -> FunCall name <$> parseFuncall rest
     [TNumber n]              -> return $ Number n
     (TLPar:rest)             -> Par <$> ps rest
-    x                        -> throwError $ "Syntax error: " <> stringify x
+    x                        -> throwError $ "Unknown token: " <> stringify x
   where
     ps = either throwError (parseOp 1 . init . fst) . runExcept . takePar
 

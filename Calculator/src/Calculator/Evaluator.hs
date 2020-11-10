@@ -14,6 +14,7 @@ import           Control.Monad.State
 import           Control.Monad.Except
 import           Data.Text        (Text)
 import qualified Data.Text        as T
+import           Data.Bits        ((.|.), (.&.), xor)
 
 type FunMap = Map (Text, Int) ([Text], Expr)
 type VarMap = Map Text Rational
@@ -91,13 +92,16 @@ mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), (
         ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs)]
 
 intFuns :: Map Text (Integer -> Integer -> Integer)
-intFuns = M.fromList [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem)]
+intFuns = M.fromList [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem), ("xor", xor)]
 
 fmod :: Rational -> Rational -> Rational
 fmod x y = fromInteger $ mod (floor x) (floor y)
 
 mathOps :: Map Text (Rational -> Rational -> Rational)
 mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow)]
+
+bitOps :: Map Text (Integer -> Integer -> Integer)
+bitOps = M.fromList [("|", (.|.)), ("&", (.&.))]
 
 pow :: Rational -> Rational -> Rational
 pow a b | denominator a ==1 && denominator b == 1 && numerator b < 0 = toRational $ (fromRational a :: Double) ^^ numerator b
@@ -138,8 +142,8 @@ evalS ex = case ex of
         throwError ("Operator alias " <> n <> " = " <> op)
       Nothing -> throwError $ "No such operator: " <> op
   UDO n p a e
-    | M.member n mathOps || M.member n compOps || n == "=" -> throwError $ "Can not redefine the embedded operator: " <> n
-    | p < 1 || p > 4 ->  throwError $ "Bad priority: " <> showT p
+    | M.member n mathOps || M.member n compOps || M.member n bitOps || n == "=" -> throwError $ "Can not redefine the embedded operator: " <> n
+    | p < 1 || p > 6 ->  throwError $ "Bad priority: " <> showT p
     | otherwise -> do
         maps <- get
         let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
@@ -220,6 +224,7 @@ evalS ex = case ex of
     else return (fromInteger $ mod (floor n1) (floor n))
   OpCall op x y | M.member op compOps -> cmp op x y compOps
   OpCall op x y | M.member op mathOps -> eval' ( mathOps M.! op) op x y
+  OpCall op x y | M.member op bitOps  -> bitEval ( bitOps M.! op) x y
   OpCall op x y  -> do
     maps <- get
     case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc),Expr)) of
@@ -242,6 +247,12 @@ evalS ex = case ex of
       return $ if fun n n1
         then 1
         else 0
+    bitEval op x y = do
+      n <- evm x
+      n1 <- evm y
+      if denominator n == 1 && denominator n1 == 1
+        then return . toRational $ op (numerator n) (numerator n1)
+        else throwError "Cannot perform bitwise operator on a float"
     evm x = do
       r <- evalS x
       if r > tooBig

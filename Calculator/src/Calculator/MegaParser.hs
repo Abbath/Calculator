@@ -101,7 +101,8 @@ operators =
   ,[sop InfixL "+", sop InfixL "-"]
   ,[sop InfixL "<=", sop InfixL ">="
   , sop InfixL "<", sop InfixL ">"
-  , sop InfixL "==", sop InfixL "!="]
+  , sop InfixL "==", sop InfixL "!="
+  , sop InfixL "&", sop InfixL "|"]
   ]
   where sop i s = i (try (exactOper s ) $> OpCall s)
 

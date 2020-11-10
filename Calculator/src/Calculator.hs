@@ -123,7 +123,9 @@ opMap = M.fromList [("=", f 0 R)
   , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
   , ("+", f 2 L), ("-", f 2 L)
   , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)
-  , ("^", f 4 R)]
+  , ("^", f 4 R)
+  , ("|", f 5 R)
+  , ("&", f 6 R)]
   where f p a = ((p, a), Number 0)
 
 getPrA :: OpMap -> Map TS.Text (Int, Assoc)
