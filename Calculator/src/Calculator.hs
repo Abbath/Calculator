@@ -134,8 +134,8 @@ getPrA om = let lst = M.toList om
             in ps
 
 getNames :: [String]
-getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^"
-  ,"sin","cos","tan","asin","acos","atan","log","sqrt","exp","abs"
+getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|"
+  ,"sin","cos","tan","asin","acos","atan","log","sqrt","exp","abs","xor","not","int","df"
   ,"lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div","mod","quot","rem","prat","quit"]
 
 completionList :: Monad m => String -> m [Completion]
@@ -167,8 +167,11 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
 defVar :: VarMap
 defVar = M.fromList [("pi", toRational (pi::Double)), ("e", toRational . exp $ (1::Double)), ("_",0.0)]
 
+funMap :: FunMap
+funMap = M.fromList [(("not",1), (["x"],FunCall "if" [Id "x", Number 0, Number 1]))]
+
 evalLoop :: Mode -> IO ()
-evalLoop m = Calculator.loop m (defVar, M.empty, opMap)
+evalLoop m = Calculator.loop m (defVar, funMap, opMap)
 
 updateIDS :: Integer -> IO ()
 updateIDS i = do

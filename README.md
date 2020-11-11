@@ -12,13 +12,13 @@ Features
 * Scientific number notation support
 * Embedded constants `pi` and `e`
 * Embedded functions `sin cos tan asin acos atan log exp sqrt abs`
-* Embedded integral functions `gcd lcm mod div quot rem xor`
+* Embedded integral functions `gcd lcm mod div quot rem`
 * Ability to print rational numbers using function `prat`
 * If conditions with a following syntax `if(<cond_expression>,<expression1>,<expression2>)`
 * Lazy evaluation of function arguments
 * Comparison functions `lt gt le ge eq ne`
 * Comparison operators `< > <= >= == !=`
-* Bitwise operators `& |`
+* Bitwise operators `& |` and functions `xor not`.
 * Optimizations like `log(exp(x)) = x`
 * Automatic detection of division operation in `atan` argument
 * Variable `_` stores result of the previous calculation
@@ -27,12 +27,12 @@ Features
 * A user defined operator can be defined using syntax `<name>(<priority>,<associativity>) = <expression>`
 * The available symbols for operators are `+-/*%^$!~&|=><`
 * Arguments `x y` are default for user defined operators
-* A priority of the user defined operator can be any of `1 2 3 4`
-* An associativity of the user defined operator is left if `associativity` equals `0` of right otherwise
+* A priority of the user defined operator can be any between `1` and `6`
+* An associativity of the user defined operator is left if `associativity` equals `0` or right otherwise
 * A function or operator can take other functions as arguments
 * An operator alias can be defined using syntax `<alias_operator> = <operator>`
 * Outer variables' values are captured inside user defined functions
-* A signature of the user defined function consists of a name and arity
+* A signature of the user defined function consists of a name and arity so `f/0` and `f/1` are different functions 
 * Megaparsec frontend is available by running with `-m` or `--megaparsec-frontend` command line flag
 * AlexHappy frontend is available by running with `-x` or `--alex-happy-frontend` command line flag
 * Web interface can be used by running with `-w` of `--web` command line flag. Web interface is available on 3000 port
