@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TupleSections #-}
+{-# LANGUAGE OverloadedStrings, TupleSections, OverloadedLists #-}
 module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap, telegramLoop, telegramSimple) where
 
 import           Network.HTTP.Types.Status
@@ -119,7 +119,7 @@ evalExprS t maps = either (Left . (,maps)) ((\(r, s) -> either (Left . (,s)) (Ri
 -- evalExpr t maps = either (Left . (,maps)) (eval  maps) t
 
 opMap :: OpMap
-opMap = M.fromList [("=", f 0 R)
+opMap = [("=", f 0 R)
   , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
   , ("+", f 2 L), ("-", f 2 L)
   , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)
@@ -165,10 +165,10 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
             loop' md $ m & _1 %~ M.insert "_" r
 
 defVar :: VarMap
-defVar = M.fromList [("pi", toRational (pi::Double)), ("e", toRational . exp $ (1::Double)), ("_",0.0)]
+defVar = [("pi", toRational (pi::Double)), ("e", toRational . exp $ (1::Double)), ("_",0.0)]
 
 funMap :: FunMap
-funMap = M.fromList [(("not",1), (["x"],FunCall "if" [Id "x", Number 0, Number 1]))]
+funMap = [(("not",1), (["x"],FunCall "if" [Id "x", Number 0, Number 1]))]
 
 evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m (defVar, funMap, opMap)

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE OverloadedStrings, OverloadedLists  #-}
 module Calculator.Tests (testLoop) where
 
 import           Calculator.Evaluator
@@ -26,7 +26,7 @@ data Backend = Internal | Mega | AH deriving Show
 type Tests = [(Text, Either Text Rational)]
 
 opMap :: OpMap
-opMap = M.fromList [("=", f 0 R)
+opMap = [("=", f 0 R)
   , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
   , ("+", f 2 L), ("-", f 2 L)
   , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)
@@ -144,7 +144,7 @@ testsAH = [
     ]
 
 defVar :: VarMap
-defVar = M.fromList [("pi", toRational (pi :: Double)), ("e", toRational . exp $ (1.0 :: Double)), ("_",0.0)]
+defVar = [("pi", toRational (pi :: Double)), ("e", toRational . exp $ (1.0 :: Double)), ("_",0.0)]
 
 testLoop :: IO ()
 testLoop = do

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, OverloadedLists #-}
 module Calculator.Evaluator (evalS, getPriorities, FunMap, VarMap, OpMap, Maps, Result2) where
 
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
@@ -80,28 +80,28 @@ catchVar (vm, fm) ex = case ex of
     where st = catchVar (vm, fm)
 
 compFuns :: Map Text (Rational -> Rational -> Bool)
-compFuns = M.fromList [("lt",(<)), ("gt",(>)), ("eq",(==))
+compFuns = [("lt",(<)), ("gt",(>)), ("eq",(==))
   ,("ne",(/=)), ("le",(<=)), ("ge",(>=))]
 
 compOps :: Map Text (Rational -> Rational -> Bool)
-compOps = M.fromList [("<",(<)), (">",(>)), ("==",(==))
+compOps = [("<",(<)), (">",(>)), ("==",(==))
   ,("!=",(/=)), ("<=",(<=)), (">=",(>=))]
 
 mathFuns :: Map Text (Double -> Double)
-mathFuns = M.fromList [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
+mathFuns = [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
         ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs)]
 
 intFuns :: Map Text (Integer -> Integer -> Integer)
-intFuns = M.fromList [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem), ("xor", xor)]
+intFuns = [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem), ("xor", xor)]
 
 fmod :: Rational -> Rational -> Rational
 fmod x y = fromInteger $ mod (floor x) (floor y)
 
 mathOps :: Map Text (Rational -> Rational -> Rational)
-mathOps = M.fromList [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow)]
+mathOps = [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow)]
 
 bitOps :: Map Text (Integer -> Integer -> Integer)
-bitOps = M.fromList [("|", (.|.)), ("&", (.&.))]
+bitOps = [("|", (.|.)), ("&", (.&.))]
 
 pow :: Rational -> Rational -> Rational
 pow a b | denominator a ==1 && denominator b == 1 && numerator b < 0 = toRational $ (fromRational a :: Double) ^^ numerator b
@@ -118,7 +118,7 @@ type Result2 = ExceptT Text (State Maps)
 
 evalS :: Expr -> Result2 Rational
 evalS ex = case ex of
-  Asgn s _ | s `elem` ["pi", "e", "_"] -> throwError $ "Cannot change a constant value: " <> s
+  Asgn s _ | s `elem` (["pi", "e", "_"] :: [T.Text]) -> throwError $ "Cannot change a constant value: " <> s
   Asgn s e -> do
     r <- evm e
     modify (\maps -> maps & _1 %~ M.insert s r)
