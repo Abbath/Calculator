@@ -17,12 +17,12 @@ data Options = Options {
 
 options :: Parser Options
 options = Options
-          <$> switch (long "megaparsec-backend" <> short 'm' <> help "Use Megaparsec backend")
-          <*> switch (long "alex-happy-backend" <> short 'x' <> help "Use Alex+Happy backend (very experimental)")
+          <$> switch (long "megaparsec-frontend" <> short 'm' <> help "Use Megaparsec frontend")
+          <*> switch (long "alex-happy-frontend" <> short 'x' <> help "Use Alex+Happy frontend (very experimental)")
           <*> switch (long "test" <> short 't' <> help "Run tests")
           <*> switch (long "cli" <> short 'c' <> help "Run console app")
           <*> switch (long "telegram" <> short 'g' <> help "Run Telegram bot")
-          <*> switch (long "telegram-simple" <> short 's' <> help "Run simple Telegram bot (only Internal backend supported)")
+          <*> switch (long "telegram-simple" <> short 's' <> help "Run simple Telegram bot (only Internal frontend supported)")
           <*> many (argument auto (metavar "PORT"))
 
 main :: IO ()
