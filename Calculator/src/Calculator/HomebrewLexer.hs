@@ -104,10 +104,10 @@ parseIf desc f =
           (inputLoc input)
           ("Expected " <> desc <> ", but reached end of string")
 
-doubleLiteral :: Parser Double
+doubleLiteral :: Parser Rational
 doubleLiteral =
   (\sign int frac expo ->
-       sign * (int + frac) * (10 ** expo))
+       toRational (sign * (int + frac) * (10 ** expo) :: Double))
     <$> (minus <|> pure 1)
     <*> (read <$> digits)
     <*> opt (read <$> (('0':) <$> ((:) <$> charP '.' <*> digits)))
@@ -119,11 +119,18 @@ doubleLiteral =
     e = charP 'e' <|> charP 'E'
     opt = (<|> pure 0)
 
+hexLiteral :: Parser Rational
+hexLiteral = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . ("0x" ++) <$> digits)
+  where
+    digits = some $ parseIf "digit" isHexDigit
+    zero = charP '0'
+    x = charP 'x'
+
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
 
 numba :: Parser Token
-numba = TNumber . toRational <$> wsBracket doubleLiteral
+numba = TNumber <$> wsBracket ( hexLiteral <|> doubleLiteral)
 
 lpar :: Parser Token
 lpar = TLPar <$ wsBracket (charP '(')
@@ -137,8 +144,11 @@ alfa = parseIf "letters and _" ((||) <$> isAlpha <*> (== '_'))
 alfaNum :: Parser Char
 alfaNum = alfa <|> parseIf "alfas and numbas" isDigit
 
+alfaNumDot :: Parser Char
+alfaNumDot = alfaNum <|> parseIf "alfas and numbas" (== '.')
+
 ident :: Parser Token
-ident = TIdent <$> wsBracket (T.cons <$> alfa <*> (T.pack <$> many alfaNum))
+ident = TIdent <$> wsBracket (T.cons <$> alfa <*> (T.pack <$> many alfaNumDot))
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><"
@@ -162,7 +172,7 @@ comma = TComma <$ wsBracket (charP ',')
 -- funn = TLet <$ textP "fun"
 
 tokah :: Parser Token
-tokah = lpar <|> rpar <|> comma <|> operata <|> ident <|> numba
+tokah = lpar <|> rpar <|> comma <|> operata <|> numba <|> ident 
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0

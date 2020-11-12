@@ -37,7 +37,7 @@ comma = symbol ","
 
 identifier :: PReader Text
 identifier = lexeme p
-  where p = T.cons <$> (letterChar  <|> char '_') <*> (T.pack <$> many (alphaNumChar <|> char '_'))
+  where p = T.cons <$> (letterChar  <|> char '_' <|> char '.') <*> (T.pack <$> many (alphaNumChar <|> char '_' <|> char '.'))
 
 opSymbols :: String
 opSymbols = "+-/*%$^!~&|=><"

@@ -9,7 +9,8 @@ import qualified Data.Text as T
 %wrapper "posn"
 
 $ascdigit = 0-9
-$alpha = [a-zA-Z_]
+$alpha = [a-zA-Z_\.]
+$alphanum = [0-9a-zA-Z_\.]
 $decdigit = $ascdigit
 @decimal = $decdigit+
 @exponent = [eE] [\-\+]? @decimal
@@ -24,7 +25,7 @@ tokens :-
     @floating_point {\_ s -> TNumber $ readNumber s}
     \(  {\_ _ -> TLPar}
     \)  {\_ _ -> TRPar}
-    $alpha+ {\_ s -> TIdent (T.pack s)}
+    $alpha$alphanum* {\_ s -> TIdent (T.pack s)}
     $alpha+\( {\_ s -> TFIdent (T.init . T.pack $ s)}
     \= {\_ _ -> TEqual}
     [\+\-\/\\\*\%\^\$\!\~\&\|\>\<]+ {\_ s -> TOp (T.pack s)}

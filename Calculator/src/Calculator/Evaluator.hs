@@ -118,7 +118,7 @@ type Result2 = ExceptT Text (State Maps)
 
 evalS :: Expr -> Result2 Rational
 evalS ex = case ex of
-  Asgn s _ | s `elem` (["pi", "e", "_"] :: [T.Text]) -> throwError $ "Cannot change a constant value: " <> s
+  Asgn s _ | s `elem` (["m.pi", "m.e", "m.phi", "_"] :: [T.Text]) -> throwError $ "Cannot change a constant value: " <> s
   Asgn s e -> do
     r <- evm e
     modify (\maps -> maps & _1 %~ M.insert s r)

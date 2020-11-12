@@ -86,7 +86,7 @@ tests = [
   ,("1024/2/2/2", Right 128)
   ,("f(x) = x", Left "Function f/1")
   ,("f(g,x) = g(x)", Left "Function f/2")
-  ,("f(sin,pi)", Right 0)
+  ,("f(sin,m.pi)", Right 0)
   ,("h() = 2", Left "Function h/0")
   ,("hh = h()", Left "Constant hh=2")
   ,("p(x,y) = x - y", Left "Function p/2")
@@ -104,7 +104,7 @@ tests = [
   ,("x = 5",Left "Constant x=5")
   ,("abs(-x)==x", Right 1)
   ,("1!=2", Right 1)
-  ,("sin(pi)==0", Right 1)
+  ,("sin(m.pi)==0", Right 1)
   ,("/= = !=", Left "Operator alias /= = !=")
   ,("1|0", Right 1)
   ,("1&0", Right 0)
@@ -138,13 +138,13 @@ testsAH = [
     ,("let x = 5",Left "Constant x=5")
     ,("abs(-x) == x", Right 1)
     ,("1!=2", Right 1)
-    ,("sin(pi)==0", Right 1)
+    ,("sin(m.pi)==0", Right 1)
     ,("1|0", Right 1)
     ,("1&0", Right 0)
     ]
 
 defVar :: VarMap
-defVar = [("pi", toRational (pi :: Double)), ("e", toRational . exp $ (1.0 :: Double)), ("_",0.0)]
+defVar = [("m.pi", toRational (pi :: Double)), ("m.e", toRational . exp $ (1.0 :: Double)), ("_",0.0)]
 
 testLoop :: IO ()
 testLoop = do
