@@ -26,7 +26,7 @@ tokens :-
     \(  {\_ _ -> TLPar}
     \)  {\_ _ -> TRPar}
     $alpha$alphanum* {\_ s -> TIdent (T.pack s)}
-    $alpha+\( {\_ s -> TFIdent (T.init . T.pack $ s)}
+    $alpha$alphanum*\( {\_ s -> TFIdent (T.init . T.pack $ s)}
     \= {\_ _ -> TEqual}
     [\+\-\/\\\*\%\^\$\!\~\&\|\>\<]+ {\_ s -> TOp (T.pack s)}
     \, {\_ _ -> TComma}
