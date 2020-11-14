@@ -15,6 +15,7 @@ import           Control.Monad.Except
 import           Data.Text        (Text)
 import qualified Data.Text        as T
 import           Data.Bits        ((.|.), (.&.), xor)
+import           Numeric          (showHex)
 
 type FunMap = Map (Text, Int) ([Text], Expr)
 type VarMap = Map Text Rational
@@ -169,6 +170,11 @@ evalS ex = case ex of
   FunCall "prat" [e] -> do
     t1 <- evm e
     throwError $ showT (numerator t1) <> " / " <> showT (denominator t1)
+  FunCall "hex" [e] -> do
+    t1 <- evm e
+    if denominator t1 == 1
+      then throwError . T.pack . ("0x" ++) . (`showHex` "") . numerator $ t1 
+      else throwError "Cant convert float to hex yet"
   FunCall f [e1, e2] | M.member f intFuns -> evalInt f e1 e2
   FunCall name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name

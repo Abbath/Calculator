@@ -10,7 +10,7 @@ import qualified Data.Text as T
 
 $ascdigit = 0-9
 $alpha = [a-zA-Z_\.]
-$alphanum = [0-9a-zA-Z_\.]
+$alphanum = [$ascdigit $alpha]
 $decdigit = $ascdigit
 @decimal = $decdigit+
 @exponent = [eE] [\-\+]? @decimal
