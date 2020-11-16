@@ -57,6 +57,7 @@ import           Web.Telegram.API.Bot
 import qualified Telegram.Bot.API                 as Telegram
 import           Telegram.Bot.Simple
 import           Telegram.Bot.Simple.UpdateParser
+import qualified Control.Exception as CE
 
 newtype Model = Model {getMaps :: Maps}
 
@@ -148,7 +149,17 @@ parseEval :: Mode -> Maps -> TS.Text -> Either (TS.Text, Maps) (Rational, Maps)
 parseEval md ms x = evalExprS (parseString md x ms) ms
 
 loop :: Mode -> Maps -> IO ()
-loop mode maps = runInputT (setComplete completeName $ defaultSettings { historyFile = Just "/home/dan/.mycalchist"}) (loop' mode maps)
+loop mode maps = do
+    hd <- getHomeDirectory
+    x <- CE.try $ runInputT 
+      (setComplete completeName $
+       defaultSettings { historyFile = Just (hd ++ "/.mycalchist")}) 
+       (loop' mode maps) :: IO (Either CE.ErrorCall ())
+    case x of
+      Left (CE.ErrorCall s) -> do
+        putStrLn s
+        Calculator.loop mode maps
+      Right _ -> return ()
   where
   loop' :: Mode -> Maps -> InputT IO ()
   loop' md ms = do
@@ -156,13 +167,15 @@ loop mode maps = runInputT (setComplete completeName $ defaultSettings { history
     case input of
       Nothing -> return ()
       Just "quit" -> return ()
-      Just x -> case parseEval md ms (TS.pack x) of
-          Left (err,m) -> do
-            liftIO $ TSIO.putStrLn err
-            loop' md m
-          Right (r, m) -> do
-            liftIO . TSIO.putStrLn $ showRational r
-            loop' md $ m & _1 %~ M.insert "_" r
+      Just x -> do
+          let y = parseEval md ms (TS.pack x)
+          case y of
+            Left (err,m) -> do
+              liftIO $ TSIO.putStrLn err
+              loop' md m
+            Right (r, m) -> do
+              liftIO . TSIO.putStrLn $ showRational r
+              loop' md $ m & _1 %~ M.insert "_" r
 
 defVar :: VarMap
 defVar = [("m.pi", toRational (pi::Double)), ("m.e", toRational . exp $ (1::Double)), ("m.phi", toRational ((1+sqrt 5)/2::Double)), ("_",0.0)]
