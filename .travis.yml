@@ -12,15 +12,15 @@ cache:
 matrix:
   include:
   
-  - ghc: 8.8.4
-    env: GHCVER='8.8.4' CABALVER='head'
+  - ghc: 8.10.4
+    env: GHCVER='8.10.4' CABALVER='head'
     os: linux
     addons:
       apt:
         sources:
         - hvr-ghc
         packages:
-        - ghc-8.8.4
+        - ghc-8.10.4
         - cabal-install-head
 
 install:
