@@ -86,7 +86,7 @@ performRequest' requestToClientRequest' reqMethod req = do
           status_code = statusCode status
           coreResponse = clientResponseToResponse id response
       ct <- case lookup "Content-Type" $ Client.responseHeaders response of
-                 Nothing -> pure $ "application"//"octet-stream"
+                 Nothing -> pure $ "application" Network.HTTP.Media.// "octet-stream"
                  Just t -> case parseAccept t of
                    Nothing -> throwError $ InvalidContentTypeHeader coreResponse
                    Just t' -> pure t'
