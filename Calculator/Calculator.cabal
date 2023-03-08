@@ -52,7 +52,6 @@ library
                     , random
                     , scientific
                     , scotty
-                    , telegram-api
                     , telegram-bot-simple==0.4.5
                     , text
                     , time

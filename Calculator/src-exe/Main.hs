@@ -17,7 +17,7 @@ data Options = Options {
 options :: Parser Options
 options = Options
           <$> strOption (long "frontend" <> short 'f' <> help "Frontend (I, M, A)" <> metavar "FRONTEND" <> value "I")
-          <*> strOption (long "backend" <> short 'b' <> help "Backend (C, W, T, TS)" <> metavar "BACKEND" <> value "C")
+          <*> strOption (long "backend" <> short 'b' <> help "Backend (C, W, T)" <> metavar "BACKEND" <> value "C")
           <*> switch (long "test" <> short 't' <> help "Run tests")
           <*> option auto (long "port" <> short 'p' <> help "Port" <> metavar "PORT" <> value 3000)
 
@@ -30,8 +30,7 @@ main = do
   case map toLower $ backend opts2 of
     "c"  -> evalLoop f
     "w"  -> webLoop (port opts2) f
-    "t"  -> telegramLoop f
-    "ts" -> telegramSimple f
+    "t"  -> telegramSimple f
     _    -> webLoop (port opts2) f
   where opts = info (helper <*> options)
           ( fullDesc

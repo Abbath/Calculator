@@ -1,62 +1,82 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, OverloadedLists #-}
-module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap, telegramLoop, telegramSimple) where
+module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap, telegramSimple) where
 
-import           Network.HTTP.Types.Status
-import           Network.Wai
-import           Network.Wai.Middleware.Static
-import qualified Network.Wreq                  as NW
-import           Web.Scotty
+import Network.Wai ( Request(remoteHost) )
+import Network.Wai.Middleware.Static
+    ( (>->), addBase, noDots, staticPolicy )
+import Web.Scotty
+    ( file,
+      get,
+      html,
+      middleware,
+      param,
+      post,
+      redirect,
+      request,
+      scotty )
 
 import           Text.Blaze.Html.Renderer.Text (renderHtml)
 import qualified Text.Blaze.Html5              as H
-import           Text.Blaze.Html5.Attributes
+import Text.Blaze.Html5.Attributes
+    ( action, autofocus, enctype, method, name, type_, value )
 
 import qualified Data.ByteString.Char8         as BS
 import qualified Data.ByteString.Lazy          as B
 import qualified Data.Text                     as TS
-import           Data.Text.Encoding
 import qualified Data.Text.IO                  as TSIO
 import qualified Data.Text.Lazy                as T
 
-import           Calculator.AlexLexer
-import           Calculator.Css
-import           Calculator.Evaluator
+import Calculator.AlexLexer ( alexScanTokens )
+import Calculator.Css ( getCss, postCss )
+import Calculator.Evaluator
+    ( Maps, OpMap, VarMap, FunMap, getPriorities, evalS )
 import qualified Calculator.HappyParser        as HP
 -- import           Calculator.Lexer
 import qualified Calculator.MegaParser         as CMP
-import           Calculator.Parser
-import           Calculator.HomebrewLexer
+import Calculator.Parser ( parse )
+import Calculator.HomebrewLexer ( tloop )
 import           Calculator.Types              (Assoc (..), Expr (..),
                                                 ListTuple, preprocess,
                                                 showRational, showT)
 import           Clay                          (render)
 import           Control.Arrow                 (left, first, second)
-import           Control.Lens                  ((%~), (&), (.~), (^.), (^?), _1,
-                                                _3)
-import           Control.Monad.Reader
-import           Control.Monad.State           
-import           Control.Monad.Except          
+import           Control.Lens                  ((%~), (&), (^.), _1, _3)
+import Control.Monad.Reader
+    ( MonadIO(liftIO), when, ReaderT(runReaderT) )
+import Control.Monad.State ( runState )           
+import Control.Monad.Except ( runExceptT )          
 import           Data.Aeson                    (decode, encode)
-import           Data.Aeson.Lens
 import           Data.List                     (isPrefixOf)
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as M
 import           Data.Maybe                    (fromMaybe, isJust, isNothing)
-import           Data.Time.Clock.POSIX
-import           Network.HTTP.Client           (Manager, newManager)
-import           Network.HTTP.Client.TLS       (tlsManagerSettings)
-import           System.Console.Haskeline
-import           System.Directory
-import           System.Environment
-import           System.FilePath
-import           System.Random
+import Data.Time.Clock.POSIX ( getPOSIXTime )
+
+import System.Console.Haskeline
+    ( defaultSettings,
+      getInputLine,
+      completeWord,
+      runInputT,
+      setComplete,
+      Completion(..),
+      CompletionFunc,
+      InputT,
+      Settings(historyFile) )
+import System.Directory ( findFile, getHomeDirectory, removeFile )
+import System.Random ( randomIO )
 import qualified Text.Megaparsec               as MP
 import           Text.Read                     (readMaybe)
-import           Web.Telegram.API.Bot
 
 import qualified Telegram.Bot.API                 as Telegram
-import           Telegram.Bot.Simple
-import           Telegram.Bot.Simple.UpdateParser
+import Telegram.Bot.Simple
+    ( getEnvToken,
+      startBot_,
+      conversationBot,
+      (<#),
+      replyText,
+      BotApp(..),
+      Eff )
+import Telegram.Bot.Simple.UpdateParser ( parseUpdate, text )
 import qualified Control.Exception as CE
 
 newtype Model = Model {getMaps :: Maps}
@@ -110,7 +130,7 @@ parseString m s ms = case m of
                          left showT (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (s <> "\n"))
                        Internal ->
                          tloop s >>= parse (getPriorities $ ms^._3)
-                       AlexHappy -> Right $ preprocess . HP.parse . alexScanTokens $ TS.unpack s
+                       AlexHappy -> Right $ preprocess . HP.parse . Calculator.AlexLexer.alexScanTokens $ TS.unpack s
 
 evalExprS :: Either TS.Text Expr -> Maps -> Either (TS.Text, Maps) (Rational, Maps)
 evalExprS t maps = either (Left . (,maps)) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
@@ -204,10 +224,10 @@ updateIDS i = do
        else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
 
 webLoop :: Int -> Mode -> IO ()
-webLoop port mode = scotty port $ do
-  middleware $ staticPolicy (noDots >-> addBase "Static/images") -- for future
+webLoop port mode = Web.Scotty.scotty port $ do
+  Web.Scotty.middleware $ Network.Wai.Middleware.Static.staticPolicy (Network.Wai.Middleware.Static.noDots Network.Wai.Middleware.Static.>-> Network.Wai.Middleware.Static.addBase "Static/images") -- for future
   Web.Scotty.get "/" $ do
-    req <- request
+    req <- Web.Scotty.request
     let sa = remoteHost req
     liftIO $ print sa
     do
@@ -215,50 +235,32 @@ webLoop port mode = scotty port $ do
       y <- x
       f <- liftIO $ findFile ["."] ("log" ++ show y ++ ".dat")
       if isJust f
-        then redirect "/"
+        then Web.Scotty.redirect "/"
         else do
           liftIO $ updateIDS (abs y)
-          redirect $ T.append "/" $ T.pack (show $ abs y)
-  Web.Scotty.get "/webhook" $ do
-    vt <- param "hub.verify_token"
-    c <- param "hub.challenge"
-    if vt == m_token
-      then Web.Scotty.text (c :: T.Text)
-      else json ("Error!" :: TS.Text)
-  post "/webhook" $ do
-    b <- body
-    let msgs = b ^? key "entry" . nth 0 . key "messaging"
-    mapM_ (\m -> do
-              let msg = fromMaybe "Hello" $ m ^? key "message" . key "text" . _String
-              let sender = fromMaybe "" $ m ^? key "sender" . key "id" . _String
-              let opts = NW.defaults & NW.param "qs" .~ [TS.concat ["{access_token : \"", m_token,"\"}"]]
-              let resp = TS.concat ["{recipient : {id:\"", sender,"\"}", ", messageData: {text : \"", msg ,"\"}}"]
-              r <- liftIO $ NW.postWith opts "https://graph.facebook.com/v2.6/me/messages" $ encodeUtf8 resp
-              liftIO $ print r
-              return ()) msgs
-    status $ Status 200 "Ok"
-  Web.Scotty.get "/favicon.ico" $ file "./Static/favicon.ico"
+          Web.Scotty.redirect $ T.append "/" $ T.pack (show $ abs y)
+  Web.Scotty.get "/favicon.ico" $ Web.Scotty.file "./Static/favicon.ico"
   Web.Scotty.get "/:id" $ do
-    iD <- param "id"
+    iD <- Web.Scotty.param "id"
     liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
     liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
-    html $ renderHtml
+    Web.Scotty.html $ renderHtml
       $ H.html $ H.body $ do
         H.h1 $ H.toHtml ("Calculator" :: TS.Text)
         H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
           H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
         H.style $ H.toHtml . render $ getCss
-  post "/clear/:id" $ do
-    iD <- param "id"
-    redirect $ T.append "/" iD
-  post "/:id" $ do
-    iD <- param "id"
+  Web.Scotty.post "/clear/:id" $ do
+    iD <- Web.Scotty.param "id"
+    Web.Scotty.redirect $ T.append "/" iD
+  Web.Scotty.post "/:id" $ do
+    iD <- Web.Scotty.param "id"
     liftIO $ updateIDS (read . T.unpack $ iD :: Integer)
-    fs <- param "foo"
+    fs <- Web.Scotty.param "foo"
     f1 <- liftIO $ findFile ["."] ("storage" ++ T.unpack iD ++ ".dat")
     f2 <- liftIO $ findFile ["."] ("log" ++ T.unpack iD ++ ".dat")
     if isNothing f1 || isNothing f2
-      then redirect "/"
+      then Web.Scotty.redirect "/"
       else do
         let logname = "log" ++ T.unpack iD ++ ".dat"
         let storagename = "storage" ++ T.unpack iD ++ ".dat"
@@ -280,7 +282,7 @@ webLoop port mode = scotty port $ do
                       return $ (fs, ress) : lg
         rtxt <- liftIO txt
         liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
-        html $ renderHtml
+        Web.Scotty.html $ renderHtml
              $ H.html $
                 H.body $ do
                   H.h1 $ H.toHtml ("Calculator" :: TS.Text)
@@ -294,74 +296,3 @@ webLoop port mode = scotty port $ do
     storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
     mapsToLists (a, b, c) = (M.toList a, M.toList b, M.toList c)
     listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.fromList c)
-    m_token = "EAADXPmCvIzUBAJsNSv4hbrFdvCXhhT5tpHoxbdW3YVjgWdjdkiudNjWLSo73ETD7nqyaneCutffik98dYE0mRImZCZB6ZBiZA87GKXAjwuGmRZCeXUxZA8pLHlF64evFiY1WFTeZALazOI3NxUXOwZAQTqkeuI7w5elrjZA8Shrin2zeds" :: TS.Text
-
-telegramLoop :: Mode -> IO ()
-telegramLoop mode = do
-  manager <- newManager tlsManagerSettings
-  telegramLoop' mode M.empty manager (-1)
-
-telegramLoop' :: Mode -> Map Integer Maps -> Manager -> Int -> IO ()
-telegramLoop' mode maps manager n = do
-  tok <- token
-  updates <- getUpdates tok (Just n) (Just 10) Nothing manager
-  case updates of
-    Right Response { result = u } ->
-      case u of 
-        (x:_) -> do
-          let Update { update_id = uid, message = msg, inline_query = iq} = x
-          let (tt,ch) = fromMaybe ("0",-1001040733151) (unpackTheMessage msg)
-          let (qi, qq) = fromMaybe ("empty","0") (unpackQuery iq)
-          let chat_maps = fromMaybe (defVar, M.empty, opMap) $ M.lookup (toInteger ch) maps
-          let smm = tt
-          if "/calc " `TS.isPrefixOf` smm
-          then do
-            let sm = TS.drop 6 smm
-            let t = parseString mode sm chat_maps
-            let res = evalExprS t chat_maps
-            case res of
-              Left  (err, m) -> procRes ch err m uid
-              Right (r, m)   -> procRes ch (showRational r) (m & _1 %~ M.insert "_" r) uid
-          else if qi /= "empty"
-                then do
-                  let t = parseString mode qq (defVar, M.empty, opMap)
-                  let res = evalExprS t (defVar, M.empty, opMap)
-                  procQ qi qq (either fst (showRational . fst) res) uid
-                else nextIter (uid+1)
-        _ -> nextIter (-1)
-    Left err -> do
-      print err
-      nextIter (-1)
-  where
-    nextIter = telegramLoop' mode maps manager
-    unpackQuery q = do
-      iq <- q
-      return (query_id iq, query_query iq)
-    unpackTheMessage m = do
-      mm <- m
-      t <- Web.Telegram.API.Bot.text mm
-      let ch = chat mm
-      return (t, fromIntegral $ chat_id ch)
-    token = do
-      ep <- getExecutablePath
-      t <- TSIO.readFile $ takeDirectory ep </> "token"
-      return $ Token t
-    printData mr = do
-      print (message_id mr)
-      print (Web.Telegram.API.Bot.text mr)
-      print (maybe 0 user_id . from $ mr)
-      print (chat_id . chat $ mr)
-    procRes ch s m uid = do
-      t <- token
-      rs <- sendMessage t (SendMessageRequest (ChatId ch) s Nothing Nothing Nothing Nothing Nothing) manager
-      either print (\Response { result = mr } -> printData mr) rs
-      telegramLoop' mode (M.insert (toInteger ch) m maps) manager (uid+1)
-    ir txt ii = InlineQueryResultArticle ii (Just txt) (Just $ InputTextMessageContent txt Nothing Nothing) Nothing Nothing Nothing Nothing Nothing Nothing Nothing
-    procQ qi qq s uid = do
-      x <- randomIO :: IO Integer
-      t <- token
-      rs <- answerInlineQuery t (AnswerInlineQueryRequest qi [ir (TS.concat [qq, " = ", s]) (TS.pack $ show x)] Nothing Nothing Nothing Nothing Nothing) manager
-      case rs of
-           Right Response { result = b} -> print b
-           Left err                     -> print err
-      nextIter (uid+1)
