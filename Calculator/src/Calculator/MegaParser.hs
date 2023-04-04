@@ -31,7 +31,7 @@ opAliasExpr = do
   op1 <- operator
   void eq
   op2 <- operator
-  return $ UDO op1 (-1) L (OpCall op2 (Id "@x") (Id "@y"))
+  return $ UDO op1 (-1) L (Call op2 [Id "@x", Id "@y"])
 
 numExpr :: PReader Expr
 numExpr = do
@@ -86,7 +86,7 @@ funcallExpr :: PReader Expr
 funcallExpr = do
   fname <- identifier
   args <- parens (sepBy expr2 comma) <* notFollowedBy (symbol "=" <* notFollowedBy (symbol "="))
-  return $ FunCall fname args
+  return $ Call fname args
 
 opcallExpr :: PReader Expr
 opcallExpr = do
@@ -104,11 +104,11 @@ operators =
   , sop InfixL "==", sop InfixL "!="
   , sop InfixL "&", sop InfixL "|"]
   ]
-  where sop i s = i (try (exactOper s ) $> OpCall s)
+  where sop i s = i (try (exactOper s ) $> (\a b -> Call s [a, b]))
 
 genOp :: Text -> (Int, Assoc) -> Operator PReader Expr
-genOp s (_,L) = InfixL (try (symbol s) $> OpCall s)
-genOp s (_,R) = InfixR (try (symbol s) $> OpCall s)
+genOp s (_,L) = InfixL (try (symbol s) $> (\a b -> Call s [a, b]))
+genOp s (_,R) = InfixR (try (symbol s) $> (\a b -> Call s [a, b]))
 
 insertOps :: [[Operator PReader Expr]] -> Map Text(Int, Assoc) -> [[Operator PReader Expr]]
 insertOps [[]] _ =  [[]]

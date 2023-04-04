@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric  #-}
 {-# LANGUAGE OverloadedStrings  #-}
-module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, preprocess, ListTuple, showRational, showT) where
+module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, isOp, preprocess, ListTuple, showRational, showT, opSymbols) where
 
 import           Data.Aeson   (FromJSON, ToJSON)
 import           Data.Ratio
@@ -29,10 +29,9 @@ data Expr = Number Rational
           | Asgn Text Expr
           | UDF Text [Text] Expr
           | UDO Text Int Assoc Expr
-          | OpCall Text Expr Expr
+          | Call Text [Expr]
           | UMinus Expr
           | Par Expr
-          | FunCall Text [Expr]
           | Id Text
           deriving (Eq, Show, Read, Generic)
 
@@ -71,9 +70,15 @@ exprToString ex = case ex of
   Number x        -> T.pack $ show . (fromRational :: Rational -> Double) $ x
   Par e           -> "(" <> exprToString e <> ")"
   UMinus e        -> "(-" <> exprToString e <> ")"
-  OpCall op e1 e2 -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
-  FunCall n e     -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
+  -- OpCall op e1 e2 -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
+  Call n e     -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
   Id s            -> s
+
+opSymbols :: String
+opSymbols = "+-/*%^$!~&|=><"
+
+isOp :: Text -> Bool
+isOp = T.all (`elem` opSymbols)
 
 unTOp :: Token -> Text
 unTOp (TOp op) = op
@@ -85,30 +90,30 @@ preprocess ex = simplify' ex ex
 
 simplifyExpr :: Expr -> Expr
 simplifyExpr ex = case ex of
-  Asgn s e                              -> Asgn s (simplifyExpr e)
-  UDF n s e                             -> UDF n s (simplifyExpr e)
-  UDO n p a e                           -> UDO n p a (simplifyExpr e)
-  Par (Par e)                           -> Par (simplifyExpr e)
-  Par (UMinus e)                        -> UMinus (simplifyExpr e)
-  Par e                                 -> Par (simplifyExpr e)
-  UMinus (Par (UMinus e))               -> Par (simplifyExpr e)
-  UMinus (OpCall op e1 e2)              -> OpCall op (UMinus (simplifyExpr e1)) (simplifyExpr e2)
-  UMinus e                              -> UMinus (simplifyExpr e)
-  OpCall "-" (Number 0.0) (OpCall op e1 e2) | op `elem` ["+","-"] ->
-    OpCall op (simplifyExpr . UMinus $ e1) (simplifyExpr e2)
-  OpCall "-" (Number 0.0) n             -> UMinus (simplifyExpr n)
-  OpCall "+" (Number 0.0) n             -> simplifyExpr n
-  OpCall op n (Number 0.0) | op `elem` ["+","-"] -> simplifyExpr n
-  OpCall "*" (Number 1.0) n             -> simplifyExpr n
-  OpCall op n (Number 1.0) | op `elem` ["*","/", "%"] -> simplifyExpr n
-  OpCall "^" n (Number 1.0)             -> simplifyExpr n
-  OpCall "^" (FunCall "sqrt" [e]) (Number 2.0) -> simplifyExpr e
-  OpCall op e1 e2                       -> OpCall op (simplifyExpr e1) (simplifyExpr e2)
-  FunCall "exp" [FunCall "log" [e]]     -> simplifyExpr e
-  FunCall "log" [FunCall "exp" [e]]     -> simplifyExpr e
-  FunCall "sqrt" [OpCall "^" e (Number 2.0)] -> simplifyExpr e
-  FunCall name e                        -> FunCall name (map simplifyExpr e)
-  x                                     -> x
+  Asgn s e -> Asgn s (simplifyExpr e)
+  UDF n s e -> UDF n s (simplifyExpr e)
+  UDO n p a e -> UDO n p a (simplifyExpr e)
+  Par (Par e) -> Par (simplifyExpr e)
+  Par (UMinus e) -> UMinus (simplifyExpr e)
+  Par e -> Par (simplifyExpr e)
+  UMinus (Par (UMinus e)) -> Par (simplifyExpr e)
+  UMinus (Call op [e1, e2]) | isOp op -> Call op [UMinus (simplifyExpr e1), simplifyExpr e2]
+  UMinus e -> UMinus (simplifyExpr e)
+  Call "-" [Number 0.0, Call op [e1, e2]]
+    | op `elem` ["+", "-"] ->
+        Call op [simplifyExpr . UMinus $ e1, simplifyExpr e2]
+  Call "-" [Number 0.0, n] -> UMinus (simplifyExpr n)
+  Call "+" [Number 0.0, n] -> simplifyExpr n
+  Call op [n, Number 0.0] | op `elem` ["+", "-"] -> simplifyExpr n
+  Call "*" [Number 1.0, n] -> simplifyExpr n
+  Call op [n, Number 1.0] | op `elem` ["*", "/", "%"] -> simplifyExpr n
+  Call "^" [n, Number 1.0] -> simplifyExpr n
+  Call "^" [Call "sqrt" [e], Number 2.0] -> simplifyExpr e
+  Call "exp" [Call "log" [e]] -> simplifyExpr e
+  Call "log" [Call "exp" [e]] -> simplifyExpr e
+  Call "sqrt" [Call "^" [e, Number 2.0]] -> simplifyExpr e
+  Call name e -> Call name (map simplifyExpr e)
+  x -> x
 
 showRational :: Rational -> Text
 showRational r = if denominator r == 1 then showT $ numerator r else showT (fromRational r :: Double)

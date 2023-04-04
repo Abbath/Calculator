@@ -20,10 +20,10 @@ checkOps t =
     then Right t
     else Left "Two operators in a row"
   where
-    f (old, res) new = (new, res && not (isOp new && old == new))
-    isOp (TOp "=") = False
-    isOp (TOp _)   = True
-    isOp _         = False
+    f (old, res) new = (new, res && not (is_op new && old == new))
+    is_op (TOp "=") = False
+    is_op (TOp _)   = True
+    is_op _         = False
 
 takeWithPriorities :: Int -> Map Text Int -> [Token]
 takeWithPriorities n m = map (TOp . fst) . M.toList $ M.filter (== n) m
@@ -44,7 +44,7 @@ type ParseReader = ReaderT (Map Text Int) (Except Text) Expr
 
 parseOp :: Int -> [Token] -> ParseReader
 parseOp 0 [TOp alias, TOp "=", TOp op] =
-  return $ UDO alias (-1) L (OpCall op (Id "@x") (Id "@y"))
+  return $ UDO alias (-1) L (Call op [Id "@x", Id "@y"])
 parseOp 0 (TOp op:TLPar:TNumber p:TComma:TNumber a:TRPar:TOp "=":rest) =
   if null rest
     then throwError "Empty operator definition"
@@ -74,8 +74,10 @@ parseOp l s = do
     Nothing -> parseOp (l + 1) s
     Just ([], _, _) -> throwError "Empty first argument"
     Just (_, _, []) -> throwError "Empty second argument"
-    Just (s1, op, s2) ->
-      OpCall (unTOp op) <$> parseOp (l + 1) s1 <*> parseOp l s2
+    Just (s1, op, s2) -> do
+      a1 <- parseOp (l + 1) s1
+      a2 <- parseOp l s2
+      return $ Call (unTOp op) [a1, a2]
 
 parseFunDec :: [Token] -> Except Text (Text, [Text])
 parseFunDec [TIdent name, TLPar, TRPar] = return (name, [])
@@ -98,7 +100,7 @@ parseToken str =
   case str of
     []                       -> throwError "Empty"
     [TIdent s]               -> return $ Id s
-    (TIdent name:TLPar:rest) -> FunCall name <$> parseFuncall rest
+    (TIdent name:TLPar:rest) -> Call name <$> parseFuncall rest
     [TNumber n]              -> return $ Number n
     (TLPar:rest)             -> Par <$> ps rest
     x                        -> throwError $ "Unknown token: " <> stringify x

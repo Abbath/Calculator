@@ -7,7 +7,7 @@ import           Control.Applicative
 import           Data.Char
 import           Data.Text (Text)
 import qualified Data.Text as T
-import           Calculator.Types    (Token (..))
+import           Calculator.Types    (Token (..), opSymbols)
 
 data Input = Input
   { inputLoc :: Int
@@ -149,9 +149,6 @@ alfaNumDot = alfaNum <|> parseIf "alfas and numbas" (== '.')
 
 ident :: Parser Token
 ident = TIdent <$> wsBracket (T.cons <$> alfa <*> (T.pack <$> many alfaNumDot))
-
-opSymbols :: String
-opSymbols = "+-/*%^$!~&|=><"
 
 opsym :: Parser Char
 opsym = parseIf "operator" (`elem` opSymbols)

@@ -36,16 +36,16 @@ All:
 
 Exprs:
     Expr {$1}
-    | Expr '-' Exprs {OpCall "-" $1 $3}
-    | Expr '=' '=' Exprs {OpCall "==" $1 $4}
-    | Expr '!' '=' Exprs {OpCall "!=" $1 $4}
-    | Expr op Exprs {OpCall $2 $1 $3}
+    | Expr '-' Exprs {Call "-" [$1, $3]}
+    | Expr '=' '=' Exprs {Call "==" [$1, $4]}
+    | Expr '!' '=' Exprs {Call "!=" [$1, $4]}
+    | Expr op Exprs {Call $2 [$1, $3]}
 
 Expr:
     '-' Expr {UMinus $2} 
     | '(' Exprs ')' {Par $2}
-    | fn ')' {FunCall $1 []}
-    | fn exprs ')' {FunCall $1 $2}
+    | fn ')' {Call $1 []}
+    | fn exprs ')' {Call $1 $2}
     | num {Number $1}
     | var {Id $1}
 

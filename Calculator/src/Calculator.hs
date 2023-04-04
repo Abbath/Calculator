@@ -201,7 +201,7 @@ defVar :: VarMap
 defVar = [("m.pi", toRational (pi::Double)), ("m.e", toRational . exp $ (1::Double)), ("m.phi", toRational ((1+sqrt 5)/2::Double)), ("_",0.0)]
 
 funMap :: FunMap
-funMap = [(("not", 1), (["x"], FunCall "if" [Id "x", Number 0, Number 1]))]
+funMap = [(("not", 1), (["x"], Call "if" [Id "x", Number 0, Number 1]))]
 
 evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m (defVar, funMap, opMap)

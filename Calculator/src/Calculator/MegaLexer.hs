@@ -39,9 +39,6 @@ identifier :: PReader Text
 identifier = lexeme p
   where p = T.cons <$> (letterChar  <|> char '_' <|> char '.') <*> (T.pack <$> many (alphaNumChar <|> char '_' <|> char '.'))
 
-opSymbols :: String
-opSymbols = "+-/*%$^!~&|=><"
-
 operator :: PReader Text
 operator = lexeme ( T.pack <$> (many . oneOf $ opSymbols))
 
