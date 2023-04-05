@@ -63,14 +63,14 @@ showT :: Show a => a -> Text
 showT = T.pack . show
 
 exprToString :: Expr -> Text
-exprToString ex = case ex of
+exprToString ex = case simplifyExpr ex of
   UDF n a e       -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
   UDO n p a e     -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Double else 1) <> ")" <> " = " <>  exprToString e
   Asgn i e        -> i <> " = " <> exprToString e
   Number x        -> T.pack $ show . (fromRational :: Rational -> Double) $ x
   Par e           -> "(" <> exprToString e <> ")"
   UMinus e        -> "(-" <> exprToString e <> ")"
-  -- OpCall op e1 e2 -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
+  Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
   Call n e     -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
   Id s            -> s
 
@@ -106,6 +106,7 @@ simplifyExpr ex = case ex of
   Call "+" [Number 0.0, n] -> simplifyExpr n
   Call op [n, Number 0.0] | op `elem` ["+", "-"] -> simplifyExpr n
   Call "*" [Number 1.0, n] -> simplifyExpr n
+  Call "*" [Number 0.0, n] -> Number 0.0
   Call op [n, Number 1.0] | op `elem` ["*", "/", "%"] -> simplifyExpr n
   Call "^" [n, Number 1.0] -> simplifyExpr n
   Call "^" [Call "sqrt" [e], Number 2.0] -> simplifyExpr e

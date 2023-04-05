@@ -35,22 +35,25 @@ goInside f ex = case ex of
   e                 -> return e
 
 substitute :: ([Text], [Expr]) -> Expr -> Either Text Expr
-substitute ([],[]) e = return e
-substitute (x,y) _ | length x /= length y =
-  Left $ "Bad argument number: " <> showT (length y) <> " instead of " <> showT (length x)
-substitute (x:xs, y:ys) (Id i) = if i == x
-                                    then return $ case y of
-                                                           n@(Number _) -> n
-                                                           iD@(Id _) -> iD
-                                                           p@(Par _) -> p
-                                                           t -> Par t
-                                    else substitute (xs, ys) (Id i)
-substitute s@(x:xs, Id fname:ys) (Call n e) = if n == x
-  then Call fname <$> mapM (substitute s) e
-  else do
-    t <- mapM (substitute s) e
-    substitute (xs, ys) (Call n t)
-substitute s@(_:xs, _:ys) (Call n e) = do
+substitute ([], []) e = return e
+substitute (x, y) _
+  | length x /= length y =
+      Left $ "Bad argument number: " <> showT (length y) <> " instead of " <> showT (length x)
+substitute (x : xs, y : ys) (Id i) =
+  if i == x
+    then return $ case y of
+      n@(Number _) -> n
+      iD@(Id _) -> iD
+      p@(Par _) -> p
+      t -> Par t
+    else substitute (xs, ys) (Id i)
+substitute s@(x : xs, Id fname : ys) (Call n e) =
+  if n == x
+    then Call fname <$> mapM (substitute s) e
+    else do
+      t <- mapM (substitute s) e
+      substitute (xs, ys) (Call n t)
+substitute s@(_ : xs, _ : ys) (Call n e) = do
   t <- mapM (substitute s) e
   substitute (xs, ys) (Call n t)
 substitute s ex = goInside (substitute s) ex
