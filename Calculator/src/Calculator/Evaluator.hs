@@ -4,8 +4,7 @@ module Calculator.Evaluator (evalS, getPriorities, extractNames, FunMap, VarMap,
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
                                    preprocess, showRational, showT, isOp)
 import           Control.Lens     ((%~), (&), (.~), (^.), _1, _2, _3)
-import           Data.Either      (rights)
-import           Data.List        (foldl')
+import           Data.Either      (fromRight)
 import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict  as M
 import Data.Ratio ( denominator, numerator )
@@ -25,7 +24,7 @@ type OpMap = Map Text ((Int, Assoc), Expr)
 type Maps = (VarMap, FunMap, OpMap)
 
 extractNames :: Maps -> [String]
-extractNames (v, f, o) = map (T.unpack) $ M.keys o <> M.keys v <> map fst (M.keys f)
+extractNames (v, f, o) = map T.unpack $ M.keys o <> M.keys v <> map fst (M.keys f)
 
 funNames :: FunMap -> [(Text, Text)]
 funNames = map (\(f,_) -> (f, f)) . M.keys
@@ -125,7 +124,6 @@ getPriorities om = let lst = M.toList om
                        ps = M.fromList $ map (second (fst . fst)) lst
                    in ps
 
--- type Result = StateT Maps (Except Text)
 type Result2 = ExceptT Text (State Maps)
 
 evalS :: Expr -> Result2 Rational
@@ -167,14 +165,12 @@ evalS ex = case ex of
   Call "df" [a,x] -> do
       let e = derivative a x
       either throwError (throwError . exprToString . preprocess) e
-  Call "int" [Id fun, a, b, s] -> do
+  Call "int" [Id fun, a, b, eps] -> do
       maps <- get
       a1 <- evm a
       b1 <- evm b
-      s1 <- evm s
-      let list = [a1,a1+s1..b1-s1]
-      return (foldl' (\acc next -> acc + s1 * next) 0 $
-                rights . map (\n -> procListElem maps fun (n+1/2*s1)) $ list)
+      e1 <- evm eps
+      return $ integrate (fromRight 0 . procListElem maps fun) a1 b1 e1
   Call "atan" [Call "/" [e1, e2]] -> do
     t1 <- evm e1
     t2 <- evm e2
@@ -338,3 +334,26 @@ derivative e x = case e of
     a2 <- derivative i x
     return $ Call "*" [a1, a2] 
   _ -> Left "No such derivative"
+
+
+s1_ :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational -> (Rational, Rational, Rational)
+s1_ f a b fa fb = let m = (a + b) / 2
+                      r = f m
+                      g = (abs (b - a) / 6) * (fa + 4 * r + fb)
+                  in (m, r, g) 
+
+s2_ :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational
+s2_ f a b fa fb eps whole m fm = let (ml, rl, gl) = s1_ f a m fa fm
+                                     (mr, rr, gr) = s1_ f m b fm fb 
+                                     delta = gl + gr - whole
+                                 in if abs delta <= 15 * eps
+                                    then gl + gr + (delta / 15)
+                                    else s2_ f a m fa fm (eps / 2) gl ml rl + 
+                                         s2_ f m b fm fb (eps / 2) gr mr rr  
+
+integrate :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational
+integrate f a b eps = let fa = f a
+                          fb = f b
+                          (m, r, g) = s1_ f a b fa fb 
+                      in s2_ f a b fa fb eps g m r
+
