@@ -47,12 +47,12 @@ library
                     , lens-aeson
                     , megaparsec
                     , mtl
-                    , optparse-applicative
                     , parser-combinators
                     , random
                     , scientific
                     , scotty
-                    , telegram-bot-simple==0.4.5
+                    , telegram-bot-simple
+                    , telegram-bot-api
                     , text
                     , time
                     , wai
