@@ -60,7 +60,9 @@ import System.Console.Haskeline
       Completion(..),
       CompletionFunc,
       InputT,
-      Settings(..) )
+      Settings(..),
+      withInterrupt,
+      handleInterrupt, outputStrLn)
 import System.Directory ( findFile, getHomeDirectory, removeFile )
 import System.Random ( randomIO )
 import qualified Text.Megaparsec               as MP
@@ -184,6 +186,7 @@ loop mode maps = do
        (loop' mode maps)
     case x of
       Left (CE.ErrorCall s) -> do
+        putStrLn "A"
         putStrLn s
         Calculator.loop mode maps
       Right _ -> return ()
@@ -195,7 +198,7 @@ loop mode maps = do
     case input of
       Nothing -> return ()
       Just "quit" -> return ()
-      Just x -> do
+      Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' md ms) . withInterrupt $ do
           let y = parseEval md ms (TS.pack x)
           case y of
             Left (err, m) -> do
