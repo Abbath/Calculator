@@ -156,7 +156,7 @@ getPrA om = let lst = M.toList om
 
 getNames :: [String]
 getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|"
-  ,"sin","cos","tan","asin","acos","atan","log","sqrt","exp","abs","xor","not","int","df","hex"
+  ,"sin","cos","tan","asin","acos","atan","log","sqrt","exp","abs","xor","not","int","df","hex","oct","bin"
   ,"lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div","mod","quot","rem","prat","quit"]
 
 completionList :: Monad m => String -> m [Completion]

@@ -3,19 +3,21 @@ module Calculator.Evaluator (evalS, getPriorities, FunMap, VarMap, OpMap, Maps, 
 
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
                                    preprocess, showRational, showT, isOp)
-import           Control.Lens     ((%~), (&), (.~), (^.), _1, _2, _3, iso)
+import           Control.Lens     ((%~), (&), (.~), (^.), _1, _2, _3)
 import           Data.Either      (rights)
 import           Data.List        (foldl')
 import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict  as M
-import           Data.Ratio
+import Data.Ratio ( denominator, numerator )
 import           Control.Arrow    (second)
-import           Control.Monad.State
-import           Control.Monad.Except
+import Control.Monad.State
+    ( MonadState(get), modify, evalState, State )
+import Control.Monad.Except
+    ( ExceptT, runExceptT, MonadError(throwError) )
 import           Data.Text        (Text)
 import qualified Data.Text        as T
 import           Data.Bits        ((.|.), (.&.), xor)
-import           Numeric          (showHex)
+import           Numeric          (showHex, showOct, showBin, showInt)
 
 type FunMap = Map (Text, Int) ([Text], Expr)
 type VarMap = Map Text Rational
@@ -169,10 +171,15 @@ evalS ex = case ex of
   Call "prat" [e] -> do
     t1 <- evm e
     throwError $ showT (numerator t1) <> " / " <> showT (denominator t1)
-  Call "hex" [e] -> do
+  Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
     t1 <- evm e
     if denominator t1 == 1
-      then throwError . T.pack . ("0x" ++) . (`showHex` "") . numerator $ t1 
+      then let (function, p) = case f of
+                 "hex" -> (showHex, 'x')
+                 "oct" -> (showOct, 'o')
+                 "bin" -> (showBin, 'b')
+                 _ -> (showInt, ' ')
+           in throwError . T.pack . (['0', p] ++) . (`function` "") . numerator $ t1 
       else throwError "Cant convert float to hex yet"
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     maps <- get
