@@ -12,6 +12,7 @@ jobs:
           key: haskell-artifacts-{{ checksum "Calculator/Calculator.cabal" }}
       - run:
           name: Update Dependencies
+          no_output_timeout: 30m
           command: cabal new-update && cabal new-install Calculator --lib
       - run:
           name: Build 
