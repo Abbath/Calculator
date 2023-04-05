@@ -77,7 +77,7 @@ catchVar (vm, fm) ex = case ex of
   (Id i) ->
     let a = M.lookup i vm :: Maybe Rational
         getNames = map (\f -> (f,f)) . M.keys
-        fNames = getNames mathFuns ++ getNames intFuns ++ getNames compFuns
+        fNames = getNames mathFuns ++ getNames intFuns1 ++ getNames intFuns2 ++ getNames compFuns 
         b = lookup i (funNames fm ++ fNames) :: Maybe Text
     in case a of
          Just n -> return $ Number n
@@ -99,8 +99,12 @@ mathFuns :: Map Text (Double -> Double)
 mathFuns = [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
         ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs)]
 
-intFuns :: Map Text (Integer -> Integer -> Integer)
-intFuns = [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem), ("xor", xor)]
+intFuns1 :: Map Text (Double -> Integer)
+intFuns1 = [("trunc", truncate), ("round", round), ("floor", floor), ("ceil", ceiling)]
+
+
+intFuns2 :: Map Text (Integer -> Integer -> Integer)
+intFuns2 = [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem), ("xor", xor)]
 
 fmod :: Rational -> Rational -> Rational
 fmod x y = fromInteger $ mod (floor x) (floor y)
@@ -174,6 +178,10 @@ evalS ex = case ex of
     t1 <- evm e1
     t2 <- evm e2
     return . toRational $ atan2 (fromRational t1 :: Double) (fromRational t2 :: Double)
+  Call "log" [e1, e2] -> do
+    t1 <- evm e1
+    t2 <- evm e2
+    return . toRational $ logBase (fromRational t1 :: Double) (fromRational t2 :: Double)
   Call "prat" [e] -> do
     t1 <- evm e
     throwError $ showT (numerator t1) <> " / " <> showT (denominator t1)
@@ -225,7 +233,8 @@ evalS ex = case ex of
       Nothing -> case op of
         opn | T.head opn == '@' -> throwError $ "Expression instead of a function name: " <> T.tail opn <> "/2"
         _ -> throwError $ "No such operator: " <> op <> "/2"
-  Call f [e1, e2] | M.member f intFuns -> evalInt f e1 e2
+  Call f [e1, e2] | M.member f intFuns2 -> evalInt f e1 e2
+  Call f [e1] | M.member f intFuns1 -> evalInt1 f e1
   Call name [a]   | M.member name mathFuns -> do
     let fun = mathFuns M.! name
     n <- evm a
@@ -280,8 +289,11 @@ evalS ex = case ex of
       t1 <- evm x
       t2 <- evm y
       if denominator t1 == 1 && denominator t2 == 1
-         then return . toRational $ (intFuns M.! f) (numerator t1) (numerator t2)
+         then return . toRational $ (intFuns2 M.! f) (numerator t1) (numerator t2)
          else throwError "Cannot use integral function on real numbers!"
+    evalInt1 f x = do
+      t1 <- evm x
+      return . toRational $ (intFuns1 M.! f) (fromRational t1)
     eval' :: (Rational -> Rational -> Rational) -> Text -> Expr -> Expr -> Result2 Rational
     eval' f op x y = do
       t1 <- evm x

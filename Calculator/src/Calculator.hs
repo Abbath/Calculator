@@ -154,7 +154,7 @@ getPrA om = let lst = M.toList om
             in ps
 
 getNames :: [String]
-getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|"
+getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|","trunc","round","floor","ceil"
   ,"sin","cos","tan","asin","acos","atan","log","sqrt","exp","abs","xor","not","int","df","hex","oct","bin"
   ,"lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div","mod","quot","rem","prat","quit"]
 
