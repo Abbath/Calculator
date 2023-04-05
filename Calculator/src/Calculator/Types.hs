@@ -63,7 +63,7 @@ showT :: Show a => a -> Text
 showT = T.pack . show
 
 exprToString :: Expr -> Text
-exprToString ex = case simplifyExpr ex of
+exprToString ex = case ex of
   UDF n a e       -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
   UDO n p a e     -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Double else 1) <> ")" <> " = " <>  exprToString e
   Asgn i e        -> i <> " = " <> exprToString e

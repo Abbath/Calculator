@@ -163,6 +163,7 @@ evalS ex = case ex of
           let newmap = M.insert n ((p, a), r) (maps^._3)
           modify (\m -> m & _3 .~ newmap)
           throwError ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
+  Call "debug" [e] -> throwError . T.pack . show . preprocess $ e
   Call "df" [a,x] -> do
       let e = derivative a x
       either throwError (throwError . exprToString . preprocess) e
