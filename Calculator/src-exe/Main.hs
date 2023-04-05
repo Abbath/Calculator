@@ -16,8 +16,8 @@ data Options = Options {
 
 options :: Parser Options
 options = Options
-          <$> strOption (long "frontend" <> short 'f' <> help "Frontend (I, M, A)" <> metavar "FRONTEND" <> value "I")
-          <*> strOption (long "backend" <> short 'b' <> help "Backend (C, W, T)" <> metavar "BACKEND" <> value "C")
+          <$> strOption (long "frontend" <> short 'f' <> help "Frontend (C, W, T)" <> metavar "FRONTEND" <> value "C")
+          <*> strOption (long "backend" <> short 'b' <> help "Backend (I, M, A)" <> metavar "BACKEND" <> value "I")
           <*> switch (long "test" <> short 't' <> help "Run tests")
           <*> option auto (long "port" <> short 'p' <> help "Port" <> metavar "PORT" <> value 3000)
 
@@ -26,8 +26,8 @@ main = do
   writeFile "ids" "[]"
   opts2 <- execParser opts
   when (test opts2) testLoop
-  let f = selectFront $ frontend opts2
-  case map toLower $ backend opts2 of
+  let f = selectBack $ backend opts2
+  case map toLower $ frontend opts2 of
     "c"  -> evalLoop f
     "w"  -> webLoop (port opts2) f
     "t"  -> telegramSimple f
@@ -36,7 +36,7 @@ main = do
           ( fullDesc
             <> progDesc "Reads a character string and prints the result of calculation"
             <> header "Calculator - a simple string calculator" )
-        selectFront s = case map toLower s of
+        selectBack s = case map toLower s of
           "i" -> Internal
           "m" -> Megaparsec
           "a" -> AlexHappy
