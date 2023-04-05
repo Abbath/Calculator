@@ -119,18 +119,38 @@ doubleLiteral =
     e = charP 'e' <|> charP 'E'
     opt = (<|> pure 0)
 
-hexLiteral :: Parser Rational
-hexLiteral = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . ("0x" ++) <$> digits)
+-- hexLiteral :: Parser Rational
+-- hexLiteral = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . ("0x" ++) <$> digits)
+--   where
+--     digits = some $ parseIf "digit" isHexDigit
+--     zero = charP '0'
+--     x = charP 'x'
+
+basedLiteral :: (Char -> Bool) -> Char -> Parser Rational
+basedLiteral f p = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . (['0', p] ++) <$> digits)
   where
-    digits = some $ parseIf "digit" isHexDigit
+    digits = some $ parseIf "digit" f
     zero = charP '0'
-    x = charP 'x'
+    x = charP p
+
+hexLiteral :: Parser Rational
+hexLiteral = basedLiteral isHexDigit 'x'
+
+octLiteral :: Parser Rational
+octLiteral = basedLiteral isOctDigit 'o'
+
+binLiteral :: Parser Rational
+binLiteral = (\_ _ n -> toRational (n :: Integer)) 
+              <$> charP '0' <*> charP 'b' 
+              <*> (foldl (\b c -> b * 2 + if c == '0' then 0 else 1) 0 <$> binDigit)
+  where
+    binDigit = some $ parseIf "bin digit" (`elem` ("01" :: String))
 
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
 
 numba :: Parser Token
-numba = TNumber <$> wsBracket ( hexLiteral <|> doubleLiteral)
+numba = TNumber <$> wsBracket (hexLiteral <|> octLiteral <|> binLiteral <|> doubleLiteral)
 
 lpar :: Parser Token
 lpar = TLPar <$ wsBracket (charP '(')
@@ -173,9 +193,9 @@ tokah = lpar <|> rpar <|> comma <|> operata <|> numba <|> ident
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0
-    where
-      go acc (Input _ x) | T.null x = Right $ reverse acc
-      go acc input = case runParser tokah input of
-        Left (ParserError n s) -> Left ("Error: " <> s <> " at " <> (T.pack . show $ n))
-        Right (input1, tok) -> go (tok:acc) input1
+  where
+    go acc (Input _ x) | T.null x = Right $ reverse acc
+    go acc input = case runParser tokah input of
+      Left (ParserError n s) -> Left ("Error: " <> s <> " at " <> (T.pack . show $ n))
+      Right (input1, tok) -> go (tok:acc) input1
 

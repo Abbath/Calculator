@@ -108,6 +108,9 @@ tests = [
   ,("/= = !=", Left "Operator alias /= = !=")
   ,("1|0", Right 1)
   ,("1&0", Right 0)
+  ,("0xff", Right 255)
+  ,("0o45", Right 37)
+  ,("0b1010", Right 10)
   ]
 
 testsAH :: Tests

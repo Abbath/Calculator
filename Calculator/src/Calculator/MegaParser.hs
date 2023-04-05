@@ -24,7 +24,7 @@ expr2 :: PReader Expr
 expr2 =  try opcallExpr <|> try parExpr <|> try funcallExpr <|> expr3
 
 expr3 :: PReader Expr
-expr3 = try parExpr <|> try funcallExpr <|> try idExpr <|> numExpr
+expr3 = try parExpr <|> try funcallExpr <|> try idExpr <|> try numExpr2 <|> numExpr
 
 opAliasExpr :: PReader Expr
 opAliasExpr = do
@@ -39,6 +39,9 @@ numExpr = do
   case floatingOrInteger n of
     Right int -> return $ Number (fromIntegral (int :: Integer))
     Left doub -> return $ Number (toRational (doub :: Double))
+
+numExpr2 :: PReader Expr
+numExpr2 = Number <$> number2
 
 idExpr :: PReader Expr
 idExpr = do

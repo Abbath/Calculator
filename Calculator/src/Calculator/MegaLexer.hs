@@ -32,6 +32,13 @@ parens = between (symbol "(") (symbol ")")
 number :: PReader Scientific
 number = lexeme L.scientific
 
+number2 :: PReader Rational
+number2 = lexeme (try hexP <|> try octP <|> binP)
+  where
+    hexP = char '0' >> char' 'x' >> L.hexadecimal
+    octP = char '0' >> char' 'o' >> L.octal
+    binP = char '0' >> char' 'b' >> L.binary
+
 comma :: PReader Text
 comma = symbol ","
 
