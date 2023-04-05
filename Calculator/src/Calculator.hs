@@ -186,7 +186,6 @@ loop mode maps = do
        (loop' mode maps)
     case x of
       Left (CE.ErrorCall s) -> do
-        putStrLn "A"
         putStrLn s
         Calculator.loop mode maps
       Right _ -> return ()
