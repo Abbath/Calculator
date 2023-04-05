@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, OverloadedLists #-}
-module Calculator.Evaluator (evalS, getPriorities, FunMap, VarMap, OpMap, Maps, Result2) where
+module Calculator.Evaluator (evalS, getPriorities, extractNames, FunMap, VarMap, OpMap, Maps, Result2) where
 
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
                                    preprocess, showRational, showT, isOp)
@@ -23,6 +23,9 @@ type FunMap = Map (Text, Int) ([Text], Expr)
 type VarMap = Map Text Rational
 type OpMap = Map Text ((Int, Assoc), Expr)
 type Maps = (VarMap, FunMap, OpMap)
+
+extractNames :: Maps -> [String]
+extractNames (v, f, o) = map (T.unpack) $ M.keys o <> M.keys v <> map fst (M.keys f)
 
 funNames :: FunMap -> [(Text, Text)]
 funNames = map (\(f,_) -> (f, f)) . M.keys

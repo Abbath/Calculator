@@ -29,7 +29,7 @@ import qualified Data.Text.Lazy                as T
 import Calculator.AlexLexer ( alexScanTokens )
 import Calculator.Css ( getCss, postCss )
 import Calculator.Evaluator
-    ( Maps, OpMap, VarMap, FunMap, getPriorities, evalS )
+    ( Maps, OpMap, VarMap, FunMap, getPriorities, evalS, extractNames )
 import qualified Calculator.HappyParser        as HP
 -- import           Calculator.Lexer
 import qualified Calculator.MegaParser         as CMP
@@ -43,25 +43,24 @@ import           Control.Arrow                 (left, first, second)
 import           Control.Lens                  ((%~), (&), (^.), _1, _3)
 import Control.Monad.Reader
     ( MonadIO(liftIO), when, ReaderT(runReaderT) )
-import Control.Monad.State ( runState )           
+import Control.Monad.State (StateT)
+import qualified Control.Monad.State as S
 import Control.Monad.Except ( runExceptT )          
 import           Data.Aeson                    (decode, encode)
-import           Data.List                     (isPrefixOf)
+import           Data.List                     (isPrefixOf, union)
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as M
 import           Data.Maybe                    (fromMaybe, isJust, isNothing)
 import Data.Time.Clock.POSIX ( getPOSIXTime )
 
 import System.Console.Haskeline
-    ( defaultSettings,
-      getInputLine,
+    ( getInputLine,
       completeWord,
       runInputT,
-      setComplete,
       Completion(..),
       CompletionFunc,
       InputT,
-      Settings(historyFile) )
+      Settings(..) )
 import System.Directory ( findFile, getHomeDirectory, removeFile )
 import System.Random ( randomIO )
 import qualified Text.Megaparsec               as MP
@@ -134,7 +133,7 @@ parseString m s ms = case m of
 
 evalExprS :: Either TS.Text Expr -> Maps -> Either (TS.Text, Maps) (Rational, Maps)
 evalExprS t maps = either (Left . (,maps)) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
-  where getShit e = let a = runExceptT (evalS e) in runState a maps
+  where getShit e = let a = runExceptT (evalS e) in S.runState a maps
 
 -- evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
 -- evalExpr t maps = either (Left . (,maps)) (eval  maps) t
@@ -159,30 +158,39 @@ getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|"
   ,"sin","cos","tan","asin","acos","atan","log","sqrt","exp","abs","xor","not","int","df","hex","oct","bin"
   ,"lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div","mod","quot","rem","prat","quit"]
 
-completionList :: Monad m => String -> m [Completion]
-completionList s = return $ map (\x -> Completion {replacement = x, display = x, isFinished = False }) $ filter (isPrefixOf s) getNames
+type StateData = [String]
 
-completeName :: Monad m => CompletionFunc m
-completeName = completeWord Nothing " " completionList
+completionGenerator :: String -> StateT StateData IO [Completion]
+completionGenerator s = do
+  sd <- S.get
+  return $ map (\x -> Completion {replacement = x, display = x, isFinished = False}) 
+         $ filter (isPrefixOf s) (getNames `union` sd)
 
-parseEval :: Mode -> Maps -> TS.Text -> Either (TS.Text, Maps) (Rational, Maps)
-parseEval md ms x = evalExprS (parseString md x ms) ms
+replCompletion :: CompletionFunc (StateT StateData IO)
+replCompletion = completeWord Nothing " " completionGenerator
+
+replSettings :: Settings (StateT StateData IO)
+replSettings = Settings
+  { complete       = replCompletion
+  , historyFile    = Nothing
+  , autoAddHistory = True
+  }
 
 loop :: Mode -> Maps -> IO ()
 loop mode maps = do
     hd <- getHomeDirectory
-    x <- CE.try $ runInputT 
-      (setComplete completeName $
-       defaultSettings { historyFile = Just (hd ++ "/.mycalchist")}) 
-       (loop' mode maps) :: IO (Either CE.ErrorCall ())
+    x <- CE.try $ flip S.evalStateT [] $ runInputT 
+       (replSettings { historyFile = Just (hd ++ "/.mycalchist")}) 
+       (loop' mode maps)
     case x of
       Left (CE.ErrorCall s) -> do
         putStrLn s
         Calculator.loop mode maps
       Right _ -> return ()
   where
-  loop' :: Mode -> Maps -> InputT IO ()
+  loop' :: Mode -> Maps -> InputT (StateT StateData IO) ()
   loop' md ms = do
+    S.lift $ S.modify (\s -> s `union` extractNames ms)
     input <- getInputLine "> "
     case input of
       Nothing -> return ()
@@ -190,12 +198,15 @@ loop mode maps = do
       Just x -> do
           let y = parseEval md ms (TS.pack x)
           case y of
-            Left (err,m) -> do
+            Left (err, m) -> do
               liftIO $ TSIO.putStrLn err
               loop' md m
             Right (r, m) -> do
               liftIO . TSIO.putStrLn $ showRational r
               loop' md $ m & _1 %~ M.insert "_" r
+
+parseEval :: Mode -> Maps -> TS.Text -> Either (TS.Text, Maps) (Rational, Maps)
+parseEval md ms x = evalExprS (parseString md x ms) ms
 
 defVar :: VarMap
 defVar = [("m.pi", toRational (pi::Double)), ("m.e", toRational . exp $ (1::Double)), ("m.phi", toRational ((1+sqrt 5)/2::Double)), ("_",0.0)]
