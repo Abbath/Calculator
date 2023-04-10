@@ -20,6 +20,7 @@ import           System.Exit             (exitWith, ExitCode (ExitFailure), exit
 import           Data.Text.IO            as TIO
 import           Data.Text               (Text)
 import qualified Data.Text               as T
+import System.Random (initStdGen, StdGen)
 
 data Backend = Internal | Mega | AH deriving Show
 
@@ -40,9 +41,9 @@ getPrA om = let lst = M.toList om
                 ps = M.fromList $ map (second fst ) lst
             in ps
 
-loop :: Tests -> Maps -> Backend -> Int -> IO Int
-loop [] _ _ n = return n
-loop (x:xs) maps bk n = do
+loop :: Tests -> Maps -> StdGen -> Backend -> Int -> IO Int
+loop [] _ _ _ n = return n
+loop (x:xs) maps gen bk n = do
   let sample = fst x
   if not $ T.null sample
   then do
@@ -52,8 +53,8 @@ loop (x:xs) maps bk n = do
               AH -> Right $ preprocess . HP.parse . alexScanTokens $ T.unpack sample
     --print e
     let t = case e of
-              Left err -> (Left err, maps)
-              Right r  -> runState (runExceptT (evalS r)) maps 
+              Left err -> (Left err, (maps, gen))
+              Right r  -> runState (runExceptT (evalS r)) (maps, gen) 
     let tt = fst t          
     do
       new_n <- if tt == snd x
@@ -63,13 +64,14 @@ loop (x:xs) maps bk n = do
         else do
           TIO.putStrLn $ "Failed: " <> sample <> " expected: " <> showT x <> " received: " <> showT t
           return 1
-      loop xs (case t of
-        (Right r,m)  -> m & _1 %~ M.insert "_" r
-        (Left _,m) -> m) bk (n + new_n)
+      let (m, g) = case t of
+                    (Right r, (m_, g_))  -> (m_ & _1 %~ M.insert "_" r, g_)
+                    (Left _, (m_, g_)) -> (m_, g_)
+      loop xs m g bk (n + new_n)
     
   else do
     TIO.putStrLn "Empty!"
-    loop xs maps bk n
+    loop xs maps gen bk n
 
 errorToEither :: Show a => Either a b -> Either Text b
 errorToEither (Left err) = Left (showT err)
@@ -151,12 +153,13 @@ defVar = [("m.pi", toRational (pi :: Double)), ("m.e", toRational . exp $ (1.0 :
 
 testLoop :: IO ()
 testLoop = do
+  g <- initStdGen
   TIO.putStrLn "Internal parser:"
-  n1 <- loop tests (defVar, M.empty, opMap) Internal 0
+  n1 <- loop tests (defVar, M.empty, opMap) g Internal 0
   TIO.putStrLn "\nMega parser:"
-  n2 <- loop tests (defVar, M.empty, opMap) Mega 0
+  n2 <- loop tests (defVar, M.empty, opMap) g Mega 0
   TIO.putStrLn "\nAlexHappy parser:"
-  n3 <- loop testsAH (defVar, M.empty, opMap) AH 0
+  n3 <- loop testsAH (defVar, M.empty, opMap) g AH 0
   let n = n1 + n2 + n3
   if n == 0
     then exitSuccess
