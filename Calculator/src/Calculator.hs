@@ -31,7 +31,6 @@ import Calculator.Css ( getCss, postCss )
 import Calculator.Evaluator
     ( Maps, OpMap, VarMap, FunMap, getPriorities, evalS, extractNames )
 import qualified Calculator.HappyParser        as HP
--- import           Calculator.Lexer
 import qualified Calculator.MegaParser         as CMP
 import Calculator.Parser ( parse )
 import Calculator.HomebrewLexer ( tloop )
@@ -79,7 +78,6 @@ import Telegram.Bot.Simple
       Eff )
 import Telegram.Bot.Simple.UpdateParser ( parseUpdate, text )
 import qualified Control.Exception as CE
-import qualified Control.Arrow as Data.Bifunctor
 import Data.IORef (newIORef, readIORef, writeIORef)
 
 newtype Model = Model {getMaps :: (Maps, StdGen)}
@@ -140,9 +138,6 @@ evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (TS.Text, (Maps, St
 evalExprS t maps g = either (Left . (,(maps, g))) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
   where getShit e = let a = runExceptT (evalS e) in S.runState a (maps, g)
 
--- evalExpr :: Either String Expr -> Maps -> Either (String, Maps) (Rational, Maps)
--- evalExpr t maps = either (Left . (,maps)) (eval  maps) t
-
 opMap :: OpMap
 opMap = [("=", f 0 R)
   , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
@@ -159,9 +154,10 @@ getPrA om = let lst = M.toList om
             in ps
 
 getNames :: [String]
-getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|","trunc","round","floor","ceil"
-  ,"sin","cos","tan","asin","acos","atan","log","sqrt","exp","abs","xor","not","int","df","hex","oct","bin"
-  ,"lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div","mod","quot","rem","prat","quit"]
+getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|","trunc","round","floor","ceil",
+  "sin","cos","tan","asin","acos","atan","sinh","cosh","tanh","asinh","acosh","atanh","log","sqrt","exp",
+  "abs","xor","not","int","df","hex","oct","bin","lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div",
+  "mod","quot","rem","prat","quit"]
 
 type StateData = [String]
 
@@ -215,7 +211,11 @@ parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (TS.Text, (Maps, StdGen
 parseEval md ms g x = evalExprS (parseString md x ms) ms g
 
 defVar :: VarMap
-defVar = [("m.pi", toRational (pi::Double)), ("m.e", toRational . exp $ (1::Double)), ("m.phi", toRational ((1+sqrt 5)/2::Double)), ("_",0.0)]
+defVar = [("m.pi", toRational (pi :: Double)), 
+          ("m.e", toRational . exp $ (1 :: Double)), 
+          ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double)), 
+          ("m.r", 0.0),
+          ("_", 0.0)]
 
 funMap :: FunMap
 funMap = [(("not", 1), (["x"], Call "if" [Id "x", Number 0, Number 1]))]
@@ -296,7 +296,7 @@ webLoop port mode = do
           let res = evalExprS t ms gen
           let txt = let (ress, (mps, ng)) = either 
                           Prelude.id 
-                          (\(r, (m, g)) -> (showRational r, (m & _1 %~ M.insert "_" r, g))) 
+                          (\(r, mg) -> (showRational r, first (_1 %~ M.insert "_" r) mg))
                           res
                     in do
                         storeMaps storagename mps

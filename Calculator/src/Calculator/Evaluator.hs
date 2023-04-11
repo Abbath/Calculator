@@ -8,7 +8,7 @@ import           Data.Either      (fromRight)
 import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict  as M
 import Data.Ratio ( denominator, numerator )
-import           Control.Arrow    (second)
+import           Control.Arrow    (first, second)
 import Control.Monad.State
     ( MonadState(get), modify, evalState, State, gets )
 import Control.Monad.Except
@@ -18,7 +18,6 @@ import qualified Data.Text        as T
 import           Data.Bits        ((.|.), (.&.), xor)
 import           Numeric          (showHex, showOct, showBin, showInt)
 import System.Random (StdGen, Random (randomR))
-import qualified Data.Bifunctor
 
 type FunMap = Map (Text, Int) ([Text], Expr)
 type VarMap = Map Text Rational
@@ -33,10 +32,10 @@ funNames = map (\(f,_) -> (f, f)) . M.keys
 
 goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
-  (Par e)           -> Par <$> f e
-  (UMinus e)        -> UMinus <$> f e
-  (Call n e)        -> Call n <$> mapM f e
-  e                 -> return e
+  (Par e)    -> Par <$> f e
+  (UMinus e) -> UMinus <$> f e
+  (Call n e) -> Call n <$> mapM f e
+  e          -> return e
 
 substitute :: ([Text], [Expr]) -> Expr -> Either Text Expr
 substitute ([], []) e = return e
@@ -77,16 +76,17 @@ catchVar (vm, fm) ex = case ex of
   (Id i) | T.head i == '@' -> return $ Id i
   (Id i) ->
     let a = M.lookup i vm :: Maybe Rational
-        getNames = map (\f -> (f,f)) . M.keys
+        getNames = map (\f -> (f, f)) . M.keys
         fNames = getNames mathFuns ++ getNames intFuns1 ++ getNames intFuns2 ++ getNames compFuns ++ [("m.r", "m.r")]
         b = lookup i (funNames fm ++ fNames) :: Maybe Text
-    in case a of
-         Just n -> return $ Number n
-         Nothing -> case b of
-                     Just s  -> return $ Id s
-                     Nothing -> Left $ "No such variable: " <> i
+     in case a of
+          Just n -> return $ Number n
+          Nothing -> case b of
+            Just s -> return $ Id s
+            Nothing -> Left $ "No such variable: " <> i
   e -> goInside st e
-    where st = catchVar (vm, fm)
+    where
+      st = catchVar (vm, fm)
 
 compFuns :: Map Text (Rational -> Rational -> Bool)
 compFuns = [("lt",(<)), ("gt",(>)), ("eq",(==))
@@ -98,11 +98,11 @@ compOps = [("<",(<)), (">",(>)), ("==",(==))
 
 mathFuns :: Map Text (Double -> Double)
 mathFuns = [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
-        ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs)]
+        ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs), ("sinh", sinh), ("cosh", cosh)
+        ,("tanh", tanh), ("asinh", asinh), ("acosh", acosh), ("atanh", atanh)]
 
 intFuns1 :: Map Text (Double -> Integer)
 intFuns1 = [("trunc", truncate), ("round", round), ("floor", floor), ("ceil", ceiling)]
-
 
 intFuns2 :: Map Text (Integer -> Integer -> Integer)
 intFuns2 = [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem), ("xor", xor)]
@@ -117,23 +117,22 @@ bitOps :: Map Text (Integer -> Integer -> Integer)
 bitOps = [("|", (.|.)), ("&", (.&.))]
 
 pow :: Rational -> Rational -> Rational
-pow a b | denominator a ==1 && denominator b == 1 && numerator b < 0 = toRational $ (fromRational a :: Double) ^^ numerator b
+pow a b | denominator a == 1 && denominator b == 1 && numerator b < 0 = toRational $ (fromRational a :: Double) ^^ numerator b
 pow a b | denominator a == 1 && denominator b == 1 = toRational $ numerator a ^ numerator b
 pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
 
 getPriorities :: OpMap -> Map Text Int
 getPriorities om = let lst = M.toList om
-                       ps = M.fromList $ map (second (fst . fst)) lst
-                   in ps
+                   in M.fromList $ map (second (fst . fst)) lst
 
 type Result2 = ExceptT Text (State (Maps, StdGen))
 
 evalS :: Expr -> Result2 Rational
 evalS ex = case ex of
-  Asgn s _ | s `elem` (["m.pi", "m.e", "m.phi", "_"] :: [T.Text]) -> throwError $ "Cannot change a constant value: " <> s
+  Asgn s _ | s `elem` (["m.pi", "m.e", "m.phi", "m.r", "_"] :: [T.Text]) -> throwError $ "Cannot change a constant value: " <> s
   Asgn s e -> do
     r <- evm e
-    modify (Data.Bifunctor.first (_1 %~ M.insert s r))
+    modify (first (_1 %~ M.insert s r))
     throwError ("Constant " <> s <> "=" <> showRational r)
   UDF n [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
@@ -143,14 +142,14 @@ evalS ex = case ex of
     let newe = localize s e >>= catchVar (maps^._1, maps ^._2)
     either throwError (\r -> do
       let newmap = M.insert (n, length s) (map (T.cons '@') s, r) $ maps^._2
-      modify (Data.Bifunctor.first (_2 .~ newmap))
+      modify (first (_2 .~ newmap))
       throwError ("Function " <> n <> "/" <> showT (length s))) newe
   UDO n (-1) _ e@(Call op _) -> do
     maps <- gets fst
     case M.lookup op (maps^._3) of
       Just ((p, a), _) -> do
         let newmap = M.insert n ((p, a), e) (maps^._3)
-        modify (Data.Bifunctor.first (_3 .~ newmap))
+        modify (first (_3 .~ newmap))
         throwError ("Operator alias " <> n <> " = " <> op)
       Nothing -> throwError $ "No such operator: " <> op
   UDO n p a e
@@ -161,7 +160,7 @@ evalS ex = case ex of
         let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
         either throwError (\r -> do
           let newmap = M.insert n ((p, a), r) (maps^._3)
-          modify (Data.Bifunctor.first (_3 .~ newmap))
+          modify (first (_3 .~ newmap))
           throwError ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
   Call "debug" [e] -> throwError . T.pack . show . preprocess $ e
   Call "df" [a,x] -> do
@@ -193,7 +192,7 @@ evalS ex = case ex of
                  "bin" -> (showBin, 'b')
                  _ -> (showInt, ' ')
            in throwError . T.pack . (['0', p] ++) . (`function` "") . numerator $ t1
-      else throwError "Cant convert float to hex yet"
+      else throwError "Can't convert float yet"
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     maps <- gets fst
     let pr = getPriorities (maps^._3)
@@ -259,7 +258,7 @@ evalS ex = case ex of
   Id "m.r" -> do
     gen <- gets snd
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) gen
-    modify (Data.Bifunctor.second (const newGen))
+    modify (second (const newGen))
     return $ toRational randomNumber
   Id s     -> do
     maps <- gets fst
@@ -344,23 +343,26 @@ derivative e x = case e of
 
 
 s1_ :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational -> (Rational, Rational, Rational)
-s1_ f a b fa fb = let m = (a + b) / 2
-                      r = f m
-                      g = (abs (b - a) / 6) * (fa + 4 * r + fb)
-                  in (m, r, g)
+s1_ f a b fa fb =
+  let m = (a + b) / 2
+      r = f m
+      g = (abs (b - a) / 6) * (fa + 4 * r + fb)
+   in (m, r, g)
 
 s2_ :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational
-s2_ f a b fa fb eps whole m fm = let (ml, rl, gl) = s1_ f a m fa fm
-                                     (mr, rr, gr) = s1_ f m b fm fb
-                                     delta = gl + gr - whole
-                                 in if abs delta <= 15 * eps
-                                    then gl + gr + (delta / 15)
-                                    else s2_ f a m fa fm (eps / 2) gl ml rl +
-                                         s2_ f m b fm fb (eps / 2) gr mr rr
+s2_ f a b fa fb eps whole m fm =
+  let (ml, rl, gl) = s1_ f a m fa fm
+      (mr, rr, gr) = s1_ f m b fm fb
+      delta = gl + gr - whole
+   in if abs delta <= 15 * eps
+        then gl + gr + (delta / 15)
+        else
+          s2_ f a m fa fm (eps / 2) gl ml rl
+            + s2_ f m b fm fb (eps / 2) gr mr rr
 
 integrate :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational
-integrate f a b eps = let fa = f a
-                          fb = f b
-                          (m, r, g) = s1_ f a b fa fb
-                      in s2_ f a b fa fb eps g m r
-
+integrate f a b eps =
+  let fa = f a
+      fb = f b
+      (m, r, g) = s1_ f a b fa fb
+   in s2_ f a b fa fb eps g m r
