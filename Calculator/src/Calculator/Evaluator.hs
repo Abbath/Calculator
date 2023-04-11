@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, OverloadedLists #-}
-module Calculator.Evaluator (evalS, getPriorities, extractNames, FunMap, VarMap, OpMap, Maps, Result2) where
+module Calculator.Evaluator (evalS, getPriorities, extractNames, FunMap, VarMap, OpMap, Maps, Result) where
 
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
                                    preprocess, showRational, showT, isOp)
@@ -77,13 +77,15 @@ catchVar (vm, fm) ex = case ex of
   (Id i) ->
     let a = M.lookup i vm :: Maybe Rational
         getNames = map (\f -> (f, f)) . M.keys
-        fNames = getNames mathFuns ++ getNames intFuns1 ++ getNames intFuns2 ++ getNames compFuns ++ [("m.r", "m.r")]
+        fNames = getNames mathFuns ++ getNames intFuns1 ++ getNames intFuns2 ++ getNames compFuns
         b = lookup i (funNames fm ++ fNames) :: Maybe Text
-     in case a of
-          Just n -> return $ Number n
-          Nothing -> case b of
-            Just s -> return $ Id s
-            Nothing -> Left $ "No such variable: " <> i
+    in case a of
+         Just n -> return $ randomCheck n i
+         Nothing -> case b of
+           Just s -> return $ Id s
+           Nothing -> Left $ "No such variable: " <> i
+    where 
+      randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number n 
   e -> goInside st e
     where
       st = catchVar (vm, fm)
@@ -97,9 +99,11 @@ compOps = [("<",(<)), (">",(>)), ("==",(==))
   ,("!=",(/=)), ("<=",(<=)), (">=",(>=))]
 
 mathFuns :: Map Text (Double -> Double)
-mathFuns = [("sin",sin), ("cos",cos), ("asin",asin), ("acos",acos), ("tan",tan), ("atan",atan)
-        ,("log",log), ("exp",exp), ("sqrt",sqrt), ("abs",abs), ("sinh", sinh), ("cosh", cosh)
-        ,("tanh", tanh), ("asinh", asinh), ("acosh", acosh), ("atanh", atanh)]
+mathFuns =
+  [ ("sin", sin), ("cos", cos), ("asin", asin), ("acos", acos), ("tan", tan), ("atan", atan),
+    ("log", log), ("exp", exp), ("sqrt", sqrt), ("abs", abs), ("sinh", sinh), ("cosh", cosh),
+    ("tanh", tanh), ("asinh", asinh), ("acosh", acosh), ("atanh", atanh)
+  ]
 
 intFuns1 :: Map Text (Double -> Integer)
 intFuns1 = [("trunc", truncate), ("round", round), ("floor", floor), ("ceil", ceiling)]
@@ -110,8 +114,14 @@ intFuns2 = [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quo
 fmod :: Rational -> Rational -> Rational
 fmod x y = fromInteger $ mod (floor x) (floor y)
 
+fcmp :: Rational -> Rational -> Rational
+fcmp x y = case compare x y of
+  GT -> 1
+  EQ -> 0
+  LT -> -1
+
 mathOps :: Map Text (Rational -> Rational -> Rational)
-mathOps = [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow)]
+mathOps = [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow), ("cmp",fcmp)]
 
 bitOps :: Map Text (Integer -> Integer -> Integer)
 bitOps = [("|", (.|.)), ("&", (.&.))]
@@ -125,9 +135,9 @@ getPriorities :: OpMap -> Map Text Int
 getPriorities om = let lst = M.toList om
                    in M.fromList $ map (second (fst . fst)) lst
 
-type Result2 = ExceptT Text (State (Maps, StdGen))
+type Result = ExceptT Text (State (Maps, StdGen))
 
-evalS :: Expr -> Result2 Rational
+evalS :: Expr -> Result Rational
 evalS ex = case ex of
   Asgn s _ | s `elem` (["m.pi", "m.e", "m.phi", "m.r", "_"] :: [T.Text]) -> throwError $ "Cannot change a constant value: " <> s
   Asgn s e -> do
@@ -153,8 +163,8 @@ evalS ex = case ex of
         throwError ("Operator alias " <> n <> " = " <> op)
       Nothing -> throwError $ "No such operator: " <> op
   UDO n p a e
-    | M.member n mathOps || M.member n compOps || M.member n bitOps || n == "=" -> throwError $ "Can not redefine the embedded operator: " <> n
-    | p < 1 || p > 6 ->  throwError $ "Bad priority: " <> showT p
+    | M.member n mathOps || M.member n compOps || M.member n bitOps || n == "=" -> throwError $ "Can not redefine the built-in operator: " <> n
+    | p < 1 || p > 9 ->  throwError $ "Bad priority: " <> showT p
     | otherwise -> do
         maps <- gets fst
         let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
@@ -297,7 +307,7 @@ evalS ex = case ex of
     evalInt1 f x = do
       t1 <- evm x
       return . toRational $ (intFuns1 M.! f) (fromRational t1)
-    eval' :: (Rational -> Rational -> Rational) -> Text -> Expr -> Expr -> Result2 Rational
+    eval' :: (Rational -> Rational -> Rational) -> Text -> Expr -> Expr -> Result Rational
     eval' f op x y = do
       t1 <- evm x
       t2 <- evm y
@@ -340,7 +350,6 @@ derivative e x = case e of
     a2 <- derivative i x
     return $ Call "*" [a1, a2]
   _ -> Left "No such derivative"
-
 
 s1_ :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational -> (Rational, Rational, Rational)
 s1_ f a b fa fb =

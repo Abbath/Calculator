@@ -157,7 +157,7 @@ getNames :: [String]
 getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|","trunc","round","floor","ceil",
   "sin","cos","tan","asin","acos","atan","sinh","cosh","tanh","asinh","acosh","atanh","log","sqrt","exp",
   "abs","xor","not","int","df","hex","oct","bin","lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div",
-  "mod","quot","rem","prat","quit"]
+  "mod","quot","rem","prat","quit","cmp"]
 
 type StateData = [String]
 
@@ -236,9 +236,9 @@ updateIDS i = do
              b2 <- findFile ["."] logname
              when (isJust b1) $ removeFile storagename
              when (isJust b2) $ removeFile logname) $ filter (\(a,_) -> tm-a > 60*60) ids
-    if i `elem` map snd ids
-       then BS.writeFile "ids" $ BS.pack $ show $ map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
-       else BS.writeFile "ids" $ BS.pack $ show $ (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
+    BS.writeFile "ids" $ BS.pack $ show $ if i `elem` map snd ids
+       then map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
+       else (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
 
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = do

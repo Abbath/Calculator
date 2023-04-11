@@ -3,8 +3,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Calculator.HomebrewLexer (tloop) where
 
-import           Control.Applicative
-import           Data.Char
+import Control.Applicative ( Alternative(..) )
+import Data.Char
+    ( isDigit, isSpace, isAlpha, isHexDigit, isOctDigit )
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Calculator.Types    (Token (..), opSymbols)
@@ -118,13 +119,6 @@ doubleLiteral =
     plus = 1 <$ charP '+'
     e = charP 'e' <|> charP 'E'
     opt = (<|> pure 0)
-
--- hexLiteral :: Parser Rational
--- hexLiteral = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . ("0x" ++) <$> digits)
---   where
---     digits = some $ parseIf "digit" isHexDigit
---     zero = charP '0'
---     x = charP 'x'
 
 basedLiteral :: (Char -> Bool) -> Char -> Parser Rational
 basedLiteral f p = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . (['0', p] ++) <$> digits)

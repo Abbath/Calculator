@@ -8,13 +8,13 @@ Features
 * Operations `+ - * / % ^`
 * Parentheses support
 * Scientific number notation support
-* Embedded constants `m.pi`, `m.phi` and `m.e`
-* Embedded functions `sin cos tan asin acos atan log exp sqrt abs trunc round floor ceil`
-* Embedded integral functions `gcd lcm mod div quot rem`
+* Built-in constants `m.pi`, `m.phi` and `m.e`
+* Built-in functions `sin cos tan asin acos atan log exp sqrt abs trunc round floor ceil`
+* Built-in integral functions `gcd lcm mod div quot rem`
 * Ability to print rational numbers using function `prat`
 * If conditions with a following syntax `if(<cond_expression>,<expression1>,<expression2>)`
 * Lazy evaluation of function arguments
-* Comparison functions `lt gt le ge eq ne`
+* Comparison functions `lt gt le ge eq ne cmp`
 * Comparison operators `< > <= >= == !=`
 * Bitwise operators `& |` and functions `xor not`.
 * Optimizations like `log(exp(x)) = x`
@@ -25,7 +25,7 @@ Features
 * A user-defined operator can be defined using syntax `<name>(<priority>,<associativity>) = <expression>`
 * The available symbols for operators are `+-/*%^$!~&|=><`
 * Arguments `x `y` are the default for user-defined operators
-* A priority of the user-defined operator can be any between `1` and `6`
+* A priority of the user-defined operator can be any between `1` and `9`
 * Associativity of the user-defined operator is left if `associativity` equals `0` or right otherwise
 * A function or operator can take other functions as arguments
 * An operator alias can be defined using syntax `<alias_operator> = <operator>`

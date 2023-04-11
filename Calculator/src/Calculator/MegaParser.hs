@@ -1,16 +1,29 @@
-{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE OverloadedStrings, TypeApplications  #-}
 module Calculator.MegaParser (parser) where
 
-import           Calculator.MegaLexer
-import           Calculator.Types
+import Calculator.MegaLexer
+    ( comma,
+      eq,
+      exactOper,
+      identifier,
+      number,
+      number2,
+      operator,
+      parens,
+      sc,
+      symbol,
+      PReader )
+import Calculator.Types ( Assoc(..), Expr(..) )
 import           Control.Lens         ((%~), (&))
-import           Control.Lens.At
-import           Control.Monad.Reader
+import Control.Lens.At ( Ixed(ix) )
+import Control.Monad.Reader ( void, MonadReader(ask) )
 import           Data.Map.Strict      (Map)
 import qualified Data.Map.Strict      as M
-import           Data.Scientific
-import           Text.Megaparsec
-import           Control.Monad.Combinators.Expr
+import Data.Scientific ( floatingOrInteger )
+import Text.Megaparsec
+    ( (<|>), sepBy, MonadParsec(try, eof, notFollowedBy) )
+import Control.Monad.Combinators.Expr
+    ( makeExprParser, Operator(InfixR, Prefix, InfixL) )
 import           Data.Functor (($>))
 import           Data.Text    (Text)
 
@@ -36,9 +49,8 @@ opAliasExpr = do
 numExpr :: PReader Expr
 numExpr = do
   n <- number
-  case floatingOrInteger n of
-    Right int -> return $ Number (fromIntegral (int :: Integer))
-    Left doub -> return $ Number (toRational (doub :: Double))
+  return . Number . either (toRational @Double) (fromIntegral @Integer) 
+    $ floatingOrInteger n
 
 numExpr2 :: PReader Expr
 numExpr2 = Number <$> number2
@@ -72,9 +84,9 @@ udoExpr = do
   e <- expr2
   case (floatingOrInteger p :: Either Double Integer,  floatingOrInteger a :: Either Double Integer) of
     (Right in1, Right in2) -> ret in1 (fromInteger in2) name e
-    (Left db, Right int)   -> ret (floor db) (fromInteger int)  name e
+    (Left db, Right int)   -> ret (floor db) (fromInteger int) name e
     (Right int, Left db)   -> ret int db  name e
-    (Left d1, Left d2)     -> ret (floor d1) d2  name e
+    (Left d1, Left d2)     -> ret (floor d1) d2 name e
   where
     ret :: Integer -> Double -> Text -> Expr -> PReader Expr
     ret a b n e = return $ UDO n (fromInteger a) (if b == 0 then L else R) e

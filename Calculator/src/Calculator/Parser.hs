@@ -4,15 +4,24 @@ module Calculator.Parser
   ( parse
   ) where
 
-import           Calculator.Types
+import Calculator.Types
+    ( preprocess,
+      showRational,
+      showT,
+      unTOp,
+      Assoc(R, L),
+      Expr(..),
+      Token(TLPar, TEnd, TOp, TIdent, TNumber, TComma, TRPar) )
 import           Control.Arrow        (first)
-import           Control.Monad.Except
-import           Control.Monad.Reader
+import Control.Monad.Except
+    ( Except, MonadTrans(lift), runExcept, MonadError(throwError) )
+import Control.Monad.Reader
+    ( ReaderT(runReaderT), MonadReader(ask) )
 import           Data.Map.Strict      (Map)
 import qualified Data.Map.Strict      as M
 import           Data.Text            (Text)
 import qualified Data.Text            as T
-import           Data.List
+import Data.List ( foldl' )
 
 checkOps :: [Token] -> Either Text [Token]
 checkOps t =
@@ -66,7 +75,7 @@ parseOp 0 (TIdent s:TOp "=":rest) = Asgn s <$> parseOp 1 rest
 parseOp 0 s = parseOp 1 s
 parseOp 2 (TOp "+":rest) = parseOp 2 rest
 parseOp 2 (TOp "-":rest) = fmap UMinus (parseOp 2 rest)
-parseOp 7 s = parseToken s
+parseOp 10 s = parseToken s
 parseOp l s = do
   m <- ask
   r <- lift $ breakPar3 (`elem` takeWithPriorities l m) s
