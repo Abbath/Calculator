@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, OverloadedLists #-}
+{-# LANGUAGE OverloadedStrings, OverloadedLists, TupleSections #-}
 module Calculator.Evaluator (evalS, getPriorities, extractNames, FunMap, VarMap, OpMap, Maps, Result) where
 
 import           Calculator.Types (Assoc (..), Expr (..), exprToString,
@@ -15,6 +15,7 @@ import Control.Monad.Except
     ( ExceptT, runExceptT, MonadError(throwError) )
 import           Data.Text        (Text)
 import qualified Data.Text        as T
+import           Data.Text.Metrics (damerauLevenshteinNorm)
 import           Data.Bits        ((.|.), (.&.), xor)
 import           Numeric          (showHex, showOct, showBin, showInt)
 import System.Random (StdGen, Random (randomR))
@@ -232,9 +233,10 @@ evalS ex = case ex of
   Call op [x, y] | M.member op compOps -> cmp op x y compOps
   Call op [x, y] | M.member op mathOps -> eval' ( mathOps M.! op) op x y
   Call op [x, y] | M.member op bitOps  -> bitEval ( bitOps M.! op) x y
+  Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
   Call op [x, y] | isOp op -> do
     maps <- gets fst
-    case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc),Expr)) of
+    case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc), Expr)) of
       Just (_, expr) -> do
         let expr1 = substitute (["@x", "@y"], [x,y]) expr
         either throwError evm expr1
@@ -258,13 +260,25 @@ evalS ex = case ex of
       else evm c
   Call name e -> do
     maps <- gets fst
-    case (M.lookup (name, length e) (maps^._2) :: Maybe ([Text],Expr)) of
+    case (M.lookup (name, length e) (maps^._2) :: Maybe ([Text], Expr)) of
       Just (al, expr) -> do
         let expr1 = substitute (al, e) expr
         either throwError evm expr1
       Nothing -> case name of
         x | T.head x == '@' -> throwError $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
-        _ -> throwError $ "No such function: " <> name <> "/" <> showT (length e)
+        _ -> let
+                 cvt_m m n = map (,n) $ M.keys m
+                 (wa, wn) = findSimilar (name, length e)
+                    (M.keys (maps^._2) <> cvt_m mathFuns 1 <> cvt_m intFuns1 1 <> cvt_m intFuns2 2 <> cvt_m compFuns 2 <>
+                     [("atan", 2), ("log", 2), ("debug", 1), ("df", 2), ("int", 4), ("prat", 1), ("hex", 1), ("oct", 1), ("bin", 1)] )
+                 cvt_nls txt nls = if not (null nls) 
+                    then txt <> T.init (T.concat (map (\(n, l) -> "\t" <> n <> "/" <> showT l <> "\n") nls))
+                    else ""
+                 wat = cvt_nls "\nFunctions with the same name:\n" wa
+                 wnt = cvt_nls "\nFunctions with similar names:\n" wn
+             in throwError $ "No such function: " <> name <> "/" <> showT (length e) <>
+                 wat <>
+                 wnt
   Id "m.r" -> do
     gen <- gets snd
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) gen
@@ -316,6 +330,10 @@ evalS ex = case ex of
          then throwError "Too much!"
          else return (f t1 t2)
     procListElem m fun n = evalState (runExceptT (evm (Call fun [Number n]))) m
+    findSimilar :: (Text, Int) -> [(Text, Int)] -> ([(Text, Int)], [(Text, Int)])
+    findSimilar (name, len) funs = let wrongArgNum = filter (\(n, l) -> n == name && len /= l) funs
+                                       wrongName = filter (\(n, l) -> l == len && damerauLevenshteinNorm n name >= 0.5) funs
+                                   in (wrongArgNum, wrongName)
 
 derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of

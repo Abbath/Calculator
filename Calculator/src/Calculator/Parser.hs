@@ -72,9 +72,12 @@ parseOp 0 x@(TIdent _:TLPar:_) = do
       (name, args) <- lift $ parseFunDec a
       UDF name args <$> parseOp 1 (tail b)
 parseOp 0 (TIdent s:TOp "=":rest) = Asgn s <$> parseOp 1 rest
+parseOp 0 (TIdent s:TOp op:rest) | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) = do
+  a <- parseOp 1 rest
+  return $ Asgn s (Call (T.init op) [Id s, a])
 parseOp 0 s = parseOp 1 s
 parseOp 2 (TOp "+":rest) = parseOp 2 rest
-parseOp 2 (TOp "-":rest) = fmap UMinus (parseOp 2 rest)
+parseOp 2 (TOp "-":rest) = UMinus <$> parseOp 2 rest
 parseOp 10 s = parseToken s
 parseOp l s = do
   m <- ask

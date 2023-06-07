@@ -27,7 +27,7 @@ data Backend = Internal | Mega | AH deriving Show
 type Tests = [(Text, Either Text Rational)]
 
 opMap :: OpMap
-opMap = [("=", f 0 R)
+opMap = [("=", f 0 R), ("+=", f 0 R), ("-=", f 0 R), ("*=", f 0 R), ("/=", f 0 R), ("%=", f 0 R), ("^=", f 0 R), ("|=", f 0 R), ("&=", f 0 R)
   , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
   , ("+", f 2 L), ("-", f 2 L)
   , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)

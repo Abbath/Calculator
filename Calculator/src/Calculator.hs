@@ -139,7 +139,7 @@ evalExprS t maps g = either (Left . (,(maps, g))) ((\(r, s) -> either (Left . (,
   where getShit e = let a = runExceptT (evalS e) in S.runState a (maps, g)
 
 opMap :: OpMap
-opMap = [("=", f 0 R)
+opMap = [("=", f 0 R), ("+=", f 0 R), ("-=", f 0 R), ("*=", f 0 R), ("/=", f 0 R), ("%=", f 0 R), ("^=", f 0 R), ("|=", f 0 R), ("&=", f 0 R)
   , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
   , ("+", f 2 L), ("-", f 2 L)
   , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)

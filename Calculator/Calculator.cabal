@@ -1,5 +1,5 @@
 name:                 Calculator
-version:              0.7.0.0
+version:              0.7.1.0
 synopsis:             Calculator
 -- description:
 -- license:
@@ -54,6 +54,7 @@ library
                     , telegram-bot-simple
                     , telegram-bot-api
                     , text
+                    , text-metrics
                     , time
                     , wai
                     , wai-middleware-static
