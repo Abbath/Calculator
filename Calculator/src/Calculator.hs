@@ -1,56 +1,80 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, OverloadedLists #-}
-module Calculator (Mode(..), evalLoop, webLoop, defVar, opMap, telegramSimple) where
+module Calculator (Mode(..), evalLoop, webLoop, defVar, telegramSimple) where
 
-import Network.Wai ( Request(remoteHost) )
-import Network.Wai.Middleware.Static
-    ( (>->), addBase, noDots, staticPolicy )
-import Web.Scotty
-    ( file,
-      get,
-      html,
-      middleware,
-      param,
-      post,
-      redirect,
-      request,
-      scotty )
-
-import           Text.Blaze.Html.Renderer.Text (renderHtml)
-import qualified Text.Blaze.Html5              as H
-import Text.Blaze.Html5.Attributes
-    ( action, autofocus, enctype, method, name, type_, value )
-
-import qualified Data.ByteString.Char8         as BS
-import qualified Data.ByteString.Lazy          as B
-import qualified Data.Text                     as TS
-import qualified Data.Text.IO                  as TSIO
-import qualified Data.Text.Lazy                as T
-
-import Calculator.AlexLexer ( alexScanTokens )
-import Calculator.Css ( getCss, postCss )
+import Calculator.AlexLexer (alexScanTokens)
+import Calculator.Builtins (opMap, names)
+import Calculator.Css (getCss, postCss)
 import Calculator.Evaluator
-    ( Maps, OpMap, VarMap, FunMap, getPriorities, evalS, extractNames )
-import qualified Calculator.HappyParser        as HP
-import qualified Calculator.MegaParser         as CMP
-import Calculator.Parser ( parse )
-import Calculator.HomebrewLexer ( tloop )
-import           Calculator.Types              (Assoc (..), Expr (..),
-                                                ListTuple, preprocess,
-                                                showRational, showT)
-import           Clay                          (render)
-import           Control.Arrow                 (left, first, second)
-import           Control.Lens                  ((%~), (&), (^.), _1, _3)
+  ( evalS,
+    extractNames,
+    getPriorities,
+  )
+import qualified Calculator.HappyParser as HP
+import Calculator.HomebrewLexer (tloop)
+import qualified Calculator.MegaParser as CMP
+import Calculator.Parser (parse)
+import Calculator.Types
+    ( preprocess,
+      showRational,
+      showT,
+      Expr(Number, Call, Id),
+      ListTuple,
+      Maps,
+      VarMap,
+      FunMap,
+      opsToList,
+      opsFromList,
+      getPrA )
+import Clay (render)
+import Control.Arrow (first, left, second)
+import Control.Lens ((%~), (&), (^.), _1, _3)
+import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
-    ( MonadIO(liftIO), when, ReaderT(runReaderT) )
+  ( MonadIO (liftIO),
+    ReaderT (runReaderT),
+    when,
+  )
 import Control.Monad.State (StateT)
 import qualified Control.Monad.State as S
-import Control.Monad.Except ( runExceptT )          
-import           Data.Aeson                    (decode, encode)
-import           Data.List                     (isPrefixOf, union)
-import           Data.Map.Strict               (Map)
-import qualified Data.Map.Strict               as M
-import           Data.Maybe                    (fromMaybe, isJust, isNothing)
-import Data.Time.Clock.POSIX ( getPOSIXTime )
+import Data.Aeson (decode, encode)
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy as B
+import Data.List (isPrefixOf, union)
+import qualified Data.Map.Strict as M
+import Data.Maybe (fromMaybe, isJust, isNothing)
+import qualified Data.Text as TS
+import qualified Data.Text.IO as TSIO
+import qualified Data.Text.Lazy as T
+import Data.Time.Clock.POSIX (getPOSIXTime)
+import Network.Wai (Request (remoteHost))
+import Network.Wai.Middleware.Static
+  ( addBase,
+    noDots,
+    staticPolicy,
+    (>->),
+  )
+import Text.Blaze.Html.Renderer.Text (renderHtml)
+import qualified Text.Blaze.Html5 as H
+import Text.Blaze.Html5.Attributes
+  ( action,
+    autofocus,
+    enctype,
+    method,
+    name,
+    type_,
+    value,
+  )
+import Web.Scotty
+  ( file,
+    get,
+    html,
+    middleware,
+    param,
+    post,
+    redirect,
+    request,
+    scotty,
+  )
 
 import System.Console.Haskeline
     ( getInputLine,
@@ -138,26 +162,7 @@ evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (TS.Text, (Maps, St
 evalExprS t maps g = either (Left . (,(maps, g))) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
   where getShit e = let a = runExceptT (evalS e) in S.runState a (maps, g)
 
-opMap :: OpMap
-opMap = [("=", f 0 R), ("+=", f 0 R), ("-=", f 0 R), ("*=", f 0 R), ("/=", f 0 R), ("%=", f 0 R), ("^=", f 0 R), ("|=", f 0 R), ("&=", f 0 R)
-  , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
-  , ("+", f 2 L), ("-", f 2 L)
-  , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)
-  , ("^", f 4 R)
-  , ("|", f 5 R)
-  , ("&", f 6 R)]
-  where f p a = ((p, a), Number 0)
 
-getPrA :: OpMap -> Map TS.Text (Int, Assoc)
-getPrA om = let lst = M.toList om
-                ps = M.fromList $ map (second fst) lst
-            in ps
-
-getNames :: [String]
-getNames = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|","trunc","round","floor","ceil",
-  "sin","cos","tan","asin","acos","atan","sinh","cosh","tanh","asinh","acosh","atanh","log","sqrt","exp",
-  "abs","xor","not","int","df","hex","oct","bin","lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div",
-  "mod","quot","rem","prat","quit","cmp"]
 
 type StateData = [String]
 
@@ -165,7 +170,7 @@ completionGenerator :: String -> StateT StateData IO [Completion]
 completionGenerator s = do
   sd <- S.get
   return $ map (\x -> Completion {replacement = x, display = x, isFinished = False}) 
-         $ filter (isPrefixOf s) (getNames `union` sd)
+         $ filter (isPrefixOf s) (names `union` sd)
 
 replCompletion :: CompletionFunc (StateT StateData IO)
 replCompletion = completeWord Nothing " " completionGenerator
@@ -262,7 +267,7 @@ webLoop port mode = do
     Web.Scotty.get "/favicon.ico" $ Web.Scotty.file "./Static/favicon.ico"
     Web.Scotty.get "/:id" $ do
       iD <- Web.Scotty.param "id"
-      liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], M.toList opMap) :: ListTuple ))
+      liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], opsToList opMap) :: ListTuple ))
       liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
       Web.Scotty.html $ renderHtml
         $ H.html $ H.body $ do
@@ -316,5 +321,5 @@ webLoop port mode = do
                     H.style $ H.toHtml . render $ postCss
   where
     storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
-    mapsToLists (a, b, c) = (M.toList a, M.toList b, M.toList c)
-    listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.fromList c)
+    mapsToLists (a, b, c) = (M.toList a, M.toList b, opsToList c)
+    listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.union opMap $ opsFromList c)

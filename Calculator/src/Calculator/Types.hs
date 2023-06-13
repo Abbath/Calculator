@@ -1,13 +1,18 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric  #-}
 {-# LANGUAGE OverloadedStrings  #-}
-module Calculator.Types (Expr(..), Token(..), Assoc(..), exprToString, unTOp, isOp, preprocess, ListTuple, showRational, showT, opSymbols) where
+module Calculator.Types (Expr (..), Token (..), Assoc (..), Op (..), ExecOp (..), FunOp (..), getPrA,
+                         exprToString, unTOp, isOp, preprocess, ListTuple, Fun (..), ExecFn (..), FunFun (..),
+                         showRational, showT, opSymbols, Maps, OpMap, VarMap, FunMap, opsFromList, opsToList) where
 
-import           Data.Aeson   (FromJSON, ToJSON)
-import           Data.Ratio
-import           Data.Text    (Text)
-import qualified Data.Text    as T
-import           GHC.Generics
+import Control.Arrow (second)
+import Data.Aeson (FromJSON, ToJSON)
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+import Data.Ratio (denominator, numerator)
+import Data.Text (Text)
+import qualified Data.Text as T
+import GHC.Generics (Generic)
 
 data Token = TNumber Rational
            | TLPar
@@ -40,6 +45,52 @@ instance ToJSON Expr
 instance FromJSON Expr
 
 type ListTuple =  ([(Text, Rational)], [((Text, Int), ([Text], Expr))], [(Text, ((Int, Assoc), Expr))])
+
+type FunMap = Map (Text, Int) ([Text], Expr)
+type VarMap = Map Text Rational
+type OpMap = Map Text Op
+type Maps = (VarMap, FunMap, OpMap)
+
+data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Rational -> Rational -> Rational) | BitOp (Integer -> Integer -> Integer )
+
+instance Show FunOp where 
+  show (CmpOp _) = "CmpOp"
+  show (MathOp _) = "MathOp"
+  show (BitOp _) = "BitOp"
+
+data ExecOp = NOp | ExOp Expr | FnOp FunOp deriving Show
+
+isExOp :: ExecOp -> Bool
+isExOp (ExOp _) = True
+isExOp _ = False
+
+unpackExOp :: ExecOp -> Expr
+unpackExOp (ExOp e) = e
+unpackExOp _ = error "Not an expression"
+data Op = Op {
+  priority :: Int,
+  associativity :: Assoc,
+  oexec :: ExecOp
+} deriving Show
+
+opsToList :: OpMap -> [(Text, ((Int, Assoc), Expr))]
+opsToList = map (\(k, v) -> (k, ((priority v, associativity v), unpackExOp . oexec $ v))) . filter (\(_, v) -> isExOp . oexec $ v) . M.toList
+
+opsFromList :: [(Text, ((Int, Assoc), Expr))] -> OpMap
+opsFromList = M.fromList . map (\(k, ((p, a), e)) -> (k, Op p a (ExOp e)))
+
+getPrA :: OpMap -> Map Text (Int, Assoc)
+getPrA om = let lst = M.toList om
+                ps = M.fromList $ map (second (\o -> (priority o, associativity o))) lst
+            in ps
+
+data FunFun = CmpFn (Rational -> Rational -> Bool) | MathFn (Double -> Double) | IntFn1 (Double -> Integer) | IntFn2 (Integer -> Integer -> Integer)
+
+data ExecFn = NFn | ExFn Expr | FnFn FunFun
+data Fun = Fun {
+  params :: [Text],
+  fexec :: ExecFn
+}
 
 -- instance Show Expr where
 --   show = showExpr 0

@@ -1,29 +1,43 @@
 {-# LANGUAGE OverloadedStrings, OverloadedLists, TupleSections #-}
 module Calculator.Evaluator (evalS, getPriorities, extractNames, FunMap, VarMap, OpMap, Maps, Result) where
 
-import           Calculator.Types (Assoc (..), Expr (..), exprToString,
-                                   preprocess, showRational, showT, isOp)
-import           Control.Lens     ((%~), (.~), (^.), _1, _2, _3)
-import           Data.Either      (fromRight)
-import           Data.Map.Strict  (Map)
-import qualified Data.Map.Strict  as M
-import Data.Ratio ( denominator, numerator )
-import           Control.Arrow    (first, second)
-import Control.Monad.State
-    ( MonadState(get), modify, evalState, State, gets )
+import Calculator.Builtins
+import Calculator.Types
+  ( Assoc (..),
+    Expr (..),
+    FunMap,
+    Maps,
+    OpMap,
+    VarMap,
+    exprToString,
+    isOp,
+    preprocess,
+    showRational,
+    showT, FunOp (..), Op(..), ExecOp(..)
+  )
+import Control.Arrow (first, second)
+import Control.Lens ((%~), (.~), (^.), _1, _2, _3)
 import Control.Monad.Except
-    ( ExceptT, runExceptT, MonadError(throwError) )
-import           Data.Text        (Text)
-import qualified Data.Text        as T
-import           Data.Text.Metrics (damerauLevenshteinNorm)
-import           Data.Bits        ((.|.), (.&.), xor)
-import           Numeric          (showHex, showOct, showBin, showInt)
-import System.Random (StdGen, Random (randomR))
-
-type FunMap = Map (Text, Int) ([Text], Expr)
-type VarMap = Map Text Rational
-type OpMap = Map Text ((Int, Assoc), Expr)
-type Maps = (VarMap, FunMap, OpMap)
+  ( ExceptT,
+    MonadError (throwError),
+    runExceptT,
+  )
+import Control.Monad.State
+  ( MonadState (get),
+    State,
+    evalState,
+    gets,
+    modify,
+  )
+import Data.Either (fromRight)
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+import Data.Ratio (denominator, numerator)
+import Data.Text (Text)
+import qualified Data.Text as T
+import Data.Text.Metrics (damerauLevenshteinNorm)
+import Numeric (showBin, showHex, showInt, showOct)
+import System.Random (Random (randomR), StdGen)
 
 extractNames :: Maps -> [String]
 extractNames (v, f, o) = map T.unpack $ M.keys o <> M.keys v <> map fst (M.keys f)
@@ -91,50 +105,9 @@ catchVar (vm, fm) ex = case ex of
     where
       st = catchVar (vm, fm)
 
-compFuns :: Map Text (Rational -> Rational -> Bool)
-compFuns = [("lt",(<)), ("gt",(>)), ("eq",(==))
-  ,("ne",(/=)), ("le",(<=)), ("ge",(>=))]
-
-compOps :: Map Text (Rational -> Rational -> Bool)
-compOps = [("<",(<)), (">",(>)), ("==",(==))
-  ,("!=",(/=)), ("<=",(<=)), (">=",(>=))]
-
-mathFuns :: Map Text (Double -> Double)
-mathFuns =
-  [ ("sin", sin), ("cos", cos), ("asin", asin), ("acos", acos), ("tan", tan), ("atan", atan),
-    ("log", log), ("exp", exp), ("sqrt", sqrt), ("abs", abs), ("sinh", sinh), ("cosh", cosh),
-    ("tanh", tanh), ("asinh", asinh), ("acosh", acosh), ("atanh", atanh)
-  ]
-
-intFuns1 :: Map Text (Double -> Integer)
-intFuns1 = [("trunc", truncate), ("round", round), ("floor", floor), ("ceil", ceiling)]
-
-intFuns2 :: Map Text (Integer -> Integer -> Integer)
-intFuns2 = [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem), ("xor", xor)]
-
-fmod :: Rational -> Rational -> Rational
-fmod x y = fromInteger $ mod (floor x) (floor y)
-
-fcmp :: Rational -> Rational -> Rational
-fcmp x y = case compare x y of
-  GT -> 1
-  EQ -> 0
-  LT -> -1
-
-mathOps :: Map Text (Rational -> Rational -> Rational)
-mathOps = [("+",(+)), ("-",(-)), ("*",(*)), ("/",(/)), ("%",fmod), ("^",pow), ("cmp",fcmp)]
-
-bitOps :: Map Text (Integer -> Integer -> Integer)
-bitOps = [("|", (.|.)), ("&", (.&.))]
-
-pow :: Rational -> Rational -> Rational
-pow a b | denominator a == 1 && denominator b == 1 && numerator b < 0 = toRational $ (fromRational a :: Double) ^^ numerator b
-pow a b | denominator a == 1 && denominator b == 1 = toRational $ numerator a ^ numerator b
-pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
-
 getPriorities :: OpMap -> Map Text Int
 getPriorities om = let lst = M.toList om
-                   in M.fromList $ map (second (fst . fst)) lst
+                   in M.fromList $ map (second priority) lst
 
 type Result = ExceptT Text (State (Maps, StdGen))
 
@@ -158,19 +131,19 @@ evalS ex = case ex of
   UDO n (-1) _ e@(Call op _) -> do
     maps <- gets fst
     case M.lookup op (maps^._3) of
-      Just ((p, a), _) -> do
-        let newmap = M.insert n ((p, a), e) (maps^._3)
+      Just o@Op{} -> do
+        let newmap = M.insert n o (maps^._3)
         modify (first (_3 .~ newmap))
         throwError ("Operator alias " <> n <> " = " <> op)
       Nothing -> throwError $ "No such operator: " <> op
   UDO n p a e
-    | M.member n mathOps || M.member n compOps || M.member n bitOps || n == "=" -> throwError $ "Can not redefine the built-in operator: " <> n
+    | M.member n operators -> throwError $ "Can not redefine the built-in operator: " <> n
     | p < 1 || p > 9 ->  throwError $ "Bad priority: " <> showT p
     | otherwise -> do
         maps <- gets fst
         let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
         either throwError (\r -> do
-          let newmap = M.insert n ((p, a), r) (maps^._3)
+          let newmap = M.insert n Op {priority = p, associativity = a, oexec = ExOp r} (maps^._3)
           modify (first (_3 .~ newmap))
           throwError ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
   Call "debug" [e] -> throwError . T.pack . show . preprocess $ e
@@ -213,8 +186,8 @@ evalS ex = case ex of
     then case a of
       Nothing -> throwError $ "No such operators: " <> op1 <> " " <> op2
       Just _ -> do
-        let ((_, asc1), _) = (maps^._3) M.! op1
-        let ((_, asc2), _) = (maps^._3) M.! op2
+        let Op {associativity = asc1 } = (maps^._3) M.! op1
+        let Op {associativity = asc2 } = (maps^._3) M.! op2
         case (asc1, asc2) of
           (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
           (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . Number
@@ -223,26 +196,27 @@ evalS ex = case ex of
   oc@(Call "/" [x, y]) -> do
     n <- evm y
     n1 <- evm x
-    if n == 0 then throwError $ "Division by zero: " <> exprToString oc else return (n1 / n)
+    if n == 0 
+      then throwError $ "Division by zero: " <> exprToString oc
+      else return (n1 / n)
   oc@(Call "%" [x, y]) -> do
     n <- evm y
     n1 <- evm x
     if n == 0
-    then throwError $ "Division by zero: " <> exprToString oc
-    else return (fromInteger $ mod (floor n1) (floor n))
-  Call op [x, y] | M.member op compOps -> cmp op x y compOps
-  Call op [x, y] | M.member op mathOps -> eval' ( mathOps M.! op) op x y
-  Call op [x, y] | M.member op bitOps  -> bitEval ( bitOps M.! op) x y
+      then throwError $ "Division by zero: " <> exprToString oc
+      else return (fromInteger $ mod (floor n1) (floor n))
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
+  Call op [x, y] | M.member op operators -> evalBuiltinOp op x y
   Call op [x, y] | isOp op -> do
     maps <- gets fst
-    case (M.lookup op (maps^._3) :: Maybe ((Int, Assoc), Expr)) of
-      Just (_, expr) -> do
+    case (M.lookup op (maps^._3) :: Maybe Op) of
+      Just Op{ oexec = ExOp expr } -> do
         let expr1 = substitute (["@x", "@y"], [x,y]) expr
         either throwError evm expr1
       Nothing -> case op of
         opn | T.head opn == '@' -> throwError $ "Expression instead of a function name: " <> T.tail opn <> "/2"
         _ -> throwError $ "No such operator: " <> op <> "/2"
+      _ -> throwError "Suspicious operator"
   Call f [e1, e2] | M.member f intFuns2 -> evalInt f e1 e2
   Call f [e1] | M.member f intFuns1 -> evalInt1 f e1
   Call name [a]   | M.member name mathFuns -> do
@@ -252,7 +226,7 @@ evalS ex = case ex of
     if isNaN r
       then throwError "NaN"
       else return $ toRational r
-  Call n [a,b] | M.member n compFuns -> cmp n a b compFuns
+  Call n [a,b] | M.member n compFuns -> cmp (compFuns M.! n) a b 
   Call "if" [a,b,c] -> do
     cond <- evm a
     if cond /= 0
@@ -292,10 +266,16 @@ evalS ex = case ex of
   UMinus x         -> (0-) <$> evm x
   Par e            -> evm e
   where
+    evalBuiltinOp bop x y = do
+      let builtin_op = operators M.! bop
+      case oexec builtin_op of 
+        FnOp (CmpOp fun)-> cmp fun x y
+        FnOp (MathOp fun) -> eval' fun bop x y
+        FnOp (BitOp fun)-> bitEval fun x y
+        _ -> throwError "Misteriously missing operator"
     mte s = maybe (throwError s) return
     tooBig = 2^(8000000 :: Integer) :: Rational
-    cmp op x y mp = do
-      let fun = mp M.! op
+    cmp fun x y = do
       n <- evm x
       n1 <- evm y
       return $ if fun n n1

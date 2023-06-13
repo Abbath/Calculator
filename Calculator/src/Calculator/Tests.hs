@@ -1,45 +1,34 @@
 {-# LANGUAGE OverloadedStrings, OverloadedLists  #-}
 module Calculator.Tests (testLoop) where
 
-import           Calculator.Evaluator
-import           Calculator.HomebrewLexer
-import           Calculator.AlexLexer
-import qualified Calculator.MegaParser   as CMP
-import           Calculator.Parser  
-import           Calculator.Types        (Assoc (..), Expr (..), preprocess, showT)
-import           Control.Lens            ((%~), (&), (^.), _1, _3)
-import           Control.Monad.Reader  
-import           Control.Monad.State  
-import           Control.Monad.Except  
-import           Data.Map.Strict         (Map)
-import qualified Data.Map.Strict         as M
-import qualified Text.Megaparsec         as MP
-import qualified Calculator.HappyParser  as HP
-import           Control.Arrow           (second)
-import           System.Exit             (exitWith, ExitCode (ExitFailure), exitSuccess)
-import           Data.Text.IO            as TIO
-import           Data.Text               (Text)
-import qualified Data.Text               as T
-import System.Random (initStdGen, StdGen)
+import Calculator.AlexLexer (alexScanTokens)
+import Calculator.Builtins (opMap)
+import Calculator.Evaluator
+  ( Maps,
+    VarMap,
+    evalS,
+    getPriorities,
+  )
+import qualified Calculator.HappyParser as HP
+import Calculator.HomebrewLexer (tloop)
+import qualified Calculator.MegaParser as CMP
+import Calculator.Parser (parse)
+import Calculator.Types (getPrA, preprocess, showT)
+import Control.Lens ((%~), (&), (^.), _1, _3)
+import Control.Monad.Except (runExceptT)
+import Control.Monad.Reader (ReaderT (runReaderT))
+import Control.Monad.State (runState)
+import qualified Data.Map.Strict as M
+import Data.Text (Text)
+import qualified Data.Text as T
+import Data.Text.IO as TIO (putStrLn)
+import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
+import System.Random (StdGen, initStdGen)
+import qualified Text.Megaparsec as MP
 
 data Backend = Internal | Mega | AH deriving Show
 
 type Tests = [(Text, Either Text Rational)]
-
-opMap :: OpMap
-opMap = [("=", f 0 R), ("+=", f 0 R), ("-=", f 0 R), ("*=", f 0 R), ("/=", f 0 R), ("%=", f 0 R), ("^=", f 0 R), ("|=", f 0 R), ("&=", f 0 R)
-  , ("==", f 1 L), ("<=", f 1 L), (">=", f 1 L), ("!=", f 1 L), ("<", f 1 L), (">", f 1 L)
-  , ("+", f 2 L), ("-", f 2 L)
-  , ("*", f 3 L), ("/", f 3 L), ("%", f 3 L)
-  , ("^", f 4 R)
-  , ("|", f 5 R)
-  , ("&", f 6 R)]
-  where f p a = ((p, a), Number 0)
-
-getPrA :: OpMap -> Map Text (Int, Assoc)
-getPrA om = let lst = M.toList om
-                ps = M.fromList $ map (second fst ) lst
-            in ps
 
 loop :: Tests -> Maps -> StdGen -> Backend -> Int -> IO Int
 loop [] _ _ _ n = return n
