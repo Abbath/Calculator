@@ -59,7 +59,7 @@ instance Show FunOp where
   show (MathOp _) = "MathOp"
   show (BitOp _) = "BitOp"
 
-data ExecOp = NOp | ExOp Expr | FnOp FunOp deriving Show
+data ExecOp = NOp | ExOp Expr | FnOp FunOp | AOp Text deriving Show
 
 isExOp :: ExecOp -> Bool
 isExOp (ExOp _) = True

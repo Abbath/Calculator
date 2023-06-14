@@ -132,7 +132,7 @@ evalS ex = case ex of
     maps <- gets fst
     case M.lookup op (maps^._3) of
       Just o@Op{} -> do
-        let newmap = M.insert n o (maps^._3)
+        let newmap = M.insert n (o { oexec = AOp op }) (maps^._3)
         modify (first (_3 .~ newmap))
         throwError ("Operator alias " <> n <> " = " <> op)
       Nothing -> throwError $ "No such operator: " <> op
@@ -213,10 +213,11 @@ evalS ex = case ex of
       Just Op{ oexec = ExOp expr } -> do
         let expr1 = substitute (["@x", "@y"], [x,y]) expr
         either throwError evm expr1
+      Just Op {oexec = AOp aop } -> evm (Call aop [x, y])
       Nothing -> case op of
         opn | T.head opn == '@' -> throwError $ "Expression instead of a function name: " <> T.tail opn <> "/2"
         _ -> throwError $ "No such operator: " <> op <> "/2"
-      _ -> throwError "Suspicious operator"
+      _ -> throwError $ "Suspicious operator: " <> op
   Call "if" [a,b,c] -> do
     cond <- evm a
     if cond /= 0
@@ -256,7 +257,7 @@ evalS ex = case ex of
                wat = cvt_nls "\nFunctions with the same name:\n" wa
                wnt = cvt_nls "\nFunctions with similar names:\n" wn
              in throwError $ "No such function: " <> name <> "/" <> showT (length e) <> wat <> wnt
-      _ -> throwError "Suspicious function"
+      _ -> throwError $ "Suspicious function: " <> name
   Id "m.r" -> do
     gen <- gets snd
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) gen
