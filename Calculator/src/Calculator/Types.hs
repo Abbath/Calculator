@@ -3,7 +3,8 @@
 {-# LANGUAGE OverloadedStrings  #-}
 module Calculator.Types (Expr (..), Token (..), Assoc (..), Op (..), ExecOp (..), FunOp (..), getPrA,
                          exprToString, unTOp, isOp, preprocess, ListTuple, Fun (..), ExecFn (..), FunFun (..),
-                         showRational, showT, opSymbols, Maps, OpMap, VarMap, FunMap, opsFromList, opsToList) where
+                         showRational, showT, opSymbols, Maps, OpMap, VarMap, FunMap, opsFromList, opsToList,
+                         funsFromList, funsToList) where
 
 import Control.Arrow (second)
 import Data.Aeson (FromJSON, ToJSON)
@@ -46,7 +47,7 @@ instance FromJSON Expr
 
 type ListTuple =  ([(Text, Rational)], [((Text, Int), ([Text], Expr))], [(Text, ((Int, Assoc), Expr))])
 
-type FunMap = Map (Text, Int) ([Text], Expr)
+type FunMap = Map (Text, Int) Fun
 type VarMap = Map Text Rational
 type OpMap = Map Text Op
 type Maps = (VarMap, FunMap, OpMap)
@@ -67,6 +68,7 @@ isExOp _ = False
 unpackExOp :: ExecOp -> Expr
 unpackExOp (ExOp e) = e
 unpackExOp _ = error "Not an expression"
+
 data Op = Op {
   priority :: Int,
   associativity :: Assoc,
@@ -86,11 +88,32 @@ getPrA om = let lst = M.toList om
 
 data FunFun = CmpFn (Rational -> Rational -> Bool) | MathFn (Double -> Double) | IntFn1 (Double -> Integer) | IntFn2 (Integer -> Integer -> Integer)
 
-data ExecFn = NFn | ExFn Expr | FnFn FunFun
+instance Show FunFun where 
+  show (CmpFn _) = "CmpFn"
+  show (MathFn _) = "MathFn"
+  show (IntFn1 _) = "IntFn1"
+  show (IntFn2 _) = "IntFn2"
+
+data ExecFn = NFn | ExFn Expr | FnFn FunFun deriving Show
+
+isExFn :: ExecFn -> Bool
+isExFn (ExFn _) = True
+isExFn _ = False
+
+unpackExFn :: ExecFn -> Expr
+unpackExFn (ExFn e) = e
+unpackExFn _ = error "Not an expression"
+
 data Fun = Fun {
   params :: [Text],
   fexec :: ExecFn
-}
+} deriving Show
+
+funsToList :: FunMap -> [((Text, Int), ([Text], Expr))]
+funsToList = map (\(k, v) -> (k, (params v, unpackExFn . fexec $ v))) . filter (\(_, v) -> isExFn . fexec $ v) . M.toList
+
+funsFromList :: [((Text, Int), ([Text], Expr))] -> FunMap
+funsFromList = M.fromList . map (\(k, (p, e)) -> (k, Fun p (ExFn e)))
 
 -- instance Show Expr where
 --   show = showExpr 0

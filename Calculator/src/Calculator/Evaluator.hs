@@ -13,7 +13,7 @@ import Calculator.Types
     isOp,
     preprocess,
     showRational,
-    showT, FunOp (..), Op(..), ExecOp(..)
+    showT, FunOp (..), Op(..), ExecOp(..), ExecFn(..), FunFun(..), Fun(..)
   )
 import Control.Arrow (first, second)
 import Control.Lens ((%~), (.~), (^.), _1, _2, _3)
@@ -91,8 +91,8 @@ catchVar (vm, fm) ex = case ex of
   (Id i) | T.head i == '@' -> return $ Id i
   (Id i) ->
     let a = M.lookup i vm :: Maybe Rational
-        getNames = map (\f -> (f, f)) . M.keys
-        fNames = getNames mathFuns ++ getNames intFuns1 ++ getNames intFuns2 ++ getNames compFuns
+        getNames = map (\(f, _) -> (f, f)) . M.keys
+        fNames = getNames functions
         b = lookup i (funNames fm ++ fNames) :: Maybe Text
     in case a of
          Just n -> return $ randomCheck n i
@@ -113,7 +113,7 @@ type Result = ExceptT Text (State (Maps, StdGen))
 
 evalS :: Expr -> Result Rational
 evalS ex = case ex of
-  Asgn s _ | s `elem` (["m.pi", "m.e", "m.phi", "m.r", "_"] :: [T.Text]) -> throwError $ "Cannot change a constant value: " <> s
+  Asgn s _ | M.member s defVar -> throwError $ "Cannot change a constant value: " <> s
   Asgn s e -> do
     r <- evm e
     modify (first (_1 %~ M.insert s r))
@@ -125,7 +125,7 @@ evalS ex = case ex of
     maps <- gets fst
     let newe = localize s e >>= catchVar (maps^._1, maps ^._2)
     either throwError (\r -> do
-      let newmap = M.insert (n, length s) (map (T.cons '@') s, r) $ maps^._2
+      let newmap = M.insert (n, length s) (Fun (map (T.cons '@') s) (ExFn r)) $ maps^._2
       modify (first (_2 .~ newmap))
       throwError ("Function " <> n <> "/" <> showT (length s))) newe
   UDO n (-1) _ e@(Call op _) -> do
@@ -217,42 +217,46 @@ evalS ex = case ex of
         opn | T.head opn == '@' -> throwError $ "Expression instead of a function name: " <> T.tail opn <> "/2"
         _ -> throwError $ "No such operator: " <> op <> "/2"
       _ -> throwError "Suspicious operator"
-  Call f [e1, e2] | M.member f intFuns2 -> evalInt f e1 e2
-  Call f [e1] | M.member f intFuns1 -> evalInt1 f e1
-  Call name [a]   | M.member name mathFuns -> do
-    let fun = mathFuns M.! name
-    n <- evm a
-    let r = (\x -> if abs x <= sin pi then 0 else x) . fun . fromRational $ n
-    if isNaN r
-      then throwError "NaN"
-      else return $ toRational r
-  Call n [a,b] | M.member n compFuns -> cmp (compFuns M.! n) a b 
   Call "if" [a,b,c] -> do
     cond <- evm a
     if cond /= 0
       then evm b
       else evm c
+  Call f ps | M.member (f, length ps) functions -> do
+    let builtin_fun = functions M.! (f, length ps)
+    case fexec builtin_fun of
+      FnFn (CmpFn fun) -> cmp fun (head ps) (ps !! 1)
+      FnFn (IntFn1 fun) -> evalInt1 fun (head ps)
+      FnFn (IntFn2 fun) -> evalInt fun (head ps) (ps !! 1)
+      FnFn (MathFn fun) -> do
+        n <- evm (head ps)
+        let r = (\x -> if abs x <= sin pi then 0 else x) . fun . fromRational $ n
+        if isNaN r
+          then throwError "NaN"
+          else return $ toRational r
+      ExFn expr -> do
+        let expr1 = substitute (params builtin_fun, ps) expr
+        either throwError evm expr1
+      _ -> throwError "Misteriously missing function"
   Call name e -> do
     maps <- gets fst
-    case (M.lookup (name, length e) (maps^._2) :: Maybe ([Text], Expr)) of
-      Just (al, expr) -> do
+    case (M.lookup (name, length e) (maps^._2) :: Maybe Fun) of
+      Just (Fun al (ExFn expr)) -> do
         let expr1 = substitute (al, e) expr
         either throwError evm expr1
       Nothing -> case name of
         x | T.head x == '@' -> throwError $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ -> let
-                 cvt_m m n = map (,n) $ M.keys m
-                 (wa, wn) = findSimilar (name, length e)
-                    (M.keys (maps^._2) <> cvt_m mathFuns 1 <> cvt_m intFuns1 1 <> cvt_m intFuns2 2 <> cvt_m compFuns 2 <>
-                     [("atan", 2), ("log", 2), ("debug", 1), ("df", 2), ("int", 4), ("prat", 1), ("hex", 1), ("oct", 1), ("bin", 1)] )
-                 cvt_nls txt nls = if not (null nls) 
-                    then txt <> T.init (T.concat (map (\(n, l) -> "\t" <> n <> "/" <> showT l <> "\n") nls))
-                    else ""
-                 wat = cvt_nls "\nFunctions with the same name:\n" wa
-                 wnt = cvt_nls "\nFunctions with similar names:\n" wn
-             in throwError $ "No such function: " <> name <> "/" <> showT (length e) <>
-                 wat <>
-                 wnt
+               (wa, wn) = findSimilar (name, length e)
+                  (M.keys (maps^._2) <> M.keys functions  <>
+                   [("atan", 2), ("log", 2), ("debug", 1), ("df", 2), ("int", 4), ("prat", 1), ("hex", 1), ("oct", 1), ("bin", 1)] )
+               cvt_nls txt nls = if not (null nls) 
+                  then txt <> T.init (T.concat (map (\(n, l) -> "\t" <> n <> "/" <> showT l <> "\n") nls))
+                  else ""
+               wat = cvt_nls "\nFunctions with the same name:\n" wa
+               wnt = cvt_nls "\nFunctions with similar names:\n" wn
+             in throwError $ "No such function: " <> name <> "/" <> showT (length e) <> wat <> wnt
+      _ -> throwError "Suspicious function"
   Id "m.r" -> do
     gen <- gets snd
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) gen
@@ -296,11 +300,11 @@ evalS ex = case ex of
       t1 <- evm x
       t2 <- evm y
       if denominator t1 == 1 && denominator t2 == 1
-         then return . toRational $ (intFuns2 M.! f) (numerator t1) (numerator t2)
+         then return . toRational $ f (numerator t1) (numerator t2)
          else throwError "Cannot use integral function on real numbers!"
     evalInt1 f x = do
       t1 <- evm x
-      return . toRational $ (intFuns1 M.! f) (fromRational t1)
+      return . toRational $ f (fromRational t1)
     eval' :: (Rational -> Rational -> Rational) -> Text -> Expr -> Expr -> Result Rational
     eval' f op x y = do
       t1 <- evm x

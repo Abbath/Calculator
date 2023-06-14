@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, OverloadedLists #-}
-module Calculator (Mode(..), evalLoop, webLoop, defVar, telegramSimple) where
+module Calculator (Mode(..), evalLoop, webLoop, telegramSimple) where
 
 import Calculator.AlexLexer (alexScanTokens)
-import Calculator.Builtins (opMap, names)
+import Calculator.Builtins (opMap, names, funMap, defVar)
 import Calculator.Css (getCss, postCss)
 import Calculator.Evaluator
   ( evalS,
@@ -17,14 +17,14 @@ import Calculator.Types
     ( preprocess,
       showRational,
       showT,
-      Expr(Number, Call, Id),
+      Expr,
       ListTuple,
       Maps,
-      VarMap,
-      FunMap,
       opsToList,
       opsFromList,
-      getPrA )
+      getPrA,
+      funsToList,
+      funsFromList )
 import Clay (render)
 import Control.Arrow (first, left, second)
 import Control.Lens ((%~), (&), (^.), _1, _3)
@@ -162,8 +162,6 @@ evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (TS.Text, (Maps, St
 evalExprS t maps g = either (Left . (,(maps, g))) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
   where getShit e = let a = runExceptT (evalS e) in S.runState a (maps, g)
 
-
-
 type StateData = [String]
 
 completionGenerator :: String -> StateT StateData IO [Completion]
@@ -214,16 +212,6 @@ loop mode maps = do
 
 parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (TS.Text, (Maps, StdGen)) (Rational, (Maps, StdGen))
 parseEval md ms g x = evalExprS (parseString md x ms) ms g
-
-defVar :: VarMap
-defVar = [("m.pi", toRational (pi :: Double)), 
-          ("m.e", toRational . exp $ (1 :: Double)), 
-          ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double)), 
-          ("m.r", 0.0),
-          ("_", 0.0)]
-
-funMap :: FunMap
-funMap = [(("not", 1), (["x"], Call "if" [Id "x", Number 0, Number 1]))]
 
 evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m (defVar, funMap, opMap)
@@ -321,5 +309,5 @@ webLoop port mode = do
                     H.style $ H.toHtml . render $ postCss
   where
     storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
-    mapsToLists (a, b, c) = (M.toList a, M.toList b, opsToList c)
-    listsToMaps (a, b, c) = (M.fromList a, M.fromList b, M.union opMap $ opsFromList c)
+    mapsToLists (a, b, c) = (M.toList a, funsToList b, opsToList c)
+    listsToMaps (a, b, c) = (M.fromList a, M.union funMap $ funsFromList b, M.union opMap $ opsFromList c)

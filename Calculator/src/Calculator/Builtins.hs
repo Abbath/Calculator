@@ -3,11 +3,13 @@
 
 module Calculator.Builtins where
 
-import Calculator.Types (Assoc (..), OpMap, Op(..), ExecOp(..), FunOp(..), Fun(..), ExecFn(..), FunFun(..))
+import Calculator.Types (Assoc (..), OpMap, FunMap, VarMap, Op(..), ExecOp(..), FunOp(..), Fun(..), ExecFn(..), FunFun(..), Expr(..))
 import Data.Bits ((.|.), (.&.), xor)
 import Data.Ratio (denominator, numerator)
 import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
 import Data.Text (Text)
+import qualified Data.Text as T
 
 operators :: Map Text Op
 operators =
@@ -41,6 +43,15 @@ operators =
 functions :: Map (Text, Int) Fun
 functions =
     [
+       (("prat", 1), Fun { params = [], fexec = NFn }),
+       (("quit", 0), Fun { params = [], fexec = NFn }),
+       (("if", 3), Fun { params = [], fexec = NFn }),
+       (("df", 2), Fun { params = [], fexec = NFn }),
+       (("int", 4), Fun { params = [], fexec = NFn }),
+       (("log", 2), Fun { params = [], fexec = NFn }),
+       (("hex", 1), Fun { params = [], fexec = NFn }),
+       (("oct", 1), Fun { params = [], fexec = NFn }),
+       (("bin", 1), Fun { params = [], fexec = NFn }),
        (("lt", 2), Fun { params = [], fexec = FnFn (CmpFn (<)) }),
        (("gt", 2), Fun { params = [], fexec = FnFn (CmpFn (>)) }),
        (("eq", 2), Fun { params = [], fexec = FnFn (CmpFn (==)) }),
@@ -73,47 +84,15 @@ functions =
        (("mod", 2), Fun { params = [], fexec = FnFn (IntFn2 mod) }),
        (("quot", 2), Fun { params = [], fexec = FnFn (IntFn2 quot) }),
        (("rem", 2), Fun { params = [], fexec = FnFn (IntFn2 rem) }),
-       (("xor", 2), Fun { params = [], fexec = FnFn (IntFn2 xor) })
+       (("xor", 2), Fun { params = [], fexec = FnFn (IntFn2 xor) }),
+       (("not", 1), Fun { params = ["x"], fexec = ExFn (Call "if" [Id "x", Number 0, Number 1])})
     ]
 
 opMap :: OpMap
 opMap = operators
 
-compFuns :: Map Text (Rational -> Rational -> Bool)
-compFuns =
-  [ ("lt", (<)),
-    ("gt", (>)),
-    ("eq", (==)),
-    ("ne", (/=)),
-    ("le", (<=)),
-    ("ge", (>=))
-  ]
-
-mathFuns :: Map Text (Double -> Double)
-mathFuns =
-  [ ("sin", sin),
-    ("cos", cos),
-    ("asin", asin),
-    ("acos", acos),
-    ("tan", tan),
-    ("atan", atan),
-    ("log", log),
-    ("exp", exp),
-    ("sqrt", sqrt),
-    ("abs", abs),
-    ("sinh", sinh),
-    ("cosh", cosh),
-    ("tanh", tanh),
-    ("asinh", asinh),
-    ("acosh", acosh),
-    ("atanh", atanh)
-  ]
-
-intFuns1 :: Map Text (Double -> Integer)
-intFuns1 = [("trunc", truncate), ("round", round), ("floor", floor), ("ceil", ceiling)]
-
-intFuns2 :: Map Text (Integer -> Integer -> Integer)
-intFuns2 = [("gcd", gcd), ("lcm", lcm), ("div", div), ("mod", mod), ("quot", quot), ("rem", rem), ("xor", xor)]
+funMap :: FunMap
+funMap = functions
 
 fmod :: Rational -> Rational -> Rational
 fmod x y = fromInteger $ mod (floor x) (floor y)
@@ -130,7 +109,11 @@ pow a b | denominator a == 1 && denominator b == 1 = toRational $ numerator a ^ 
 pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
 
 names :: [String]
-names = ["!=","%","*","+","-","/","<","<=","=","==",">",">=","^","&","|","trunc","round","floor","ceil",
-  "sin","cos","tan","asin","acos","atan","sinh","cosh","tanh","asinh","acosh","atanh","log","sqrt","exp",
-  "abs","xor","not","int","df","hex","oct","bin","lt","gt","le","ge","eq","ne","if","df","gcd","lcm","div",
-  "mod","quot","rem","prat","quit","cmp"]
+names = T.unpack <$> M.keys operators ++ map fst (M.keys functions)
+
+defVar :: VarMap
+defVar = [("m.pi", toRational (pi :: Double)), 
+          ("m.e", toRational . exp $ (1 :: Double)), 
+          ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double)), 
+          ("m.r", 0.0),
+          ("_", 0.0)]
