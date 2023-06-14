@@ -1,5 +1,5 @@
 name:                 Calculator
-version:              0.7.1.1
+version:              0.7.2.0
 synopsis:             Calculator
 -- description:
 -- license:
@@ -29,6 +29,7 @@ library
                       , Calculator.MegaParser
                       , Calculator.Css
                       , Calculator.Builtins
+                      , Calculator.Generator
   build-depends:      aeson
                     , array
                     , base >= 4.7 && < 5

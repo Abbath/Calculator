@@ -1,7 +1,8 @@
-{-# LANGUAGE OverloadedStrings, OverloadedLists, TupleSections #-}
+{-# LANGUAGE OverloadedStrings, OverloadedLists #-}
 module Calculator.Evaluator (evalS, getPriorities, extractNames, FunMap, VarMap, OpMap, Maps, Result) where
 
 import Calculator.Builtins
+import Calculator.Generator
 import Calculator.Types
   ( Assoc (..),
     Expr (..),
@@ -146,7 +147,8 @@ evalS ex = case ex of
           let newmap = M.insert n Op {priority = p, associativity = a, oexec = ExOp r} (maps^._3)
           modify (first (_3 .~ newmap))
           throwError ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
-  Call "debug" [e] -> throwError . T.pack . show . preprocess $ e
+  Call "debug" [e] -> throwError . showT . preprocess $ e
+  Call "generate" [e] -> throwError . T.init . T.concat . map ((<> "\n") . showT) . generate $ e
   Call "df" [a,x] -> do
       let e = derivative a x
       either throwError (throwError . exprToString . preprocess) e
@@ -248,9 +250,7 @@ evalS ex = case ex of
       Nothing -> case name of
         x | T.head x == '@' -> throwError $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ -> let
-               (wa, wn) = findSimilar (name, length e)
-                  (M.keys (maps^._2) <> M.keys functions  <>
-                   [("atan", 2), ("log", 2), ("debug", 1), ("df", 2), ("int", 4), ("prat", 1), ("hex", 1), ("oct", 1), ("bin", 1)] )
+               (wa, wn) = findSimilar (name, length e) (M.keys (maps^._2))
                cvt_nls txt nls = if not (null nls) 
                   then txt <> T.init (T.concat (map (\(n, l) -> "\t" <> n <> "/" <> showT l <> "\n") nls))
                   else ""
