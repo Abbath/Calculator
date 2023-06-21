@@ -76,8 +76,8 @@ parseOp 0 (TIdent s:TOp op:rest) | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=
   a <- parseOp 1 rest
   return $ Asgn s (Call (T.init op) [Id s, a])
 parseOp 0 s = parseOp 1 s
-parseOp 2 (TOp "+":rest) = parseOp 2 rest
-parseOp 2 (TOp "-":rest) = UMinus <$> parseOp 2 rest
+parseOp 3 (TOp "+":rest) = parseOp 3 rest
+parseOp 3 (TOp "-":rest) = UMinus <$> parseOp 3 rest
 parseOp 10 s = parseToken s
 parseOp l s = do
   m <- ask
@@ -117,7 +117,11 @@ parseToken str =
     (TLPar:rest)             -> Par <$> ps rest
     x                        -> throwError $ "Unknown token: " <> stringify x
   where
-    ps = either throwError (parseOp 1 . init . fst) . runExcept . takePar
+    ps l = do 
+      (par, rest) <- lift $ takePar l
+      if not (null rest)
+        then throwError $ "Extra tokens: " <> stringify rest
+        else (parseOp 1 . init) par
 
 parseFuncall :: [Token] -> ReaderT (Map Text Int) (Except Text) [Expr]
 parseFuncall [TRPar] = return []

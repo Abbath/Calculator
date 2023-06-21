@@ -149,7 +149,7 @@ exprToString ex = case ex of
   Id s            -> s
 
 opSymbols :: String
-opSymbols = "+-/*%^$!~&|=><"
+opSymbols = "+-/*%^$!~&|=><:"
 
 isOp :: Text -> Bool
 isOp = T.all (`elem` opSymbols)

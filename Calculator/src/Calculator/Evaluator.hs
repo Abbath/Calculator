@@ -207,7 +207,12 @@ evalS ex = case ex of
     if n == 0
       then throwError $ "Division by zero: " <> exprToString oc
       else return (fromInteger $ mod (floor n1) (floor n))
+  Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
+    n <- evm y
+    modify (first (_1 %~ M.insert x n))
+    return n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
+  Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwError $ "Cannot assign to expression with: " <> op
   Call op [x, y] | M.member op operators -> evalBuiltinOp op x y
   Call op [x, y] | isOp op -> do
     maps <- gets fst
@@ -220,11 +225,17 @@ evalS ex = case ex of
         opn | T.head opn == '@' -> throwError $ "Expression instead of a function name: " <> T.tail opn <> "/2"
         _ -> throwError $ "No such operator: " <> op <> "/2"
       _ -> throwError $ "Suspicious operator: " <> op
-  Call "if" [a,b,c] -> do
+  Call "if" [a, b, c] -> do
     cond <- evm a
     if cond /= 0
       then evm b
       else evm c
+  Call "loop" [c, a] -> do
+    n <- evm c
+    _ <- evm a
+    if n == 0
+      then return 0
+      else evm $ Call "loop" [c, a]
   Call f ps | M.member (f, length ps) functions -> do
     let builtin_fun = functions M.! (f, length ps)
     case fexec builtin_fun of
@@ -317,7 +328,7 @@ evalS ex = case ex of
     procListElem m fun n = evalState (runExceptT (evm (Call fun [Number n]))) m
     findSimilar :: (Text, Int) -> [(Text, Int)] -> ([(Text, Int)], [(Text, Int)])
     findSimilar (name, len) funs = let wrongArgNum = filter (\(n, l) -> n == name && len /= l) funs
-                                       wrongName = filter (\(n, l) -> l == len && damerauLevenshteinNorm n name >= 0.5) funs
+                                       wrongName = filter (\(n, _) -> damerauLevenshteinNorm n name >= 0.5) funs
                                    in (wrongArgNum, wrongName)
 
 derivative :: Expr -> Expr -> Either Text Expr
