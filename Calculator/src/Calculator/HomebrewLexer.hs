@@ -5,7 +5,7 @@ module Calculator.HomebrewLexer (tloop) where
 
 import Control.Applicative ( Alternative(..) )
 import Data.Char
-    ( isDigit, isSpace, isAlpha, isHexDigit, isOctDigit )
+    ( isDigit, isSpace, isAlpha, isHexDigit, isOctDigit, ord )
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Calculator.Types    (Token (..), opSymbols)
@@ -114,7 +114,8 @@ doubleLiteral =
     <*> opt (read <$> (('0':) <$> ((:) <$> charP '.' <*> digits)))
     <*> opt (e *> ((*) <$> (plus <|> minus <|> pure 1) <*> (read <$> digits)))
   where
-    digits = some $ parseIf "digit" isDigit
+    digits = (++) <$> some (parseIf "digit" isDigit) <*> (concat <$> many ud)
+    ud = some (parseIf "underscore" (=='_')) *> some (parseIf "digit" isDigit)
     minus = (-1) <$ charP '-'
     plus = 1 <$ charP '+'
     e = charP 'e' <|> charP 'E'
@@ -123,7 +124,8 @@ doubleLiteral =
 basedLiteral :: (Char -> Bool) -> Char -> Parser Rational
 basedLiteral f p = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . (['0', p] ++) <$> digits)
   where
-    digits = some $ parseIf "digit" f
+    digits = (++) <$> some (parseIf "digit" f) <*> (concat <$> many ud)
+    ud = some (parseIf "underscore" (=='_')) *> some (parseIf "digit" f)
     zero = charP '0'
     x = charP p
 
@@ -136,9 +138,11 @@ octLiteral = basedLiteral isOctDigit 'o'
 binLiteral :: Parser Rational
 binLiteral = (\_ _ n -> toRational (n :: Integer)) 
               <$> charP '0' <*> charP 'b' 
-              <*> (foldl (\b c -> b * 2 + if c == '0' then 0 else 1) 0 <$> binDigit)
+              <*> (foldl (\b c -> case c of
+                '_' -> b
+                n -> b * 2 + toInteger (ord n - ord '0')) 0 <$> binDigitOrUnderscore)
   where
-    binDigit = some $ parseIf "bin digit" (`elem` ("01" :: String))
+    binDigitOrUnderscore = some $ parseIf "bin digit or underscore" (`elem` ("01_" :: String))
 
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
