@@ -230,11 +230,14 @@ evalS ex = case ex of
     if cond /= 0
       then evm b
       else evm c
+  Call "loop" [i, c, a] -> do
+    _ <- evm i
+    evm $ Call "loop" [c, a]
   Call "loop" [c, a] -> do
     n <- evm c
-    _ <- evm a
+    res <- evm a
     if n == 0
-      then return 0
+      then return res
       else evm $ Call "loop" [c, a]
   Call f ps | M.member (f, length ps) functions -> do
     let builtin_fun = functions M.! (f, length ps)
