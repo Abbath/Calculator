@@ -118,7 +118,7 @@ evalS ex = case ex of
   Asgn s e -> do
     r <- evm e
     modify (first (_1 %~ M.insert s r))
-    throwError ("Constant " <> s <> "=" <> showRational r)
+    throwError ((if "c." `T.isPrefixOf` s then "Constant " else "Variable ") <> s <> "=" <> showRational r)
   UDF n [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
     either throwError (evm . UDF n [s]) de
@@ -208,11 +208,14 @@ evalS ex = case ex of
       then throwError $ "Division by zero: " <> exprToString oc
       else return (fromInteger $ mod (floor n1) (floor n))
   Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
-    n <- evm y
-    modify (first (_1 %~ M.insert x n))
-    return n
+    if "c." `T.isPrefixOf` x || M.member x defVar 
+      then throwError "I'm afraid you can't do that."
+      else do 
+        n <- evm y
+        modify (first (_1 %~ M.insert x n))
+        return n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
-  Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwError $ "Cannot assign to expression with: " <> op
+  Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwError $ "Cannot assign to an expression with: " <> op
   Call op [x, y] | M.member op operators -> evalBuiltinOp op x y
   Call op [x, y] | isOp op -> do
     maps <- gets fst

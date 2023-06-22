@@ -128,7 +128,7 @@ handleUpdate _ = parseUpdate (Reply <$> Telegram.Bot.Simple.UpdateParser.text)
 
 -- | How to handle 'Action's.
 handleAction :: Mode -> Action -> Model -> Eff Action Model
-handleAction _  NoAction model = pure model
+handleAction _ NoAction model = pure model
 handleAction mode (Reply msg) model = model2 <# do
   replyText response
   pure NoAction

@@ -161,8 +161,8 @@ parRight = do
 --   case (floatingOrInteger p :: Either Double Integer,  floatingOrInteger a :: Either Double Integer) of
 --     (Right in1, Right in2) -> ret in1 (fromInteger in2) name e
 --     (Left db, Right int)   -> ret (floor db) (fromInteger int)  name e
---     (Right int, Left db)   -> ret int db  name e
---     (Left d1, Left d2)     -> ret (floor d1) d2  name e
+--     (Right int, Left db)   -> ret int db name e
+--     (Left d1, Left d2)     -> ret (floor d1) d2 name e
 --   where
 --     ret :: Integer -> Double -> Text -> Expr -> PReader Expr
 --     ret a b n e = return $ UDO n (fromInteger a) (if b == 0 then L else R) e

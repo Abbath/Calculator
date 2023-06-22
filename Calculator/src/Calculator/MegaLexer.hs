@@ -7,7 +7,7 @@ import           Control.Monad.Reader
 import           Data.Map.Strict        (Map)
 import           Data.Scientific
 import           Text.Megaparsec
-import qualified Text.Megaparsec.Char.Lexer  as L
+import qualified Text.Megaparsec.Char.Lexer as L
 import           Text.Megaparsec.Char
 import           Data.Void
 import           Data.Text    (Text)
@@ -44,7 +44,7 @@ comma = symbol ","
 
 identifier :: PReader Text
 identifier = lexeme p
-  where p = T.cons <$> (letterChar  <|> char '_' <|> char '.') <*> (T.pack <$> many (alphaNumChar <|> char '_' <|> char '.'))
+  where p = T.cons <$> (letterChar <|> char '_' <|> char '.') <*> (T.pack <$> many (alphaNumChar <|> char '_' <|> char '.'))
 
 operator :: PReader Text
 operator = lexeme ( T.pack <$> (many . oneOf $ opSymbols))

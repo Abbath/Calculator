@@ -58,7 +58,7 @@ charP x = Parser f
         Left $
         ParserError
           (inputLoc input)
-          ("Expected '" <> T.singleton x <> "', but found '" <>  T.singleton  y <> "'")
+          ("Expected '" <> T.singleton x <> "', but found '" <>  T.singleton y <> "'")
     f input =
       Left $
       ParserError
