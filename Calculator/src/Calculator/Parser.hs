@@ -76,9 +76,9 @@ parseOp 0 (TIdent s:TOp op:rest) | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=
   a <- parseOp 1 rest
   return $ Asgn s (Call (T.init op) [Id s, a])
 parseOp 0 s = parseOp 1 s
-parseOp 3 (TOp "+":rest) = parseOp 3 rest
-parseOp 3 (TOp "-":rest) = UMinus <$> parseOp 3 rest
-parseOp 10 s = parseToken s
+parseOp 4 (TOp "+":rest) = parseOp 4 rest
+parseOp 4 (TOp "-":rest) = UMinus <$> parseOp 4 rest
+parseOp 15 s = parseToken s
 parseOp l s = do
   m <- ask
   r <- lift $ breakPar3 (`elem` takeWithPriorities l m) s

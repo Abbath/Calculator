@@ -4,7 +4,7 @@
 module Calculator.Builtins where
 
 import Calculator.Types (Assoc (..), OpMap, FunMap, VarMap, Op(..), ExecOp(..), FunOp(..), Fun(..), ExecFn(..), FunFun(..), Expr(..))
-import Data.Bits ((.|.), (.&.), xor)
+import Data.Bits ((.|.), (.&.), xor, shift)
 import Data.Ratio (denominator, numerator)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
@@ -30,16 +30,18 @@ operators =
        ("!=", Op { priority = 2, associativity = L, oexec = FnOp (CmpOp (/=)) }),
        ("<", Op { priority = 2, associativity = L, oexec = FnOp (CmpOp (<)) }),
        (">", Op { priority = 2, associativity = L, oexec = FnOp (CmpOp (>)) }),
-       ("+", Op { priority = 3, associativity = L, oexec = FnOp (MathOp (+)) }),
-       ("-", Op { priority = 3, associativity = L, oexec = FnOp (MathOp (-)) }),
-       ("*", Op { priority = 4, associativity = L, oexec = FnOp (MathOp (*)) }),
-       ("/", Op { priority = 4, associativity = L, oexec = FnOp (MathOp (/)) }),
-       ("%", Op { priority = 4, associativity = L, oexec = FnOp (MathOp fmod) }),
-       ("^", Op { priority = 5, associativity = R, oexec = FnOp (MathOp pow) }),
-       ("|", Op { priority = 6, associativity = R, oexec = FnOp (BitOp (.|.)) }),
-       ("&", Op { priority = 7, associativity = R, oexec = FnOp (BitOp (.&.)) }),
-       ("cmp", Op { priority = 8, associativity = L, oexec = FnOp (MathOp fcmp) }),
-       (":=", Op { priority = 9, associativity = R, oexec = NOp })
+       ("<<", Op { priority = 3, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (fromInteger s))) }),
+       (">>", Op { priority = 3, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (-1 * fromInteger s))) }),
+       ("+", Op { priority = 4, associativity = L, oexec = FnOp (MathOp (+)) }),
+       ("-", Op { priority = 4, associativity = L, oexec = FnOp (MathOp (-)) }),
+       ("*", Op { priority = 5, associativity = L, oexec = FnOp (MathOp (*)) }),
+       ("/", Op { priority = 5, associativity = L, oexec = FnOp (MathOp (/)) }),
+       ("%", Op { priority = 5, associativity = L, oexec = FnOp (MathOp fmod) }),
+       ("^", Op { priority = 6, associativity = R, oexec = FnOp (MathOp pow) }),
+       ("|", Op { priority = 7, associativity = R, oexec = FnOp (BitOp (.|.)) }),
+       ("&", Op { priority = 8, associativity = R, oexec = FnOp (BitOp (.&.)) }),
+       ("cmp", Op { priority = 9, associativity = L, oexec = FnOp (MathOp fcmp) }),
+       (":=", Op { priority = 10, associativity = R, oexec = NOp })
     ]
 
 functions :: Map (Text, Int) Fun
@@ -107,8 +109,9 @@ fcmp x y = case compare x y of
   LT -> -1
 
 pow :: Rational -> Rational -> Rational
-pow a b | denominator a == 1 && denominator b == 1 && numerator b < 0 = toRational $ (fromRational a :: Double) ^^ numerator b
-pow a b | denominator a == 1 && denominator b == 1 = toRational $ numerator a ^ numerator b
+pow a b 
+  | denominator a == 1 && denominator b == 1 && numerator b < 0 = toRational $ (fromRational a :: Double) ^^ numerator b
+  | denominator a == 1 && denominator b == 1 = toRational $ numerator a ^ numerator b
 pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
 
 names :: [String]
