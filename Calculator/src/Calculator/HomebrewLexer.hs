@@ -4,6 +4,7 @@
 module Calculator.HomebrewLexer (tloop) where
 
 import Control.Applicative ( Alternative(..) )
+import Data.Bits (shiftL)
 import Data.Char
     ( isDigit, isSpace, isAlpha, isHexDigit, isOctDigit, ord )
 import           Data.Text (Text)
@@ -144,11 +145,20 @@ binLiteral = (\_ _ n -> toRational (n :: Integer))
   where
     binDigitOrUnderscore = some $ parseIf "bin digit or underscore" (`elem` ("01_" :: String))
 
+stringLiteral :: Parser Rational
+stringLiteral = (\_ s _ -> fromInteger . textToNum 0 $ s) <$> charP '"' <*> many (parseIf "anything" (/='"')) <*> charP '"'
+  where
+    textToNum n [] = fromIntegral n
+    textToNum n (c:cs) =
+      let o = ord c
+          b = if o > 255 || o < 0 then ord ' ' else o
+      in textToNum (n `shiftL` 8 + b) cs
+
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
 
 numba :: Parser Token
-numba = TNumber <$> wsBracket (hexLiteral <|> octLiteral <|> binLiteral <|> doubleLiteral)
+numba = TNumber <$> wsBracket (hexLiteral <|> octLiteral <|> binLiteral <|> doubleLiteral <|> stringLiteral)
 
 lpar :: Parser Token
 lpar = TLPar <$ wsBracket (charP '(')
@@ -196,4 +206,3 @@ tloop = go [] . Input 0
     go acc input = case runParser tokah input of
       Left (ParserError n s) -> Left ("Error: " <> s <> " at " <> (T.pack . show $ n))
       Right (input1, tok) -> go (tok:acc) input1
-
