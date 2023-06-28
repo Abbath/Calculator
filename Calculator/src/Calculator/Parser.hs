@@ -76,6 +76,7 @@ parseOp 0 (TIdent s:TOp op:rest) | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=
   a <- parseOp 1 rest
   return $ Asgn s (Call (T.init op) [Id s, a])
 parseOp 0 s = parseOp 1 s
+parseOp 3 (TOp "~":rest) = Call "comp" . (:[]) <$> parseOp 4 rest
 parseOp 4 (TOp "+":rest) = parseOp 4 rest
 parseOp 4 (TOp "-":rest) = UMinus <$> parseOp 4 rest
 parseOp 15 s = parseToken s
@@ -117,7 +118,7 @@ parseToken str =
     (TLPar:rest)             -> Par <$> ps rest
     x                        -> throwError $ "Unknown token: " <> stringify x
   where
-    ps l = do 
+    ps l = do
       (par, rest) <- lift $ takePar l
       if not (null rest)
         then throwError $ "Extra tokens: " <> stringify rest

@@ -100,8 +100,8 @@ catchVar (vm, fm) ex = case ex of
          Nothing -> case b of
            Just s -> return $ Id s
            Nothing -> Left $ "No such variable: " <> i
-    where 
-      randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number n 
+    where
+      randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number n
   e -> goInside st e
     where
       st = catchVar (vm, fm)
@@ -178,10 +178,10 @@ evalS ex = case ex of
                  "bin" -> (showBin, 'b')
                  _ -> (showInt, ' ')
                sign = signum . numerator $ t1
-           in throwError . T.pack 
-                         . ((if sign == 1 then "" else "-") <>) 
-                         . (['0', p] <>) 
-                         . (`function` "") 
+           in throwError . T.pack
+                         . ((if sign == 1 then "" else "-") <>)
+                         . (['0', p] <>)
+                         . (`function` "")
                          . abs . numerator $ t1
       else throwError "Can't convert float yet"
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
@@ -203,7 +203,7 @@ evalS ex = case ex of
   oc@(Call "/" [x, y]) -> do
     n <- evm y
     n1 <- evm x
-    if n == 0 
+    if n == 0
       then throwError $ "Division by zero: " <> exprToString oc
       else return (n1 / n)
   oc@(Call "%" [x, y]) -> do
@@ -213,9 +213,9 @@ evalS ex = case ex of
       then throwError $ "Division by zero: " <> exprToString oc
       else return (fromInteger $ mod (floor n1) (floor n))
   Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
-    if "c." `T.isPrefixOf` x || M.member x defVar 
+    if "c." `T.isPrefixOf` x || M.member x defVar
       then throwError "I'm afraid you can't do that."
-      else do 
+      else do
         n <- evm y
         modify (first (_1 %~ M.insert x n))
         return n
@@ -274,7 +274,7 @@ evalS ex = case ex of
         x | T.head x == '@' -> throwError $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ -> let
                (wa, wn) = findSimilar (name, length e) (M.keys (maps^._2))
-               cvt_nls txt nls = if not (null nls) 
+               cvt_nls txt nls = if not (null nls)
                   then txt <> T.init (T.concat (map (\(n, l) -> "\t" <> n <> "/" <> showT l <> "\n") nls))
                   else ""
                wat = cvt_nls "\nFunctions with the same name:\n" wa
@@ -296,7 +296,7 @@ evalS ex = case ex of
   where
     evalBuiltinOp bop x y = do
       let builtin_op = operators M.! bop
-      case oexec builtin_op of 
+      case oexec builtin_op of
         FnOp (CmpOp fun)-> cmp fun x y
         FnOp (MathOp fun) -> eval' fun bop x y
         FnOp (BitOp fun)-> bitEval fun x y

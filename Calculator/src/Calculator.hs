@@ -132,10 +132,10 @@ handleAction _ NoAction model = pure model
 handleAction mode (Reply msg) model = model2 <# do
   replyText response
   pure NoAction
-  where (response, model2) = second Model $ either 
-          Prelude.id 
-          (first showRational) 
-          (let (mps, gen) = getMaps model in parseEval mode mps gen msg) 
+  where (response, model2) = second Model $ either
+          Prelude.id
+          (first showRational)
+          (let (mps, gen) = getMaps model in parseEval mode mps gen msg)
 
 -- | Run bot with a given 'Telegram.Token'.
 run :: Mode -> Telegram.Token -> IO ()
@@ -167,7 +167,7 @@ type StateData = [String]
 completionGenerator :: String -> StateT StateData IO [Completion]
 completionGenerator s = do
   sd <- S.get
-  return $ map (\x -> Completion {replacement = x, display = x, isFinished = False}) 
+  return $ map (\x -> Completion {replacement = x, display = x, isFinished = False})
          $ filter (isPrefixOf s) (names `union` sd)
 
 replCompletion :: CompletionFunc (StateT StateData IO)
@@ -184,13 +184,13 @@ loop :: Mode -> Maps -> IO ()
 loop mode maps = do
     g <- initStdGen
     hd <- getHomeDirectory
-    x <- CE.try $ flip S.evalStateT [] $ runInputT 
-       (replSettings { historyFile = Just (hd ++ "/.mycalchist")}) 
+    x <- CE.try $ flip S.evalStateT [] $ runInputT
+       (replSettings { historyFile = Just (hd ++ "/.mycalchist")})
        (loop' mode maps g)
     case x of
       Left (CE.ErrorCall s) -> do
         putStrLn s
-        Calculator.loop mode maps 
+        Calculator.loop mode maps
       Right _ -> return ()
   where
   loop' :: Mode -> Maps -> StdGen -> InputT (StateT StateData IO) ()
@@ -231,7 +231,7 @@ updateIDS i = do
              when (isJust b2) $ removeFile logname) $ filter (\(a,_) -> tm-a > 60*60) ids
     BS.writeFile "ids" $ BS.pack $ show $ if i `elem` map snd ids
        then map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
-       else (tm,i) : filter  (\(a,_) -> tm - a < 60*60) ids
+       else (tm,i) : filter (\(a,_) -> tm - a < 60*60) ids
 
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = do
@@ -279,16 +279,16 @@ webLoop port mode = do
           let storagename = "storage" ++ T.unpack iD ++ ".dat"
           rest <- liftIO $ BS.readFile logname
           env <- liftIO $ BS.readFile storagename
-          let ms = maybe 
-                    (error "Cannot decode storage") 
-                    listsToMaps 
+          let ms = maybe
+                    (error "Cannot decode storage")
+                    listsToMaps
                     (decode (B.fromStrict env) :: Maybe ListTuple)
           let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
           let t = parseString mode fs ms
           gen <- liftIO $ readIORef ref
           let res = evalExprS t ms gen
-          let txt = let (ress, (mps, ng)) = either 
-                          Prelude.id 
+          let txt = let (ress, (mps, ng)) = either
+                          Prelude.id
                           (\(r, mg) -> (showRational r, first (_1 %~ M.insert "_" r) mg))
                           res
                     in do

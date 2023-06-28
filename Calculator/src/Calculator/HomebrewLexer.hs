@@ -71,15 +71,15 @@ ws = spanP "whitespace character" isSpace
 -- textP str = Parser f
 --     where
 --         f input@(inputStr -> input_txt)
---             | T.null input_txt = 
+--             | T.null input_txt =
 --                 Left $
 --                 ParserError
 --                     (inputLoc input)
 --                     ("Expected '" <> str <> "', but reached end of string")
---             | T.isPrefixOf str input_txt = 
+--             | T.isPrefixOf str input_txt =
 --                 Right
 --                 (Input (inputLoc input + T.length str) $ fromJust $ T.stripPrefix str input_txt, str)
---             | otherwise = 
+--             | otherwise =
 --                 Left $
 --                 ParserError
 --                     (inputLoc input)
@@ -136,8 +136,8 @@ octLiteral :: Parser Rational
 octLiteral = basedLiteral isOctDigit 'o'
 
 binLiteral :: Parser Rational
-binLiteral = (\_ _ n -> toRational (n :: Integer)) 
-              <$> charP '0' <*> charP 'b' 
+binLiteral = (\_ _ n -> toRational (n :: Integer))
+              <$> charP '0' <*> charP 'b'
               <*> (foldl (\b c -> case c of
                 '_' -> b
                 n -> b * 2 + toInteger (ord n - ord '0')) 0 <$> binDigitOrUnderscore)
@@ -187,7 +187,7 @@ comma = TComma <$ wsBracket (charP ',')
 -- funn = TLet <$ textP "fun"
 
 tokah :: Parser Token
-tokah = lpar <|> rpar <|> comma <|> operata <|> numba <|> ident 
+tokah = lpar <|> rpar <|> comma <|> operata <|> numba <|> ident
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0

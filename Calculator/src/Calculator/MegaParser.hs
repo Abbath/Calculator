@@ -49,7 +49,7 @@ opAliasExpr = do
 numExpr :: PReader Expr
 numExpr = do
   n <- number
-  return . Number . either (toRational @Double) (fromIntegral @Integer) 
+  return . Number . either (toRational @Double) (fromIntegral @Integer)
     $ floatingOrInteger n
 
 numExpr2 :: PReader Expr
@@ -70,7 +70,7 @@ udfExpr = do
   name <- identifier
   args <- parens $ sepBy identifier comma
   void eq
-  UDF name args <$> expr2 
+  UDF name args <$> expr2
 
 udoExpr :: PReader Expr
 udoExpr = do

@@ -54,7 +54,7 @@ type Maps = (VarMap, FunMap, OpMap)
 
 data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Rational -> Rational -> Rational) | BitOp (Integer -> Integer -> Integer )
 
-instance Show FunOp where 
+instance Show FunOp where
   show (CmpOp _) = "CmpOp"
   show (MathOp _) = "MathOp"
   show (BitOp _) = "BitOp"
@@ -88,7 +88,7 @@ getPrA om = let lst = M.toList om
 
 data FunFun = CmpFn (Rational -> Rational -> Bool) | MathFn (Double -> Double) | IntFn1 (Double -> Integer) | IntFn2 (Integer -> Integer -> Integer) | BitFn (Integer -> Integer)
 
-instance Show FunFun where 
+instance Show FunFun where
   show (CmpFn _) = "CmpFn"
   show (MathFn _) = "MathFn"
   show (IntFn1 _) = "IntFn1"

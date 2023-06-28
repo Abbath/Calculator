@@ -43,8 +43,8 @@ loop (x:xs) maps gen bk n = do
     --print e
     let t = case e of
               Left err -> (Left err, (maps, gen))
-              Right r  -> runState (runExceptT (evalS r)) (maps, gen) 
-    let tt = fst t          
+              Right r  -> runState (runExceptT (evalS r)) (maps, gen)
+    let tt = fst t
     do
       new_n <- if tt == snd x
         then do
@@ -57,7 +57,7 @@ loop (x:xs) maps gen bk n = do
                     (Right r, (m_, g_))  -> (m_ & _1 %~ M.insert "_" r, g_)
                     (Left _, (m_, g_)) -> (m_, g_)
       loop xs m g bk (n + new_n)
-    
+
   else do
     TIO.putStrLn "Empty!"
     loop xs maps gen bk n

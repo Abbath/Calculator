@@ -11,13 +11,13 @@ import Control.Lens ((^.), (%~), _3, _1, _2)
 data Tac = TacOp Text Text Text Text
          | TacFun Text Text Text
 
-instance Show Tac where 
+instance Show Tac where
   show (TacOp var a op b) = T.unpack $ var <> " := " <> a <> " " <> op <> " " <> b
   show (TacFun var fun a) = T.unpack $ var <> " := " <> fun <> "(" <> a <> ")"
 
 type ResultG = ExceptT Text (State (Int, Int, [Tac]))
 
-isFinal :: Expr -> Bool 
+isFinal :: Expr -> Bool
 isFinal (Number _) = True
 isFinal (Id _) = True
 isFinal _ = False
@@ -31,7 +31,7 @@ generate' :: Expr -> ResultG ()
 generate' expr = do
   (n, ln, acc) <- get
   case expr of
-    e | isFinal e -> do 
+    e | isFinal e -> do
       modify (_3 %~ const [TacOp (t n) (extractFinal e) "" ""])
       do_a_barrel_roll n
     (Asgn var (Call fun [a])) | isFinal a -> modify (_3 %~ (:) (TacFun var fun (extractFinal a)))

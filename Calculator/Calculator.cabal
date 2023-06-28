@@ -1,5 +1,5 @@
 name:                 Calculator
-version:              0.7.4.0
+version:              0.7.5.0
 synopsis:             Calculator
 -- description:
 -- license:
@@ -85,6 +85,3 @@ test-suite Test
   build-depends:        Calculator
                       , base >= 4.7 && < 5
                       , optparse-applicative >= 0.15.1.0
-
-
-  

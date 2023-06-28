@@ -111,7 +111,7 @@ fcmp x y = case compare x y of
   LT -> -1
 
 pow :: Rational -> Rational -> Rational
-pow a b 
+pow a b
   | denominator a == 1 && denominator b == 1 && numerator b < 0 = toRational $ (fromRational a :: Double) ^^ numerator b
   | denominator a == 1 && denominator b == 1 = toRational $ numerator a ^ numerator b
 pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
@@ -120,9 +120,9 @@ names :: [String]
 names = T.unpack <$> M.keys operators ++ map fst (M.keys functions)
 
 defVar :: VarMap
-defVar = [("m.pi", toRational (pi :: Double)), 
-          ("m.e", toRational . exp $ (1 :: Double)), 
-          ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double)), 
+defVar = [("m.pi", toRational (pi :: Double)),
+          ("m.e", toRational . exp $ (1 :: Double)),
+          ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double)),
           ("m.r", 0.0),
           ("b.true", 1.0),
           ("b.false", 0.0),
