@@ -122,4 +122,6 @@ defVar = [("m.pi", toRational (pi :: Double)),
           ("m.e", toRational . exp $ (1 :: Double)), 
           ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double)), 
           ("m.r", 0.0),
+          ("b.true", 1.0),
+          ("b.false", 0.0),
           ("_", 0.0)]
