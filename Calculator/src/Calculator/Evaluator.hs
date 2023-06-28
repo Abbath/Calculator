@@ -177,7 +177,12 @@ evalS ex = case ex of
                  "oct" -> (showOct, 'o')
                  "bin" -> (showBin, 'b')
                  _ -> (showInt, ' ')
-           in throwError . T.pack . (['0', p] ++) . (`function` "") . numerator $ t1
+               sign = signum . numerator $ t1
+           in throwError . T.pack 
+                         . ((if sign == 1 then "" else "-") <>) 
+                         . (['0', p] <>) 
+                         . (`function` "") 
+                         . abs . numerator $ t1
       else throwError "Can't convert float yet"
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     maps <- gets fst
@@ -248,6 +253,7 @@ evalS ex = case ex of
       FnFn (CmpFn fun) -> cmp fun (head ps) (ps !! 1)
       FnFn (IntFn1 fun) -> evalInt1 fun (head ps)
       FnFn (IntFn2 fun) -> evalInt fun (head ps) (ps !! 1)
+      FnFn (BitFn fun) -> evalBit fun (head ps)
       FnFn (MathFn fun) -> do
         n <- evm (head ps)
         let r = (\x -> if abs x <= sin pi then 0 else x) . fun . fromRational $ n
@@ -323,6 +329,11 @@ evalS ex = case ex of
     evalInt1 f x = do
       t1 <- evm x
       return . toRational $ f (fromRational t1)
+    evalBit f x = do
+      t <- evm x
+      if denominator t == 1
+         then return . toRational $ f (numerator t)
+         else throwError "Cannot use bitwise function on real numbers!"
     eval' :: (Rational -> Rational -> Rational) -> Text -> Expr -> Expr -> Result Rational
     eval' f op x y = do
       t1 <- evm x

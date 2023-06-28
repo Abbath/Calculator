@@ -4,7 +4,7 @@
 module Calculator.Builtins where
 
 import Calculator.Types (Assoc (..), OpMap, FunMap, VarMap, Op(..), ExecOp(..), FunOp(..), Fun(..), ExecFn(..), FunFun(..), Expr(..))
-import Data.Bits ((.|.), (.&.), xor, shift)
+import Data.Bits ((.|.), (.&.), xor, shift, popCount, complement, Bits (complement))
 import Data.Ratio (denominator, numerator)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
@@ -90,6 +90,8 @@ functions =
        (("quot", 2), Fun { params = [], fexec = FnFn (IntFn2 quot) }),
        (("rem", 2), Fun { params = [], fexec = FnFn (IntFn2 rem) }),
        (("xor", 2), Fun { params = [], fexec = FnFn (IntFn2 xor) }),
+       (("pop", 1), Fun { params = [], fexec = FnFn (BitFn $ fromIntegral . popCount) }),
+       (("comp", 1), Fun { params = [], fexec = FnFn (BitFn complement) }),
        (("not", 1), Fun { params = ["x"], fexec = ExFn (Call "if" [Id "x", Number 0, Number 1])})
     ]
 

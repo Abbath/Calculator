@@ -86,13 +86,14 @@ getPrA om = let lst = M.toList om
                 ps = M.fromList $ map (second (\o -> (priority o, associativity o))) lst
             in ps
 
-data FunFun = CmpFn (Rational -> Rational -> Bool) | MathFn (Double -> Double) | IntFn1 (Double -> Integer) | IntFn2 (Integer -> Integer -> Integer)
+data FunFun = CmpFn (Rational -> Rational -> Bool) | MathFn (Double -> Double) | IntFn1 (Double -> Integer) | IntFn2 (Integer -> Integer -> Integer) | BitFn (Integer -> Integer)
 
 instance Show FunFun where 
   show (CmpFn _) = "CmpFn"
   show (MathFn _) = "MathFn"
   show (IntFn1 _) = "IntFn1"
   show (IntFn2 _) = "IntFn2"
+  show (BitFn _) = "BitFn"
 
 data ExecFn = NFn | ExFn Expr | FnFn FunFun deriving Show
 
