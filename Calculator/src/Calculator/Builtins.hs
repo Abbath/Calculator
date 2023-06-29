@@ -10,6 +10,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T
+import Control.Arrow (second)
 
 operators :: Map Text Op
 operators =
@@ -127,3 +128,7 @@ defVar = [("m.pi", toRational (pi :: Double)),
           ("b.true", 1.0),
           ("b.false", 0.0),
           ("_", 0.0)]
+
+getPriorities :: OpMap -> Map Text Int
+getPriorities om = let lst = M.toList om
+                   in M.fromList $ map (second priority) lst

@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, OverloadedLists #-}
-module Calculator.Evaluator (evalS, getPriorities, extractNames, FunMap, VarMap, OpMap, Maps, Result) where
+module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result) where
 
 import Calculator.Builtins
 import Calculator.Generator
@@ -31,7 +31,6 @@ import Control.Monad.State
     modify,
   )
 import Data.Either (fromRight)
-import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
@@ -39,9 +38,9 @@ import qualified Data.Text as T
 import Data.Text.Metrics (damerauLevenshteinNorm)
 import Numeric (showBin, showHex, showInt, showOct)
 import System.Random (Random (randomR), StdGen)
-
-extractNames :: Maps -> [String]
-extractNames (v, f, o) = map T.unpack $ M.keys o <> M.keys v <> map fst (M.keys f)
+import Data.Char (chr)
+import Data.Bits (shiftR, (.&.))
+import Data.Maybe (fromMaybe)
 
 funNames :: FunMap -> [(Text, Text)]
 funNames = map (\(f,_) -> (f, f)) . M.keys
@@ -106,10 +105,6 @@ catchVar (vm, fm) ex = case ex of
     where
       st = catchVar (vm, fm)
 
-getPriorities :: OpMap -> Map Text Int
-getPriorities om = let lst = M.toList om
-                   in M.fromList $ map (second priority) lst
-
 type Result = ExceptT Text (State (Maps, StdGen))
 
 evalS :: Expr -> Result Rational
@@ -148,6 +143,8 @@ evalS ex = case ex of
           modify (first (_3 .~ newmap))
           throwError ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
   Call "debug" [e] -> throwError . showT . preprocess $ e
+  Call "str" [e] -> evm e >>= (throwError . numToText)
+  Call "print" [Number n] -> throwError . showT . extractFormat . numToText $ n
   Call "generate" [e] -> throwError . T.init . T.concat . map ((<> "\n") . showT) . generate $ e
   Call "df" [a,x] -> do
       let e = derivative a x
@@ -183,7 +180,7 @@ evalS ex = case ex of
                          . (['0', p] <>)
                          . (`function` "")
                          . abs . numerator $ t1
-      else throwError "Can't convert float yet"
+      else throwError "Can't convert rational yet"
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     maps <- gets fst
     let pr = getPriorities (maps^._3)
@@ -314,7 +311,7 @@ evalS ex = case ex of
       n1 <- evm y
       if denominator n == 1 && denominator n1 == 1
         then return . toRational $ op (numerator n) (numerator n1)
-        else throwError "Cannot perform bitwise operator on a float"
+        else throwError "Cannot perform bitwise operator on a rational"
     evm x = do
       r <- evalS x
       if r > tooBig
@@ -325,7 +322,7 @@ evalS ex = case ex of
       t2 <- evm y
       if denominator t1 == 1 && denominator t2 == 1
          then return . toRational $ f (numerator t1) (numerator t2)
-         else throwError "Cannot use integral function on real numbers!"
+         else throwError "Cannot use integral function on rational numbers!"
     evalInt1 f x = do
       t1 <- evm x
       return . toRational $ f (fromRational t1)
@@ -333,7 +330,7 @@ evalS ex = case ex of
       t <- evm x
       if denominator t == 1
          then return . toRational $ f (numerator t)
-         else throwError "Cannot use bitwise function on real numbers!"
+         else throwError "Cannot use bitwise function on rational numbers!"
     eval' :: (Rational -> Rational -> Rational) -> Text -> Expr -> Expr -> Result Rational
     eval' f op x y = do
       t1 <- evm x
@@ -347,6 +344,27 @@ evalS ex = case ex of
     findSimilar (name, len) funs = let wrongArgNum = filter (\(n, l) -> n == name && len /= l) funs
                                        wrongName = filter (\(n, _) -> damerauLevenshteinNorm n name >= 0.5) funs
                                    in (wrongArgNum, wrongName)
+    numToText :: Rational -> Text
+    numToText n | denominator n /= 1 = "Can't convert rational to string!"
+    numToText n = "\"" <> go T.empty (numerator n) <> "\""
+      where go t 0 = t
+            go t m = go (T.cons (chr . fromInteger $ (m .&. 0xff)) t) (m `shiftR` 8)
+
+data FormatChunk = FormatTxt Text | FormatFmt Text deriving Show
+
+extractFormat :: Text -> [FormatChunk]
+extractFormat = reverse . go T.empty []
+  where
+    go chunk acc t | T.null t = if T.null chunk then acc else FormatTxt chunk:acc
+    go chunk acc t = let (c, cs) = fromMaybe ('a', "") $ T.uncons t
+                     in case c of
+                          '%' -> let (c1, cs1) = fromMaybe ('%', "") $ T.uncons cs
+                                 in case c1 of
+                                      '%' -> go (T.snoc chunk '%') acc cs1
+                                      's' -> go T.empty (FormatFmt "s":FormatTxt chunk:acc) cs1
+                                      'f' -> go T.empty (FormatFmt "f":FormatTxt chunk:acc) cs1
+                                      _ -> error "Wrong format string!"
+                          _ -> go (T.snoc chunk c) acc cs
 
 derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of

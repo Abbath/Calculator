@@ -146,13 +146,13 @@ binLiteral = (\_ _ n -> toRational (n :: Integer))
     binDigitOrUnderscore = some $ parseIf "bin digit or underscore" (`elem` ("01_" :: String))
 
 stringLiteral :: Parser Rational
-stringLiteral = (\_ s _ -> fromInteger . textToNum 0 $ s) <$> charP '"' <*> many (parseIf "anything" (/='"')) <*> charP '"'
+stringLiteral = charP '"' *> (fromInteger . textToNum 0 <$> many (parseIf "anything except \"" (/='"'))) <* charP '"'
   where
-    textToNum n [] = fromIntegral n
+    textToNum n [] = n
     textToNum n (c:cs) =
       let o = ord c
           b = if o > 255 || o < 0 then ord ' ' else o
-      in textToNum (n `shiftL` 8 + b) cs
+      in textToNum (n `shiftL` 8 + toInteger b) cs
 
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws

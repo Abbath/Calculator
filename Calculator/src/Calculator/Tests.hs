@@ -2,18 +2,13 @@
 module Calculator.Tests (testLoop) where
 
 import Calculator.AlexLexer (alexScanTokens)
-import Calculator.Builtins (opMap)
-import Calculator.Evaluator
-  ( Maps,
-    VarMap,
-    evalS,
-    getPriorities,
-  )
+import Calculator.Builtins (opMap, getPriorities)
+import Calculator.Evaluator (evalS)
 import qualified Calculator.HappyParser as HP
 import Calculator.HomebrewLexer (tloop)
 import qualified Calculator.MegaParser as CMP
 import Calculator.Parser (parse)
-import Calculator.Types (getPrA, preprocess, showT)
+import Calculator.Types (getPrA, preprocess, showT, Maps, VarMap)
 import Control.Lens ((%~), (&), (^.), _1, _3)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (ReaderT (runReaderT))

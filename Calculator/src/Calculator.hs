@@ -1,14 +1,10 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, OverloadedLists #-}
-module Calculator (Mode(..), evalLoop, webLoop, telegramSimple) where
+module Calculator (Mode(..), evalLoop, webLoop, telegramSimple, evalFile) where
 
 import Calculator.AlexLexer (alexScanTokens)
-import Calculator.Builtins (opMap, names, funMap, defVar)
+import Calculator.Builtins (opMap, names, funMap, defVar, getPriorities)
 import Calculator.Css (getCss, postCss)
-import Calculator.Evaluator
-  ( evalS,
-    extractNames,
-    getPriorities,
-  )
+import Calculator.Evaluator (evalS)
 import qualified Calculator.HappyParser as HP
 import Calculator.HomebrewLexer (tloop)
 import qualified Calculator.MegaParser as CMP
@@ -90,7 +86,7 @@ import System.Directory ( findFile, getHomeDirectory, removeFile )
 import System.Random ( randomIO, initStdGen, StdGen )
 import qualified Text.Megaparsec               as MP
 import           Text.Read                     (readMaybe)
-
+import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import qualified Telegram.Bot.API                 as Telegram
 import Telegram.Bot.Simple
     ( getEnvToken,
@@ -180,6 +176,9 @@ replSettings = Settings
   , autoAddHistory = True
   }
 
+extractNames :: Maps -> [String]
+extractNames (v, f, o) = map TS.unpack $ M.keys o <> M.keys v <> map fst (M.keys f)
+
 loop :: Mode -> Maps -> IO ()
 loop mode maps = do
     g <- initStdGen
@@ -210,11 +209,41 @@ loop mode maps = do
               liftIO . TSIO.putStrLn $ showRational r
               loop' md (m & _1 %~ M.insert "_" r) ng
 
+interpret :: FilePath -> Mode -> Maps -> IO ()
+interpret path mode maps = do
+    g <- initStdGen
+    source <- TS.lines <$> TSIO.readFile path
+    x <- CE.try $ flip S.evalStateT [] $ loop' source mode maps g
+    case x of
+      Left (CE.ErrorCall s) -> do
+        putStrLn s
+        exitWith (ExitFailure 1)
+      Right _ -> exitSuccess
+  where
+  loop' :: [TS.Text] -> Mode -> Maps -> StdGen -> StateT StateData IO ()
+  loop' [] _ _ _ = return ()
+  loop' src@(l:ls) md ms g = do
+    S.modify (\s -> s `union` extractNames ms)
+    case l of
+      "quit" -> return ()
+      x -> do
+        let y = parseEval md ms g x
+        case y of
+          Left (err, (m, ng)) -> do
+            liftIO $ TSIO.putStrLn err
+            loop' ls md m ng
+          Right (r, (m, ng)) -> do
+            liftIO . TSIO.putStrLn $ showRational r
+            loop' ls md (m & _1 %~ M.insert "_" r) ng
+
 parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (TS.Text, (Maps, StdGen)) (Rational, (Maps, StdGen))
 parseEval md ms g x = evalExprS (parseString md x ms) ms g
 
 evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m (defVar, funMap, opMap)
+
+evalFile :: FilePath -> IO ()
+evalFile f =  Calculator.interpret f Internal (defVar, funMap, opMap)
 
 updateIDS :: Integer -> IO ()
 updateIDS i = do
