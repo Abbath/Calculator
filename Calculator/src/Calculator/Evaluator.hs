@@ -143,8 +143,16 @@ evalS ex = case ex of
           modify (first (_3 .~ newmap))
           throwError ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
   Call "debug" [e] -> throwError . showT . preprocess $ e
-  Call "str" [e] -> evm e >>= (throwError . numToText)
-  Call "print" [Number n] -> throwError . showT . extractFormat . numToText $ n
+  Call "str" [e] -> evm e >>= (throwError . (\s -> "\"" <> s <> "\"") . numToText)
+  Call "fmt" (Number n:es) -> do
+    let format = extractFormat . numToText $ n
+    case format of
+      Left err -> throwError err
+      Right fs -> do
+        rs <- traverse evm es
+        throwError $ case zipFormat fs rs of
+          Left err -> err
+          Right txt -> txt
   Call "generate" [e] -> throwError . T.init . T.concat . map ((<> "\n") . showT) . generate $ e
   Call "df" [a,x] -> do
       let e = derivative a x
@@ -344,18 +352,19 @@ evalS ex = case ex of
     findSimilar (name, len) funs = let wrongArgNum = filter (\(n, l) -> n == name && len /= l) funs
                                        wrongName = filter (\(n, _) -> damerauLevenshteinNorm n name >= 0.5) funs
                                    in (wrongArgNum, wrongName)
-    numToText :: Rational -> Text
-    numToText n | denominator n /= 1 = "Can't convert rational to string!"
-    numToText n = "\"" <> go T.empty (numerator n) <> "\""
-      where go t 0 = t
-            go t m = go (T.cons (chr . fromInteger $ (m .&. 0xff)) t) (m `shiftR` 8)
+
+numToText :: Rational -> Text
+numToText n | denominator n /= 1 = "Can't convert rational to string!"
+numToText n = go T.empty (numerator n)
+  where go t 0 = t
+        go t m = go (T.cons (chr . fromInteger $ (m .&. 0xff)) t) (m `shiftR` 8)
 
 data FormatChunk = FormatTxt Text | FormatFmt Text deriving Show
 
-extractFormat :: Text -> [FormatChunk]
-extractFormat = reverse . go T.empty []
+extractFormat :: Text -> Either Text [FormatChunk]
+extractFormat = go T.empty []
   where
-    go chunk acc t | T.null t = if T.null chunk then acc else FormatTxt chunk:acc
+    go chunk acc t | T.null t = Right . reverse $ if T.null chunk then acc else FormatTxt chunk:acc
     go chunk acc t = let (c, cs) = fromMaybe ('a', "") $ T.uncons t
                      in case c of
                           '%' -> let (c1, cs1) = fromMaybe ('%', "") $ T.uncons cs
@@ -363,8 +372,20 @@ extractFormat = reverse . go T.empty []
                                       '%' -> go (T.snoc chunk '%') acc cs1
                                       's' -> go T.empty (FormatFmt "s":FormatTxt chunk:acc) cs1
                                       'f' -> go T.empty (FormatFmt "f":FormatTxt chunk:acc) cs1
-                                      _ -> error "Wrong format string!"
+                                      _ -> Left "Wrong format string!"
                           _ -> go (T.snoc chunk c) acc cs
+
+zipFormat :: [FormatChunk] -> [Rational] -> Either Text Text
+zipFormat = go T.empty
+  where
+    go acc [] [] = Right acc
+    go _ [] (_:_) = Left "Too many things to format"
+    go _ (FormatFmt _:_) [] = Left "Too few things to format"
+    go acc (FormatTxt t:fs) rs = go (acc <> t) fs rs
+    go acc (FormatFmt t:fs) (r:rs)
+      | t == "s" = go (acc <> numToText r) fs rs
+      | t == "f" = go (acc <> showRational r) fs rs
+      | otherwise = Left $ "Wrong format: " <> t
 
 derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of
