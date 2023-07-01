@@ -192,6 +192,7 @@ loop mode maps = do
         Calculator.loop mode maps
       Right _ -> return ()
   where
+  removeLocals = _1 %~ M.filterWithKey (\k v -> not $ "_." `TS.isInfixOf` k)
   loop' :: Mode -> Maps -> StdGen -> InputT (StateT StateData IO) ()
   loop' md ms g = do
     S.lift $ S.modify (\s -> s `union` extractNames ms)
@@ -203,11 +204,13 @@ loop mode maps = do
           let y = parseEval md ms g (TS.pack x)
           case y of
             Left (err, (m, ng)) -> do
+              let m' = removeLocals m
               liftIO $ TSIO.putStrLn err
-              loop' md m ng
+              loop' md m' ng
             Right (r, (m, ng)) -> do
+              let m' = removeLocals m
               liftIO . TSIO.putStrLn $ showRational r
-              loop' md (m & _1 %~ M.insert "_" r) ng
+              loop' md (m' & _1 %~ M.insert "_" r) ng
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
 interpret path mode maps = do

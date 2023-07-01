@@ -41,6 +41,7 @@ import System.Random (Random (randomR), StdGen)
 import Data.Char (chr)
 import Data.Bits (shiftR, (.&.))
 import Data.Maybe (fromMaybe)
+import Control.Applicative (asum)
 
 funNames :: FunMap -> [(Text, Text)]
 funNames = map (\(f,_) -> (f, f)) . M.keys
@@ -222,7 +223,10 @@ evalS ex = case ex of
       then throwError "I'm afraid you can't do that."
       else do
         n <- evm y
-        modify (first (_1 %~ M.insert x n))
+        maps <- gets fst
+        if x `M.member` (maps^._1)
+          then modify (first (_1 %~ M.insert x n))
+          else modify (first (_1 %~ M.insert ("_." <> x) n))
         return n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwError $ "Cannot assign to an expression with: " <> op
@@ -293,7 +297,8 @@ evalS ex = case ex of
     return $ toRational randomNumber
   Id s     -> do
     maps <- gets fst
-    mte ("No such variable: " <> s) (M.lookup s (maps^._1) :: Maybe Rational)
+    let val = asum ([M.lookup ("_." <> s) (maps^._1), M.lookup s (maps^._1)] :: [Maybe Rational])
+    mte ("No such variable: " <> s) val
   Number x -> return x
   UMinus (Call "^" [x, y]) -> evm $ Call "^" [UMinus x, y]
   UMinus x         -> (0-) <$> evm x
@@ -365,15 +370,16 @@ extractFormat :: Text -> Either Text [FormatChunk]
 extractFormat = go T.empty []
   where
     go chunk acc t | T.null t = Right . reverse $ if T.null chunk then acc else FormatTxt chunk:acc
-    go chunk acc t = let (c, cs) = fromMaybe ('a', "") $ T.uncons t
-                     in case c of
-                          '%' -> let (c1, cs1) = fromMaybe ('%', "") $ T.uncons cs
-                                 in case c1 of
-                                      '%' -> go (T.snoc chunk '%') acc cs1
-                                      's' -> go T.empty (FormatFmt "s":FormatTxt chunk:acc) cs1
-                                      'f' -> go T.empty (FormatFmt "f":FormatTxt chunk:acc) cs1
-                                      _ -> Left "Wrong format string!"
-                          _ -> go (T.snoc chunk c) acc cs
+    go chunk acc t = 
+      let (c, cs) = fromMaybe ('a', "") $ T.uncons t
+      in case c of
+           '%' -> let (c1, cs1) = fromMaybe ('%', "") $ T.uncons cs
+                  in case c1 of
+                       '%' -> go (T.snoc chunk '%') acc cs1
+                       's' -> go T.empty (FormatFmt "s":FormatTxt chunk:acc) cs1
+                       'f' -> go T.empty (FormatFmt "f":FormatTxt chunk:acc) cs1
+                       _ -> Left "Wrong format string!"
+           _ -> go (T.snoc chunk c) acc cs
 
 zipFormat :: [FormatChunk] -> [Rational] -> Either Text Text
 zipFormat = go T.empty
