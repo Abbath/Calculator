@@ -70,20 +70,20 @@ unpackExOp (ExOp e) = e
 unpackExOp _ = error "Not an expression"
 
 data Op = Op {
-  priority :: Int,
+  precedence :: Int,
   associativity :: Assoc,
   oexec :: ExecOp
 } deriving Show
 
 opsToList :: OpMap -> [(Text, ((Int, Assoc), Expr))]
-opsToList = map (\(k, v) -> (k, ((priority v, associativity v), unpackExOp . oexec $ v))) . filter (\(_, v) -> isExOp . oexec $ v) . M.toList
+opsToList = map (\(k, v) -> (k, ((precedence v, associativity v), unpackExOp . oexec $ v))) . filter (\(_, v) -> isExOp . oexec $ v) . M.toList
 
 opsFromList :: [(Text, ((Int, Assoc), Expr))] -> OpMap
 opsFromList = M.fromList . map (\(k, ((p, a), e)) -> (k, Op p a (ExOp e)))
 
 getPrA :: OpMap -> Map Text (Int, Assoc)
 getPrA om = let lst = M.toList om
-                ps = M.fromList $ map (second (\o -> (priority o, associativity o))) lst
+                ps = M.fromList $ map (second (\o -> (precedence o, associativity o))) lst
             in ps
 
 data FunFun = CmpFn (Rational -> Rational -> Bool) | MathFn (Double -> Double) | IntFn1 (Double -> Integer) | IntFn2 (Integer -> Integer -> Integer) | BitFn (Integer -> Integer)

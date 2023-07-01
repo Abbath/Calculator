@@ -134,18 +134,18 @@ evalS ex = case ex of
       Nothing -> throwError $ "No such operator: " <> op
   UDO n p a e
     | M.member n operators -> throwError $ "Can not redefine the built-in operator: " <> n
-    | p < 1 || p > 9 ->  throwError $ "Bad priority: " <> showT p
+    | p < 1 || p > 14 ->  throwError $ "Bad precedence: " <> showT p
     | otherwise -> do
         maps <- gets fst
         let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
         either throwError (\r -> do
-          let newmap = M.insert n Op {priority = p, associativity = a, oexec = ExOp r} (maps^._3)
+          let newmap = M.insert n Op {precedence = p, associativity = a, oexec = ExOp r} (maps^._3)
           modify (first (_3 .~ newmap))
           throwError ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
   Call "debug" [e] -> throwError . showT . preprocess $ e
-  Call "str" [e] -> evm e >>= (throwError . (\s -> "\"" <> s <> "\"") . numToText)
+  Call "str" [e] -> evm e >>= (either throwError (throwError . (\s -> "\"" <> s <> "\"")) . numToText)
   Call "fmt" (Number n:es) -> do
-    let format = extractFormat . numToText $ n
+    let format = numToText n >>= extractFormat
     case format of
       Left err -> throwError err
       Right fs -> do
@@ -191,7 +191,7 @@ evalS ex = case ex of
       else throwError "Can't convert rational yet"
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     maps <- gets fst
-    let pr = getPriorities (maps^._3)
+    let pr = getPrecedences (maps^._3) <> getFakePrecedences (maps^._2)
     let a = M.lookup op1 pr
     let b = M.lookup op2 pr
     if a == b
@@ -353,9 +353,9 @@ evalS ex = case ex of
                                        wrongName = filter (\(n, _) -> damerauLevenshteinNorm n name >= 0.5) funs
                                    in (wrongArgNum, wrongName)
 
-numToText :: Rational -> Text
-numToText n | denominator n /= 1 = "Can't convert rational to string!"
-numToText n = go T.empty (numerator n)
+numToText :: Rational -> Either Text Text
+numToText n | denominator n /= 1 = Left "Can't convert rational to string!"
+numToText n = Right $ go T.empty (abs . numerator $ n)
   where go t 0 = t
         go t m = go (T.cons (chr . fromInteger $ (m .&. 0xff)) t) (m `shiftR` 8)
 
@@ -383,7 +383,9 @@ zipFormat = go T.empty
     go _ (FormatFmt _:_) [] = Left "Too few things to format"
     go acc (FormatTxt t:fs) rs = go (acc <> t) fs rs
     go acc (FormatFmt t:fs) (r:rs)
-      | t == "s" = go (acc <> numToText r) fs rs
+      | t == "s" = do
+        txt <- numToText r
+        go (acc <> txt) fs rs
       | t == "f" = go (acc <> showRational r) fs rs
       | otherwise = Left $ "Wrong format: " <> t
 

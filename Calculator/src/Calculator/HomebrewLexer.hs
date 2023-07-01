@@ -182,7 +182,7 @@ opsym :: Parser Char
 opsym = parseIf "operator" (`elem` opSymbols)
 
 operata :: Parser Token
-operata = TOp . T.pack <$> wsBracket (some opsym)
+operata = TOp . T.pack <$> wsBracket (some opsym <|> charP '`' *> ((:) <$> alfa <*> many alfaNumDot) <* charP '`')
 
 comma :: Parser Token
 comma = TComma <$ wsBracket (charP ',')

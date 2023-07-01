@@ -15,34 +15,34 @@ import Control.Arrow (second)
 operators :: Map Text Op
 operators =
     [
-       ("=", Op { priority = 0, associativity = R, oexec = NOp }),
-       ("+=", Op { priority = 0, associativity = R, oexec = NOp }),
-       ("-=", Op { priority = 0, associativity = R, oexec = NOp }),
-       ("*=", Op { priority = 0, associativity = R, oexec = NOp }),
-       ("/=", Op { priority = 0, associativity = R, oexec = NOp }),
-       ("%=", Op { priority = 0, associativity = R, oexec = NOp }),
-       ("^=", Op { priority = 0, associativity = R, oexec = NOp }),
-       ("|=", Op { priority = 0, associativity = R, oexec = NOp }),
-       ("&=", Op { priority = 0, associativity = R, oexec = NOp }),
-       ("::=", Op { priority = 1, associativity = R, oexec = NOp }),
-       ("==", Op { priority = 2, associativity = L, oexec = FnOp (CmpOp (==)) }),
-       ("<=", Op { priority = 2, associativity = L, oexec = FnOp (CmpOp (<=)) }),
-       (">=", Op { priority = 2, associativity = L, oexec = FnOp (CmpOp (>=)) }),
-       ("!=", Op { priority = 2, associativity = L, oexec = FnOp (CmpOp (/=)) }),
-       ("<", Op { priority = 2, associativity = L, oexec = FnOp (CmpOp (<)) }),
-       (">", Op { priority = 2, associativity = L, oexec = FnOp (CmpOp (>)) }),
-       ("<<", Op { priority = 3, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (fromInteger s))) }),
-       (">>", Op { priority = 3, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (-1 * fromInteger s))) }),
-       ("+", Op { priority = 4, associativity = L, oexec = FnOp (MathOp (+)) }),
-       ("-", Op { priority = 4, associativity = L, oexec = FnOp (MathOp (-)) }),
-       ("*", Op { priority = 5, associativity = L, oexec = FnOp (MathOp (*)) }),
-       ("/", Op { priority = 5, associativity = L, oexec = FnOp (MathOp (/)) }),
-       ("%", Op { priority = 5, associativity = L, oexec = FnOp (MathOp fmod) }),
-       ("^", Op { priority = 6, associativity = R, oexec = FnOp (MathOp pow) }),
-       ("|", Op { priority = 7, associativity = R, oexec = FnOp (BitOp (.|.)) }),
-       ("&", Op { priority = 8, associativity = R, oexec = FnOp (BitOp (.&.)) }),
-       ("cmp", Op { priority = 9, associativity = L, oexec = FnOp (MathOp fcmp) }),
-       (":=", Op { priority = 10, associativity = R, oexec = NOp })
+       ("=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("+=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("-=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("*=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("/=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("%=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("^=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("|=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("&=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("::=", Op { precedence = 1, associativity = R, oexec = NOp }),
+       ("==", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (==)) }),
+       ("<=", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (<=)) }),
+       (">=", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (>=)) }),
+       ("!=", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (/=)) }),
+       ("<", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (<)) }),
+       (">", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (>)) }),
+       ("<<", Op { precedence = 3, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (fromInteger s))) }),
+       (">>", Op { precedence = 3, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (-1 * fromInteger s))) }),
+       ("+", Op { precedence = 4, associativity = L, oexec = FnOp (MathOp (+)) }),
+       ("-", Op { precedence = 4, associativity = L, oexec = FnOp (MathOp (-)) }),
+       ("*", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp (*)) }),
+       ("/", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp (/)) }),
+       ("%", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp fmod) }),
+       ("^", Op { precedence = 6, associativity = R, oexec = FnOp (MathOp pow) }),
+       ("|", Op { precedence = 7, associativity = R, oexec = FnOp (BitOp (.|.)) }),
+       ("&", Op { precedence = 8, associativity = R, oexec = FnOp (BitOp (.&.)) }),
+       ("cmp", Op { precedence = 9, associativity = L, oexec = FnOp (MathOp fcmp) }),
+       (":=", Op { precedence = 10, associativity = R, oexec = NOp })
     ]
 
 functions :: Map (Text, Int) Fun
@@ -129,6 +129,10 @@ defVar = [("m.pi", toRational (pi :: Double)),
           ("b.false", 0.0),
           ("_", 0.0)]
 
-getPriorities :: OpMap -> Map Text Int
-getPriorities om = let lst = M.toList om
-                   in M.fromList $ map (second priority) lst
+getPrecedences :: OpMap -> Map Text Int
+getPrecedences om = let lst = M.toList om
+                    in M.fromList $ map (second precedence) lst
+
+getFakePrecedences :: FunMap -> Map Text Int
+getFakePrecedences fm = let lst = M.keys fm
+                        in M.fromList . map (\(name, argnum) -> (name, 14)) . filter (\(_, argnum) -> argnum == 2) $ lst

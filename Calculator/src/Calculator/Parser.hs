@@ -34,8 +34,8 @@ checkOps t =
     is_op (TOp _)   = True
     is_op _         = False
 
-takeWithPriorities :: Int -> Map Text Int -> [Token]
-takeWithPriorities n m = map (TOp . fst) . M.toList $ M.filter (== n) m
+takeWithPrecedences :: Int -> Map Text Int -> [Token]
+takeWithPrecedences n m = map (TOp . fst) . M.toList $ M.filter (== n) m
 
 stringify :: [Token] -> Text
 stringify [] = T.empty
@@ -86,7 +86,7 @@ parseOp n (TOp op:rest)
 parseOp 15 s = parseToken s
 parseOp l s = do
   m <- ask
-  r <- lift $ breakPar3 (`elem` takeWithPriorities l m) s
+  r <- lift $ breakPar3 (`elem` takeWithPrecedences l m) s
   case r of
     Nothing -> parseOp (l + 1) s
     Just ([], _, _) -> throwError "Empty first argument"

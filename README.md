@@ -22,10 +22,10 @@ Features
 * Variable `_` stores the result of the previous calculation
 * A variable can be defined using syntax `<name> = <expression>`
 * A user-defined function can be defined using syntax `<name>(<arg1>[,<arg2>[,<arg3>...]]) = <expression>`
-* A user-defined operator can be defined using syntax `<name>(<priority>,<associativity>) = <expression>`
+* A user-defined operator can be defined using syntax `<name>(<precedence>,<associativity>) = <expression>`
 * The available symbols for operators are `+-/*%^$!~&|=><`
 * Arguments `x `y` are the default for user-defined operators
-* A priority of the user-defined operator can be any between `1` and `9`
+* The precedence of the user-defined operator can be any between `1` and `14`
 * Associativity of the user-defined operator is left if `associativity` equals `0` or right otherwise
 * A function or operator can take other functions as arguments
 * An operator alias can be defined using syntax `<alias_operator> = <operator>`
@@ -33,9 +33,9 @@ Features
 * A signature of the user-defined function consists of a name and arity so `f/0` and `f/1` are different functions 
 * Megaparsec backend is available by running with `-bM` or `--backend M` command line flag
 * AlexHappy backend is available by running with `-bA` or `--backend A` command line flag
-* Web interface can be used by running with `-fW` of `--frontend W` command line flag. The web interface is available on 3000 port
+* The web interface can be used by running with `-fW` of `--frontend W` command line flag. The web interface is available on 3000 port
 * Comments are supported under Megaparsec backend with syntax `#end comment` and `{inner comment}`
-* With Megaparsec backend you shall not define an operator that starts with the same symbols as the operator with a higher priority
+* With Megaparsec backend you shall not define an operator that starts with the same symbols as the operator with a higher precedence
 * Autocompletion of variables, functions and operators is available on the `Tab` key
 * History is available on the `Up` and `Down` keys
 * Derivative of a function can be symbolically calculated using syntax `df(<function_expression>, <variable name>)`

@@ -2,14 +2,14 @@
 module Calculator.Tests (testLoop) where
 
 import Calculator.AlexLexer (alexScanTokens)
-import Calculator.Builtins (opMap, getPriorities)
+import Calculator.Builtins (opMap, getPrecedences, getFakePrecedences)
 import Calculator.Evaluator (evalS)
 import qualified Calculator.HappyParser as HP
 import Calculator.HomebrewLexer (tloop)
 import qualified Calculator.MegaParser as CMP
 import Calculator.Parser (parse)
 import Calculator.Types (getPrA, preprocess, showT, Maps, VarMap)
-import Control.Lens ((%~), (&), (^.), _1, _3)
+import Control.Lens ((%~), (&), (^.), _1, _2, _3)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (ReaderT (runReaderT))
 import Control.Monad.State (runState)
@@ -32,7 +32,7 @@ loop (x:xs) maps gen bk n = do
   if not $ T.null sample
   then do
     let e = case bk of
-              Internal -> tloop sample >>= parse (getPriorities $ maps^._3)
+              Internal -> tloop sample >>= parse (getPrecedences (maps^._3) <> getFakePrecedences (maps^._2))
               Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sample <> "\n"))
               AH -> Right $ preprocess . HP.parse . alexScanTokens $ T.unpack sample
     --print e

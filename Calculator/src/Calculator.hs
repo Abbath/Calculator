@@ -2,7 +2,7 @@
 module Calculator (Mode(..), evalLoop, webLoop, telegramSimple, evalFile) where
 
 import Calculator.AlexLexer (alexScanTokens)
-import Calculator.Builtins (opMap, names, funMap, defVar, getPriorities)
+import Calculator.Builtins (opMap, names, funMap, defVar, getPrecedences, getFakePrecedences)
 import Calculator.Css (getCss, postCss)
 import Calculator.Evaluator (evalS)
 import qualified Calculator.HappyParser as HP
@@ -23,7 +23,7 @@ import Calculator.Types
       funsFromList )
 import Clay (render)
 import Control.Arrow (first, left, second)
-import Control.Lens ((%~), (&), (^.), _1, _3)
+import Control.Lens ((%~), (&), (^.), _1, _2, _3)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
   ( MonadIO (liftIO),
@@ -151,7 +151,7 @@ parseString m s ms = case m of
                        Megaparsec ->
                          left showT (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (s <> "\n"))
                        Internal ->
-                         tloop s >>= parse (getPriorities $ ms^._3)
+                         tloop s >>= parse (getPrecedences (ms^._3) <> getFakePrecedences (ms^._2))
                        AlexHappy -> Right $ preprocess . HP.parse . Calculator.AlexLexer.alexScanTokens $ TS.unpack s
 
 evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (TS.Text, (Maps, StdGen)) (Rational, (Maps, StdGen))
