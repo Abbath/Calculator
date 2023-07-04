@@ -218,6 +218,7 @@ evalS ex = case ex of
     if n == 0
       then throwError $ "Division by zero: " <> exprToString oc
       else return (fromInteger $ mod (floor n1) (floor n))
+  Call op [x, Id y] | op == "|>" -> evm $ Call y [x]
   Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
       then throwError "I'm afraid you can't do that."
@@ -310,6 +311,7 @@ evalS ex = case ex of
         FnOp (CmpOp fun)-> cmp fun x y
         FnOp (MathOp fun) -> eval' fun bop x y
         FnOp (BitOp fun)-> bitEval fun x y
+        ExOp e -> evm e
         _ -> throwError "Misteriously missing operator"
     mte s = maybe (throwError s) return
     tooBig = 2^(8000000 :: Integer) :: Rational
@@ -370,7 +372,7 @@ extractFormat :: Text -> Either Text [FormatChunk]
 extractFormat = go T.empty []
   where
     go chunk acc t | T.null t = Right . reverse $ if T.null chunk then acc else FormatTxt chunk:acc
-    go chunk acc t = 
+    go chunk acc t =
       let (c, cs) = fromMaybe ('a', "") $ T.uncons t
       in case c of
            '%' -> let (c1, cs1) = fromMaybe ('%', "") $ T.uncons cs

@@ -24,7 +24,7 @@ operators =
        ("^=", Op { precedence = 0, associativity = R, oexec = NOp }),
        ("|=", Op { precedence = 0, associativity = R, oexec = NOp }),
        ("&=", Op { precedence = 0, associativity = R, oexec = NOp }),
-       ("::=", Op { precedence = 1, associativity = R, oexec = NOp }),
+       (":=", Op { precedence = 1, associativity = R, oexec = NOp }),
        ("==", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (==)) }),
        ("<=", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (<=)) }),
        (">=", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (>=)) }),
@@ -42,13 +42,16 @@ operators =
        ("|", Op { precedence = 7, associativity = R, oexec = FnOp (BitOp (.|.)) }),
        ("&", Op { precedence = 8, associativity = R, oexec = FnOp (BitOp (.&.)) }),
        ("cmp", Op { precedence = 9, associativity = L, oexec = FnOp (MathOp fcmp) }),
-       (":=", Op { precedence = 10, associativity = R, oexec = NOp })
+       ("|>", Op { precedence = 10, associativity = L, oexec = NOp }),
+       ("::=", Op { precedence = 11, associativity = R, oexec = NOp })
     ]
 
 functions :: Map (Text, Int) Fun
 functions =
     [
        (("prat", 1), Fun { params = [], fexec = NFn }),
+       (("str", 1), Fun { params = [], fexec = NFn }),
+       (("fmt", 1), Fun { params = [], fexec = NFn }),
        (("quit", 0), Fun { params = [], fexec = NFn }),
        (("if", 3), Fun { params = [], fexec = NFn }),
        (("loop", 2), Fun { params = [], fexec = NFn }),
