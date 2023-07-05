@@ -32,7 +32,7 @@ tokenize s = case T.uncons s of
     space x <&> (\_ -> tokenize xs) <|>
     readOperator s <&> (\op -> f (TOp op) (T.drop (T.length op) s)) <|>
     readIdentifier s <&> (\(i,rest) -> f (TIdent i) rest) <|>
-    readNumber s <&> (\(n,rest) -> f (TNumber n ) rest)
+    readNumber s <&> (\(n,rest) -> f (TNumber n 0) rest)
   where
     f out inp = (out:) <$> tokenize inp
     match c h = if c == h then Just h else Nothing

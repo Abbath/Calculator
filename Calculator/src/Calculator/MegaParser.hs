@@ -49,11 +49,11 @@ opAliasExpr = do
 numExpr :: PReader Expr
 numExpr = do
   n <- number
-  return . Number . either (toRational @Double) (fromIntegral @Integer)
+  return . flip Number 0 . either (toRational @Double) (fromIntegral @Integer)
     $ floatingOrInteger n
 
 numExpr2 :: PReader Expr
-numExpr2 = Number <$> number2
+numExpr2 = flip Number 0 <$> number2
 
 idExpr :: PReader Expr
 idExpr = do

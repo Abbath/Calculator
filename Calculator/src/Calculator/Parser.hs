@@ -41,7 +41,7 @@ stringify :: [Token] -> Text
 stringify [] = T.empty
 stringify (x:xs) = str x <> stringify xs
   where
-    str (TNumber n) = " " <> showRational n <> " "
+    str (TNumber n n1) = " " <> showRational n <> (if n1 == 0 then " " else " " <> showRational n1)
     str TLPar       = "("
     str TRPar       = ")"
     str (TIdent s)  = " " <> s <> " "
@@ -54,7 +54,7 @@ type ParseReader = ReaderT (Map Text Int) (Except Text) Expr
 parseOp :: Int -> [Token] -> ParseReader
 parseOp 0 [TOp alias, TOp "=", TOp op] =
   return $ UDO alias (-1) L (Call op [Id "@x", Id "@y"])
-parseOp 0 (TOp op:TLPar:TNumber p:TComma:TNumber a:TRPar:TOp "=":rest) =
+parseOp 0 (TOp op:TLPar:TNumber p _:TComma:TNumber a _:TRPar:TOp "=":rest) =
   if null rest
     then throwError "Empty operator definition"
     else UDO
@@ -118,7 +118,7 @@ parseToken str =
     []                       -> throwError "Empty"
     [TIdent s]               -> return $ Id s
     (TIdent name:TLPar:rest) -> Call name <$> parseFuncall rest
-    [TNumber n]              -> return $ Number n
+    [TNumber n ni]           -> return $ Number n ni
     (TLPar:rest)             -> Par <$> ps rest
     x                        -> throwError $ "Unknown token: " <> stringify x
   where

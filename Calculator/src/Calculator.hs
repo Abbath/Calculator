@@ -20,7 +20,7 @@ import Calculator.Types
       opsFromList,
       getPrA,
       funsToList,
-      funsFromList )
+      funsFromList, showComplex )
 import Clay (render)
 import Control.Arrow (first, left, second)
 import Control.Lens ((%~), (&), (^.), _1, _2, _3)
@@ -99,6 +99,7 @@ import Telegram.Bot.Simple
 import Telegram.Bot.Simple.UpdateParser ( parseUpdate, text )
 import qualified Control.Exception as CE
 import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.Complex
 
 newtype Model = Model {getMaps :: (Maps, StdGen)}
 
@@ -130,7 +131,7 @@ handleAction mode (Reply msg) model = model2 <# do
   pure NoAction
   where (response, model2) = second Model $ either
           Prelude.id
-          (first showRational)
+          (first showComplex)
           (let (mps, gen) = getMaps model in parseEval mode mps gen msg)
 
 -- | Run bot with a given 'Telegram.Token'.
@@ -154,7 +155,7 @@ parseString m s ms = case m of
                          tloop s >>= parse (getPrecedences (ms^._3) <> getFakePrecedences (ms^._2))
                        AlexHappy -> Right $ preprocess . HP.parse . Calculator.AlexLexer.alexScanTokens $ TS.unpack s
 
-evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (TS.Text, (Maps, StdGen)) (Rational, (Maps, StdGen))
+evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (TS.Text, (Maps, StdGen)) (Complex Rational, (Maps, StdGen))
 evalExprS t maps g = either (Left . (,(maps, g))) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
   where getShit e = let a = runExceptT (evalS e) in S.runState a (maps, g)
 
@@ -209,7 +210,7 @@ loop mode maps = do
               loop' md m' ng
             Right (r, (m, ng)) -> do
               let m' = removeLocals m
-              liftIO . TSIO.putStrLn $ showRational r
+              liftIO . TSIO.putStrLn $ showComplex r
               loop' md (m' & _1 %~ M.insert "_" r) ng
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
@@ -236,10 +237,10 @@ interpret path mode maps = do
             liftIO $ TSIO.putStrLn err
             loop' ls md m ng
           Right (r, (m, ng)) -> do
-            liftIO . TSIO.putStrLn $ showRational r
+            liftIO . TSIO.putStrLn $ showComplex r
             loop' ls md (m & _1 %~ M.insert "_" r) ng
 
-parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (TS.Text, (Maps, StdGen)) (Rational, (Maps, StdGen))
+parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (TS.Text, (Maps, StdGen)) (Complex Rational, (Maps, StdGen))
 parseEval md ms g x = evalExprS (parseString md x ms) ms g
 
 evalLoop :: Mode -> IO ()
@@ -287,7 +288,7 @@ webLoop port mode = do
     Web.Scotty.get "/favicon.ico" $ Web.Scotty.file "./Static/favicon.ico"
     Web.Scotty.get "/:id" $ do
       iD <- Web.Scotty.param "id"
-      liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ( (M.toList defVar, [], opsToList opMap) :: ListTuple ))
+      liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ((map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ defVar, [], opsToList opMap) :: ListTuple ))
       liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
       Web.Scotty.html $ renderHtml
         $ H.html $ H.body $ do
@@ -321,7 +322,7 @@ webLoop port mode = do
           let res = evalExprS t ms gen
           let txt = let (ress, (mps, ng)) = either
                           Prelude.id
-                          (\(r, mg) -> (showRational r, first (_1 %~ M.insert "_" r) mg))
+                          (\(r, mg) -> (showComplex r, first (_1 %~ M.insert "_" r) mg))
                           res
                     in do
                         storeMaps storagename mps
@@ -341,5 +342,5 @@ webLoop port mode = do
                     H.style $ H.toHtml . render $ postCss
   where
     storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
-    mapsToLists (a, b, c) = (M.toList a, funsToList b, opsToList c)
-    listsToMaps (a, b, c) = (M.fromList a, M.union funMap $ funsFromList b, M.union opMap $ opsFromList c)
+    mapsToLists (a, b, c) = (map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ a, funsToList b, opsToList c)
+    listsToMaps (a, b, c) = (M.fromList . map (\(k, (vr, vi)) -> (k, vr:+vi)) $ a, M.union funMap $ funsFromList b, M.union opMap $ opsFromList c)

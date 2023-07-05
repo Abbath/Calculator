@@ -11,6 +11,7 @@ import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T
 import Control.Arrow (second)
+import Data.Complex
 
 operators :: Map Text Op
 operators =
@@ -33,10 +34,10 @@ operators =
        (">", Op { precedence = 2, associativity = L, oexec = FnOp (CmpOp (>)) }),
        ("<<", Op { precedence = 3, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (fromInteger s))) }),
        (">>", Op { precedence = 3, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (-1 * fromInteger s))) }),
-       ("+", Op { precedence = 4, associativity = L, oexec = FnOp (MathOp (+)) }),
-       ("-", Op { precedence = 4, associativity = L, oexec = FnOp (MathOp (-)) }),
-       ("*", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp (*)) }),
-       ("/", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp (/)) }),
+       ("+", Op { precedence = 4, associativity = L, oexec = FnOp (MathOp $ fmath (+)) }),
+       ("-", Op { precedence = 4, associativity = L, oexec = FnOp (MathOp $ fmath (-)) }),
+       ("*", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (*)) }),
+       ("/", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (/)) }),
        ("%", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp fmod) }),
        ("^", Op { precedence = 6, associativity = R, oexec = FnOp (MathOp pow) }),
        ("|", Op { precedence = 7, associativity = R, oexec = FnOp (BitOp (.|.)) }),
@@ -96,7 +97,7 @@ functions =
        (("xor", 2), Fun { params = [], fexec = FnFn (IntFn2 xor) }),
        (("pop", 1), Fun { params = [], fexec = FnFn (BitFn $ fromIntegral . popCount) }),
        (("comp", 1), Fun { params = [], fexec = FnFn (BitFn complement) }),
-       (("not", 1), Fun { params = ["x"], fexec = ExFn (Call "if" [Id "x", Number 0, Number 1])})
+       (("not", 1), Fun { params = ["x"], fexec = ExFn (Call "if" [Id "x", Number 0 0, Number 1 0])})
     ]
 
 opMap :: OpMap
@@ -105,32 +106,46 @@ opMap = operators
 funMap :: FunMap
 funMap = functions
 
-fmod :: Rational -> Rational -> Rational
-fmod x y = fromInteger $ mod (floor x) (floor y)
+fmod :: Complex Rational -> Complex Rational -> Complex Rational
+fmod x y = (:+0) . fromInteger $ mod (floor . realPart $ x) (floor . realPart $ y)
 
-fcmp :: Rational -> Rational -> Rational
-fcmp x y = case compare x y of
-  GT -> 1
-  EQ -> 0
-  LT -> -1
+fcmp :: Complex Rational -> Complex Rational -> Complex Rational
+fcmp x y =
+  let rx = realPart x
+      ry = realPart y
+  in case compare rx ry of
+    GT -> 1:+0
+    EQ -> 0:+0
+    LT -> (-1):+0
 
-pow :: Rational -> Rational -> Rational
+fmath :: (Rational -> Rational -> Rational) -> Complex Rational -> Complex Rational -> Complex Rational
+fmath op x y = op <$> x <*> y
+
+pow :: Complex Rational -> Complex Rational -> Complex Rational
 pow a b
-  | denominator a == 1 && denominator b == 1 && numerator b < 0 = toRational $ (fromRational a :: Double) ^^ numerator b
-  | denominator a == 1 && denominator b == 1 = toRational $ numerator a ^ numerator b
-pow a b = toRational $ (fromRational a :: Double) ** (fromRational b :: Double)
+  | imagPart a == 0 && imagPart b == 0 =
+    let da = denominator (realPart a)
+        db = denominator (realPart b)
+        na = numerator (realPart a)
+        nb = numerator (realPart b)
+    in if da == 1 && db == 1 && nb < 0
+      then (:+0) . toRational $ (fromRational (realPart a) :: Double) ^^ nb
+      else if da == 1 && na == 1
+        then (:+0) . toRational $ na ^ nb
+        else (:+0) . toRational $ (fromRational (realPart a) :: Double) ** (fromRational (realPart b) :: Double)
+pow a b = toRational <$> (fromRational <$> a :: Complex Double) ** (fromRational <$> b :: Complex Double)
 
 names :: [String]
 names = T.unpack <$> M.keys operators ++ map fst (M.keys functions)
 
 defVar :: VarMap
-defVar = [("m.pi", toRational (pi :: Double)),
-          ("m.e", toRational . exp $ (1 :: Double)),
-          ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double)),
-          ("m.r", 0.0),
-          ("b.true", 1.0),
-          ("b.false", 0.0),
-          ("_", 0.0)]
+defVar = [("m.pi", toRational (pi :: Double) :+ 0),
+          ("m.e", (toRational . exp $ (1 :: Double)) :+ 0),
+          ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double) :+ 0),
+          ("m.r", 0.0 :+ 0),
+          ("b.true", 1.0 :+ 0),
+          ("b.false", 0.0 :+ 0),
+          ("_", 0.0 :+ 0)]
 
 getPrecedences :: OpMap -> Map Text Int
 getPrecedences om = let lst = M.toList om

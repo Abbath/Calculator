@@ -18,12 +18,12 @@ instance Show Tac where
 type ResultG = ExceptT Text (State (Int, Int, [Tac]))
 
 isFinal :: Expr -> Bool
-isFinal (Number _) = True
+isFinal (Number _ _) = True
 isFinal (Id _) = True
 isFinal _ = False
 
 extractFinal :: Expr -> Text
-extractFinal (Number a) = showT @Double (fromRational a)
+extractFinal (Number a _) = showT @Double (fromRational a)
 extractFinal (Id a) = a
 extractFinal _ = error "Extraction is impossible"
 

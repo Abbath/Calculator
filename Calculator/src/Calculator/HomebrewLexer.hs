@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 module Calculator.HomebrewLexer (tloop) where
 
 import Control.Applicative ( Alternative(..) )
@@ -157,8 +158,16 @@ stringLiteral = charP '"' *> (fromInteger . textToNum 0 <$> many (parseIf "anyth
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
 
+complexLiteral :: Parser (Rational, Rational)
+complexLiteral = (,) <$> (doubleLiteral <* (charP 'j' <|> charP 'i')) <*> doubleLiteral
+
 numba :: Parser Token
-numba = TNumber <$> wsBracket (hexLiteral <|> octLiteral <|> binLiteral <|> doubleLiteral <|> stringLiteral)
+numba = uncurry TNumber <$> wsBracket ((,0) <$> hexLiteral <|>
+                                       (,0) <$> octLiteral <|>
+                                       (,0) <$> binLiteral <|>
+                                       complexLiteral <|>
+                                       (,0) <$> doubleLiteral <|>
+                                       (,0) <$> stringLiteral)
 
 lpar :: Parser Token
 lpar = TLPar <$ wsBracket (charP '(')

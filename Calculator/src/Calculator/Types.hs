@@ -1,10 +1,10 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric  #-}
-{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Calculator.Types (Expr (..), Token (..), Assoc (..), Op (..), ExecOp (..), FunOp (..), getPrA,
                          exprToString, unTOp, isOp, preprocess, ListTuple, Fun (..), ExecFn (..), FunFun (..),
                          showRational, showT, opSymbols, Maps, OpMap, VarMap, FunMap, opsFromList, opsToList,
-                         funsFromList, funsToList) where
+                         funsFromList, funsToList, showComplex) where
 
 import Control.Arrow (second)
 import Data.Aeson (FromJSON, ToJSON)
@@ -14,8 +14,8 @@ import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
-
-data Token = TNumber Rational
+import Data.Complex
+data Token = TNumber Rational Rational
            | TLPar
            | TRPar
            | TIdent Text
@@ -27,11 +27,11 @@ data Token = TNumber Rational
            | TEnd
            | TLet
            | TFun
-           deriving (Show, Eq, Ord)
+           deriving (Show, Eq)
 
 data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
 
-data Expr = Number Rational
+data Expr = Number Rational Rational
           | Asgn Text Expr
           | UDF Text [Text] Expr
           | UDO Text Int Assoc Expr
@@ -45,14 +45,14 @@ instance ToJSON Expr
 
 instance FromJSON Expr
 
-type ListTuple =  ([(Text, Rational)], [((Text, Int), ([Text], Expr))], [(Text, ((Int, Assoc), Expr))])
+type ListTuple =  ([(Text, (Rational, Rational))], [((Text, Int), ([Text], Expr))], [(Text, ((Int, Assoc), Expr))])
 
 type FunMap = Map (Text, Int) Fun
-type VarMap = Map Text Rational
+type VarMap = Map Text (Complex Rational)
 type OpMap = Map Text Op
 type Maps = (VarMap, FunMap, OpMap)
 
-data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Rational -> Rational -> Rational) | BitOp (Integer -> Integer -> Integer )
+data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer )
 
 instance Show FunOp where
   show (CmpOp _) = "CmpOp"
@@ -86,7 +86,7 @@ getPrA om = let lst = M.toList om
                 ps = M.fromList $ map (second (\o -> (precedence o, associativity o))) lst
             in ps
 
-data FunFun = CmpFn (Rational -> Rational -> Bool) | MathFn (Double -> Double) | IntFn1 (Double -> Integer) | IntFn2 (Integer -> Integer -> Integer) | BitFn (Integer -> Integer)
+data FunFun = CmpFn (Rational -> Rational -> Bool) | MathFn (Complex Double -> Complex Double) | IntFn1 (Double -> Integer) | IntFn2 (Integer -> Integer -> Integer) | BitFn (Integer -> Integer)
 
 instance Show FunFun where
   show (CmpFn _) = "CmpFn"
@@ -142,7 +142,7 @@ exprToString ex = case ex of
   UDF n a e       -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
   UDO n p a e     -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Double else 1) <> ")" <> " = " <>  exprToString e
   Asgn i e        -> i <> " = " <> exprToString e
-  Number x        -> T.pack $ show . (fromRational :: Rational -> Double) $ x
+  Number x _       -> showT . (fromRational :: Rational -> Double) $ x
   Par e           -> "(" <> exprToString e <> ")"
   UMinus e        -> "(-" <> exprToString e <> ")"
   Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
@@ -174,22 +174,28 @@ simplifyExpr ex = case ex of
   UMinus (Par (UMinus e)) -> Par (simplifyExpr e)
   UMinus (Call op [e1, e2]) | isOp op -> Call op [UMinus (simplifyExpr e1), simplifyExpr e2]
   UMinus e -> UMinus (simplifyExpr e)
-  Call "-" [Number 0.0, Call op [e1, e2]]
+  Call "-" [Number 0.0 _, Call op [e1, e2]]
     | op `elem` ["+", "-"] ->
         Call op [simplifyExpr . UMinus $ e1, simplifyExpr e2]
-  Call "-" [Number 0.0, n] -> UMinus (simplifyExpr n)
-  Call "+" [Number 0.0, n] -> simplifyExpr n
-  Call op [n, Number 0.0] | op `elem` ["+", "-"] -> simplifyExpr n
-  Call "*" [Number 1.0, n] -> simplifyExpr n
-  Call "*" [Number 0.0, n] -> Number 0.0
-  Call op [n, Number 1.0] | op `elem` ["*", "/", "%"] -> simplifyExpr n
-  Call "^" [n, Number 1.0] -> simplifyExpr n
-  Call "^" [Call "sqrt" [e], Number 2.0] -> simplifyExpr e
+  Call "-" [Number 0.0 _, n] -> UMinus (simplifyExpr n)
+  Call "+" [Number 0.0 _, n] -> simplifyExpr n
+  Call op [n, Number 0.0 _] | op `elem` ["+", "-"] -> simplifyExpr n
+  Call "*" [Number 1.0 _, n] -> simplifyExpr n
+  Call "*" [Number 0.0 _, n] -> Number 0.0 0.0
+  Call op [n, Number 1.0 _] | op `elem` ["*", "/", "%"] -> simplifyExpr n
+  Call "^" [n, Number 1.0 _] -> simplifyExpr n
+  Call "^" [Call "sqrt" [e], Number 2.0 _] -> simplifyExpr e
   Call "exp" [Call "log" [e]] -> simplifyExpr e
   Call "log" [Call "exp" [e]] -> simplifyExpr e
-  Call "sqrt" [Call "^" [e, Number 2.0]] -> simplifyExpr e
+  Call "sqrt" [Call "^" [e, Number 2.0 _]] -> simplifyExpr e
   Call name e -> Call name (map simplifyExpr e)
   x -> x
 
 showRational :: Rational -> Text
 showRational r = if denominator r == 1 then showT $ numerator r else showT (fromRational r :: Double)
+
+showComplex :: Complex Rational -> Text
+showComplex c =
+  let cr = realPart c
+      ci = imagPart c
+  in showRational cr <> if ci /= 0 then "j" <> showRational ci else ""

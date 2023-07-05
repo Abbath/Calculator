@@ -22,7 +22,7 @@ tokens :-
     let {\_ _ -> TLet }
     fun {\_ _ -> TFun }
     op {\_ _ -> TEnd }
-    @floating_point {\_ s -> TNumber $ readNumber s}
+    @floating_point {\_ s -> flip TNumber 0 $ readNumber s}
     \(  {\_ _ -> TLPar}
     \)  {\_ _ -> TRPar}
     $alpha$alphanum* {\_ s -> TIdent (T.pack s)}
@@ -33,6 +33,6 @@ tokens :-
 
 {
 
-readNumber :: String -> Rational 
+readNumber :: String -> Rational
 readNumber str = let z = (reads :: String -> [(Double, String)]) str in toRational . fst . head $ z
 }

@@ -20,10 +20,12 @@ import Data.Text.IO as TIO (putStrLn)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import System.Random (StdGen, initStdGen)
 import qualified Text.Megaparsec as MP
+import Data.Complex
+import Data.Bifunctor
 
 data Backend = Internal | Mega | AH deriving Show
 
-type Tests = [(Text, Either Text Rational)]
+type Tests = [(Text, Either Text (Complex Rational))]
 
 loop :: Tests -> Maps -> StdGen -> Backend -> Int -> IO Int
 loop [] _ _ _ n = return n
@@ -62,7 +64,7 @@ errorToEither (Left err) = Left (showT err)
 errorToEither (Right r)  = Right r
 
 tests :: Tests
-tests = [
+tests = map (Data.Bifunctor.second ((:+ 0) <$>)) [
    ("_", Right 0)
   ,("1", Right 1)
   ,("_", Right 1)
@@ -100,7 +102,7 @@ tests = [
   ]
 
 testsAH :: Tests
-testsAH = [
+testsAH = map (Data.Bifunctor.second ((:+ 0) <$>)) [
      ("_", Right 0)
     ,("1", Right 1)
     ,("_", Right 1)
@@ -133,7 +135,7 @@ testsAH = [
     ]
 
 defVar :: VarMap
-defVar = [("m.pi", toRational (pi :: Double)), ("m.e", toRational . exp $ (1.0 :: Double)), ("_",0.0)]
+defVar = [("m.pi", (:+0) $ toRational (pi :: Double)), ("m.e", (:+0) $ toRational . exp $ (1.0 :: Double)), ("_",0.0:+0.0)]
 
 testLoop :: IO ()
 testLoop = do
