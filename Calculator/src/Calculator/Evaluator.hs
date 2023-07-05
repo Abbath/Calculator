@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, OverloadedLists #-}
-module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result) where
+module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result, MessageType(..)) where
 
 import Calculator.Builtins
 import Calculator.Generator
@@ -106,58 +106,60 @@ catchVar (vm, fm) ex = case ex of
     where
       st = catchVar (vm, fm)
 
-type Result = ExceptT Text (State (Maps, StdGen))
+data MessageType = ErrMsg Text | MsgMsg Text deriving (Show, Eq)
+
+type Result = ExceptT MessageType (State (Maps, StdGen))
 
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
-  Asgn s _ | M.member s defVar -> throwError $ "Cannot change a constant value: " <> s
+  Asgn s _ | M.member s defVar -> throwError . ErrMsg $ "Cannot change a constant value: " <> s
   Asgn s e -> do
     r <- evm e
     modify (first (_1 %~ M.insert s r))
-    throwError ((if "c." `T.isPrefixOf` s then "Constant " else "Variable ") <> s <> "=" <> showComplex r)
+    throwError . MsgMsg $ ((if "c." `T.isPrefixOf` s then "Constant " else "Variable ") <> s <> "=" <> showComplex r)
   UDF n [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
-    either throwError (evm . UDF n [s]) de
+    either (throwError . ErrMsg) (evm . UDF n [s]) de
   UDF n s e -> do
     maps <- gets fst
     let newe = localize s e >>= catchVar (maps^._1, maps ^._2)
-    either throwError (\r -> do
+    either (throwError . ErrMsg)  (\r -> do
       let newmap = M.insert (n, length s) (Fun (map (T.cons '@') s) (ExFn r)) $ maps^._2
       modify (first (_2 .~ newmap))
-      throwError ("Function " <> n <> "/" <> showT (length s))) newe
+      throwError . MsgMsg $ ("Function " <> n <> "/" <> showT (length s))) newe
   UDO n (-1) _ e@(Call op _) -> do
     maps <- gets fst
     case M.lookup op (maps^._3) of
       Just o@Op{} -> do
         let newmap = M.insert n (o { oexec = AOp op }) (maps^._3)
         modify (first (_3 .~ newmap))
-        throwError ("Operator alias " <> n <> " = " <> op)
-      Nothing -> throwError $ "No such operator: " <> op
+        throwError . MsgMsg $ "Operator alias " <> n <> " = " <> op
+      Nothing -> throwError . ErrMsg $ "No such operator: " <> op
   UDO n p a e
-    | M.member n operators -> throwError $ "Can not redefine the built-in operator: " <> n
-    | p < 1 || p > 14 ->  throwError $ "Bad precedence: " <> showT p
+    | M.member n operators -> throwError . ErrMsg $ "Can not redefine the built-in operator: " <> n
+    | p < 1 || p > 14 ->  throwError . ErrMsg $ "Bad precedence: " <> showT p
     | otherwise -> do
         maps <- gets fst
         let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
-        either throwError (\r -> do
+        either (throwError . ErrMsg) (\r -> do
           let newmap = M.insert n Op {precedence = p, associativity = a, oexec = ExOp r} (maps^._3)
           modify (first (_3 .~ newmap))
-          throwError ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
-  Call "debug" [e] -> throwError . showT . preprocess $ e
-  Call "str" [e] -> evm e >>= (either throwError (throwError . (\s -> "\"" <> s <> "\"")) . numToText)
+          throwError . MsgMsg $ ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
+  Call "debug" [e] -> throwError . MsgMsg . showT . preprocess $ e
+  Call "str" [e] -> evm e >>= (either (throwError . ErrMsg) (throwError . MsgMsg . (\s -> "\"" <> s <> "\"")) . numToText)
   Call "fmt" (Number n ni:es) -> do
     let format = numToText (n:+ni) >>= extractFormat
     case format of
-      Left err -> throwError err
+      Left err -> throwError (ErrMsg err)
       Right fs -> do
         rs <- traverse evm es
-        throwError $ case zipFormat fs rs of
+        throwError . MsgMsg $ case zipFormat fs rs of
           Left err -> err
           Right txt -> txt
-  Call "generate" [e] -> throwError . T.init . T.concat . map ((<> "\n") . showT) . generate $ e
+  Call "generate" [e] -> throwError . MsgMsg . T.init . T.concat . map ((<> "\n") . showT) . generate $ e
   Call "df" [a,x] -> do
       let e = derivative a x
-      either throwError (throwError . exprToString . preprocess) e
+      either (throwError . ErrMsg) (throwError . MsgMsg . exprToString . preprocess) e
   Call "int" [Id fun, a, b, eps] -> do
       maps <- get
       a1 <- evm a
@@ -174,7 +176,7 @@ evalS ex = case ex of
     return $ toRational <$> logBase (fromRational <$> t1 :: Complex Double) (fromRational <$> t2 :: Complex Double)
   Call "prat" [e] -> do
     t1 <- evm e
-    throwError $ showT (numerator (realPart t1)) <> " / " <> showT (denominator (realPart t1))
+    throwError . MsgMsg $ showT (numerator (realPart t1)) <> " / " <> showT (denominator (realPart t1))
   Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
     t1 <- evm e
     if denominator (realPart t1) == 1
@@ -184,12 +186,13 @@ evalS ex = case ex of
                  "bin" -> (showBin, 'b')
                  _ -> (showInt, ' ')
                sign = signum . numerator . realPart $ t1
-           in throwError . T.pack
+           in throwError . MsgMsg
+                         . T.pack
                          . ((if sign == 1 then "" else "-") <>)
                          . (['0', p] <>)
                          . (`function` "")
                          . abs . numerator . realPart $ t1
-      else throwError "Can't convert rational yet"
+      else throwError (ErrMsg "Can't convert rational yet")
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     maps <- gets fst
     let pr = getPrecedences (maps^._3) <> getFakePrecedences (maps^._2)
@@ -197,31 +200,31 @@ evalS ex = case ex of
     let b = M.lookup op2 pr
     if a == b
     then case a of
-      Nothing -> throwError $ "No such operators: " <> op1 <> " " <> op2
+      Nothing -> throwError . ErrMsg $ "No such operators: " <> op1 <> " " <> op2
       Just _ -> do
         let Op {associativity = asc1 } = (maps^._3) M.! op1
         let Op {associativity = asc2 } = (maps^._3) M.! op2
         case (asc1, asc2) of
           (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
           (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
-          _ -> throwError $ "Operators with a different associativity: " <> op1 <> " and " <> op2
+          _ -> throwError . ErrMsg $ "Operators with a different associativity: " <> op1 <> " and " <> op2
     else evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
   oc@(Call "/" [x, y]) -> do
     n <- evm y
     n1 <- evm x
     if n == 0:+0
-      then throwError $ "Division by zero: " <> exprToString oc
+      then throwError . ErrMsg $ "Division by zero: " <> exprToString oc
       else return . toComplex $ (realPart n1 / realPart n)
   oc@(Call "%" [x, y]) -> do
     n <- evm y
     n1 <- evm x
     if n == 0:+0
-      then throwError $ "Division by zero: " <> exprToString oc
+      then throwError . ErrMsg $ "Division by zero: " <> exprToString oc
       else return ((:+0) . toRational $ mod (floor . realPart $ n1 :: Integer) (floor . realPart $ n :: Integer))
   Call op [x, Id y] | op == "|>" -> evm $ Call y [x]
   Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
-      then throwError "I'm afraid you can't do that."
+      then throwError (ErrMsg "I'm afraid you can't do that.")
       else do
         n <- evm y
         maps <- gets fst
@@ -230,19 +233,19 @@ evalS ex = case ex of
           else modify (first (_1 %~ M.insert ("_." <> x) n))
         return n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
-  Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwError $ "Cannot assign to an expression with: " <> op
+  Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwError . ErrMsg $ "Cannot assign to an expression with: " <> op
   Call op [x, y] | M.member op operators -> evalBuiltinOp op x y
   Call op [x, y] | isOp op -> do
     maps <- gets fst
     case (M.lookup op (maps^._3) :: Maybe Op) of
       Just Op{ oexec = ExOp expr } -> do
         let expr1 = substitute (["@x", "@y"], [x,y]) expr
-        either throwError evm expr1
+        either (throwError . ErrMsg) evm expr1
       Just Op {oexec = AOp aop } -> evm (Call aop [x, y])
       Nothing -> case op of
-        opn | T.head opn == '@' -> throwError $ "Expression instead of a function name: " <> T.tail opn <> "/2"
-        _ -> throwError $ "No such operator: " <> op <> "/2"
-      _ -> throwError $ "Suspicious operator: " <> op
+        opn | T.head opn == '@' -> throwError . ErrMsg $ "Expression instead of a function name: " <> T.tail opn <> "/2"
+        _ -> throwError . ErrMsg $ "No such operator: " <> op <> "/2"
+      _ -> throwError . ErrMsg $ "Suspicious operator: " <> op
   Call "if" [a, b, c] -> do
     cond <- evm a
     if cond /= 0:+0
@@ -270,16 +273,16 @@ evalS ex = case ex of
         return $ toRational <$> r
       ExFn expr -> do
         let expr1 = substitute (params builtin_fun, ps) expr
-        either throwError evm expr1
-      _ -> throwError "Misteriously missing function"
+        either (throwError . ErrMsg) evm expr1
+      _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do
     maps <- gets fst
     case (M.lookup (name, length e) (maps^._2) :: Maybe Fun) of
       Just (Fun al (ExFn expr)) -> do
         let expr1 = substitute (al, e) expr
-        either throwError evm expr1
+        either (throwError . ErrMsg) evm expr1
       Nothing -> case name of
-        x | T.head x == '@' -> throwError $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
+        x | T.head x == '@' -> throwError . ErrMsg $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ -> let
                (wa, wn) = findSimilar (name, length e) (M.keys (maps^._2))
                cvt_nls txt nls = if not (null nls)
@@ -287,8 +290,8 @@ evalS ex = case ex of
                   else ""
                wat = cvt_nls "\nFunctions with the same name:\n" wa
                wnt = cvt_nls "\nFunctions with similar names:\n" wn
-             in throwError $ "No such function: " <> name <> "/" <> showT (length e) <> wat <> wnt
-      _ -> throwError $ "Suspicious function: " <> name
+             in throwError . ErrMsg $ "No such function: " <> name <> "/" <> showT (length e) <> wat <> wnt
+      _ -> throwError . ErrMsg $ "Suspicious function: " <> name
   Id "m.r" -> do
     gen <- gets snd
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) gen
@@ -297,7 +300,7 @@ evalS ex = case ex of
   Id s     -> do
     maps <- gets fst
     let val = asum ([M.lookup ("_." <> s) (maps^._1), M.lookup s (maps^._1)] :: [Maybe (Complex Rational)])
-    mte ("No such variable: " <> s) val
+    maybe (throwError (ErrMsg $ "No such variable: " <> s)) return val
   Number x xi -> return $ x :+ xi
   UMinus (Call "^" [x, y]) -> evm $ Call "^" [UMinus x, y]
   UMinus x         -> evm $ Call "-" [Number 0 0, x]
@@ -310,8 +313,7 @@ evalS ex = case ex of
         FnOp (MathOp fun) -> eval' fun bop x y
         FnOp (BitOp fun)-> (:+0) <$> bitEval fun x y
         ExOp e -> evm e
-        _ -> throwError "Misteriously missing operator"
-    mte s = maybe (throwError s) return
+        _ -> throwError (ErrMsg "Misteriously missing operator")
     tooBig = 2^(8000000 :: Integer) :: Rational
     cmp fun x y = do
       n <- evm x
@@ -324,18 +326,18 @@ evalS ex = case ex of
       n1 <- evm y
       if denominator (realPart n) == 1 && denominator (realPart n1) == 1
         then return . toRational $ op (numerator (realPart n)) (numerator (realPart n1))
-        else throwError "Cannot perform bitwise operator on a rational"
+        else throwError (ErrMsg "Cannot perform bitwise operator on a rational")
     evm x = do
       r <- evalS x
       if realPart r > tooBig
-         then throwError "Too much!"
+         then throwError (ErrMsg "Too much!")
          else return r
     evalInt f x y = do
       t1 <- evm x
       t2 <- evm y
       if denominator (realPart t1) == 1 && denominator (realPart t2) == 1
          then return . toComplex $ f (numerator (realPart t1)) (numerator (realPart t2))
-         else throwError "Cannot use integral function on rational numbers!"
+         else throwError (ErrMsg "Cannot use integral function on rational numbers!")
     evalInt1 :: (Double -> Integer) -> Expr -> Result (Complex Rational)
     evalInt1 f x = do
       t1 <- evm x
@@ -344,14 +346,14 @@ evalS ex = case ex of
       t <- evm x
       if denominator (realPart t) == 1
          then return . toComplex $ f (numerator (realPart t))
-         else throwError "Cannot use bitwise function on rational numbers!"
+         else throwError (ErrMsg "Cannot use bitwise function on rational numbers!")
     eval' :: (Complex Rational -> Complex Rational -> Complex Rational) -> Text -> Expr -> Expr -> Result (Complex Rational)
     eval' f op x y = do
       t1 <- evm x
       t2 <- evm y
       if ( op == "^" && logBase 10 (fromComplex t1 :: Double) * (fromComplex t2 :: Double) > 2408240) ||
          realPart (f t1 t2) > tooBig
-         then throwError "Too much!"
+         then throwError (ErrMsg "Too much!")
          else return $ f t1 t2
     procListElem m fun n = evalState (runExceptT (evm (Call fun [Number n 0]))) m
     findSimilar :: (Text, Int) -> [(Text, Int)] -> ([(Text, Int)], [(Text, Int)])

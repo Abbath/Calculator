@@ -3,7 +3,7 @@ module Calculator.Tests (testLoop) where
 
 import Calculator.AlexLexer (alexScanTokens)
 import Calculator.Builtins (opMap, getPrecedences, getFakePrecedences)
-import Calculator.Evaluator (evalS)
+import Calculator.Evaluator (evalS, MessageType(ErrMsg, MsgMsg))
 import qualified Calculator.HappyParser as HP
 import Calculator.HomebrewLexer (tloop)
 import qualified Calculator.MegaParser as CMP
@@ -25,7 +25,7 @@ import Data.Bifunctor
 
 data Backend = Internal | Mega | AH deriving Show
 
-type Tests = [(Text, Either Text (Complex Rational))]
+type Tests = [(Text, Either MessageType (Complex Rational))]
 
 loop :: Tests -> Maps -> StdGen -> Backend -> Int -> IO Int
 loop [] _ _ _ n = return n
@@ -39,7 +39,7 @@ loop (x:xs) maps gen bk n = do
               AH -> Right $ preprocess . HP.parse . alexScanTokens $ T.unpack sample
     --print e
     let t = case e of
-              Left err -> (Left err, (maps, gen))
+              Left err -> (Left (ErrMsg err), (maps, gen))
               Right r  -> runState (runExceptT (evalS r)) (maps, gen)
     let tt = fst t
     do
@@ -72,28 +72,28 @@ tests = map (Data.Bifunctor.second ((:+ 0) <$>)) [
   ,("2+2", Right 4)
   ,("2-2-2-2", Right (-4))
   ,("1024/2/2/2", Right 128)
-  ,("f(x) = x", Left "Function f/1")
-  ,("f(g,x) = g(x)", Left "Function f/2")
+  ,("f(x) = x", Left . MsgMsg $ "Function f/1")
+  ,("f(g,x) = g(x)", Left . MsgMsg $ "Function f/2")
   ,("f(sin,m.pi)", Right 0)
-  ,("h() = 2", Left "Function h/0")
-  ,("hh = h()", Left "Variable hh=2")
-  ,("p(x,y) = x - y", Left "Function p/2")
+  ,("h() = 2", Left . MsgMsg $ "Function h/0")
+  ,("hh = h()", Left . MsgMsg $ "Variable hh=2")
+  ,("p(x,y) = x - y", Left . MsgMsg $ "Function p/2")
   ,("p(2,2)", Right 0)
-  ,("$(1,0) = x - y", Left "Operator $ p=1 a=left")
+  ,("$(1,0) = x - y", Left . MsgMsg $ "Operator $ p=1 a=left")
   ,("2$2$2$2", Right (-4))
   ,("2$2-2$2", Right 0)
-  ,("$(4,0) = x - y", Left "Operator $ p=4 a=left")
+  ,("$(4,0) = x - y", Left . MsgMsg $ "Operator $ p=4 a=left")
   ,("2$2-2$2", Right (-4))
   ,("2^3^4", Right 2417851639229258349412352)
   ,("2+2*2", Right 6)
   ,("-((1))", Right (-1))
   ,("-1^2", Right 1)
   ,("(2+2)*2", Right 8)
-  ,("x = 5",Left "Variable x=5")
+  ,("x = 5",Left . MsgMsg $ "Variable x=5")
   ,("abs(-x)==x", Right 1)
   ,("1!=2", Right 1)
   ,("sin(m.pi)==0", Right 1)
-  ,("/= = !=", Left "Operator alias /= = !=")
+  ,("/= = !=", Left . MsgMsg $ "Operator alias /= = !=")
   ,("1|0", Right 1)
   ,("1&0", Right 0)
   ,("0xff", Right 255)
@@ -110,23 +110,23 @@ testsAH = map (Data.Bifunctor.second ((:+ 0) <$>)) [
     ,("2+2", Right 4)
     ,("2-2-2-2", Right (-4))
     ,("1024/2/2/2", Right 128)
-    ,("fun f(x) = x", Left "Function f/1")
-    ,("fun f(g,x) = g(x)", Left "Function f/2")
-    ,("fun p(x,y) = x - y", Left "Function p/2")
-    ,("fun h() = 2", Left "Function h/0")
-    ,("let hh = h()", Left "Variable hh=2")
+    ,("fun f(x) = x", Left . MsgMsg $ "Function f/1")
+    ,("fun f(g,x) = g(x)", Left . MsgMsg $ "Function f/2")
+    ,("fun p(x,y) = x - y", Left . MsgMsg $ "Function p/2")
+    ,("fun h() = 2", Left . MsgMsg $ "Function h/0")
+    ,("let hh = h()", Left . MsgMsg $ "Variable hh=2")
     ,("p(2,2)", Right 0)
-    ,("op $(1,0) = x - y", Left "Operator $ p=1 a=left")
+    ,("op $(1,0) = x - y", Left . MsgMsg $ "Operator $ p=1 a=left")
     ,("2$2$2$2", Right (-4))
     ,("2$2-2$2", Right 0)
-    ,("op $(4,0) = x - y", Left "Operator $ p=4 a=left")
+    ,("op $(4,0) = x - y", Left . MsgMsg $ "Operator $ p=4 a=left")
     ,("2$2-2$2", Right (-4))
     ,("2^3^4", Right 2417851639229258349412352)
     ,("2+2*2", Right 6)
     ,("-((1))", Right (-1))
     ,("-1^2", Right 1)
     ,("(2+2)*2", Right 8)
-    ,("let x = 5",Left "Variable x=5")
+    ,("let x = 5",Left . MsgMsg $ "Variable x=5")
     ,("abs(-x) == x", Right 1)
     ,("1!=2", Right 1)
     ,("sin(m.pi)==0", Right 1)

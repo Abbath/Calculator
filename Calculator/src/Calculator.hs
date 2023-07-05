@@ -4,14 +4,13 @@ module Calculator (Mode(..), evalLoop, webLoop, telegramSimple, evalFile) where
 import Calculator.AlexLexer (alexScanTokens)
 import Calculator.Builtins (opMap, names, funMap, defVar, getPrecedences, getFakePrecedences)
 import Calculator.Css (getCss, postCss)
-import Calculator.Evaluator (evalS)
+import Calculator.Evaluator (evalS, MessageType(..))
 import qualified Calculator.HappyParser as HP
 import Calculator.HomebrewLexer (tloop)
 import qualified Calculator.MegaParser as CMP
 import Calculator.Parser (parse)
 import Calculator.Types
     ( preprocess,
-      showRational,
       showT,
       Expr,
       ListTuple,
@@ -127,11 +126,13 @@ handleUpdate _ = parseUpdate (Reply <$> Telegram.Bot.Simple.UpdateParser.text)
 handleAction :: Mode -> Action -> Model -> Eff Action Model
 handleAction _ NoAction model = pure model
 handleAction mode (Reply msg) model = model2 <# do
-  replyText response
+  replyText $ case response of
+    MsgMsg mmsg -> mmsg
+    ErrMsg emsg -> "Error: " <> emsg
   pure NoAction
   where (response, model2) = second Model $ either
           Prelude.id
-          (first showComplex)
+          (first (MsgMsg . showComplex))
           (let (mps, gen) = getMaps model in parseEval mode mps gen msg)
 
 -- | Run bot with a given 'Telegram.Token'.
@@ -155,8 +156,8 @@ parseString m s ms = case m of
                          tloop s >>= parse (getPrecedences (ms^._3) <> getFakePrecedences (ms^._2))
                        AlexHappy -> Right $ preprocess . HP.parse . Calculator.AlexLexer.alexScanTokens $ TS.unpack s
 
-evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (TS.Text, (Maps, StdGen)) (Complex Rational, (Maps, StdGen))
-evalExprS t maps g = either (Left . (,(maps, g))) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
+evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (MessageType, (Maps, StdGen)) (Complex Rational, (Maps, StdGen))
+evalExprS t maps g = either (Left . (,(maps, g)) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
   where getShit e = let a = runExceptT (evalS e) in S.runState a (maps, g)
 
 type StateData = [String]
@@ -206,7 +207,9 @@ loop mode maps = do
           case y of
             Left (err, (m, ng)) -> do
               let m' = removeLocals m
-              liftIO $ TSIO.putStrLn err
+              case err of
+                MsgMsg msg -> liftIO $ TSIO.putStrLn msg
+                ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
               loop' md m' ng
             Right (r, (m, ng)) -> do
               let m' = removeLocals m
@@ -234,13 +237,15 @@ interpret path mode maps = do
         let y = parseEval md ms g x
         case y of
           Left (err, (m, ng)) -> do
-            liftIO $ TSIO.putStrLn err
+            case err of
+              MsgMsg msg -> liftIO $ TSIO.putStrLn msg
+              ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
             loop' ls md m ng
           Right (r, (m, ng)) -> do
             liftIO . TSIO.putStrLn $ showComplex r
             loop' ls md (m & _1 %~ M.insert "_" r) ng
 
-parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (TS.Text, (Maps, StdGen)) (Complex Rational, (Maps, StdGen))
+parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (MessageType, (Maps, StdGen)) (Complex Rational, (Maps, StdGen))
 parseEval md ms g x = evalExprS (parseString md x ms) ms g
 
 evalLoop :: Mode -> IO ()
@@ -322,12 +327,12 @@ webLoop port mode = do
           let res = evalExprS t ms gen
           let txt = let (ress, (mps, ng)) = either
                           Prelude.id
-                          (\(r, mg) -> (showComplex r, first (_1 %~ M.insert "_" r) mg))
+                          (\(r, mg) -> (MsgMsg . showComplex $ r, first (_1 %~ M.insert "_" r) mg))
                           res
                     in do
                         storeMaps storagename mps
                         liftIO $ writeIORef ref ng
-                        return $ (fs, ress) : lg
+                        return $ (fs, unpackMsg ress) : lg
           rtxt <- liftIO txt
           liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
           Web.Scotty.html $ renderHtml
@@ -344,3 +349,5 @@ webLoop port mode = do
     storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
     mapsToLists (a, b, c) = (map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ a, funsToList b, opsToList c)
     listsToMaps (a, b, c) = (M.fromList . map (\(k, (vr, vi)) -> (k, vr:+vi)) $ a, M.union funMap $ funsFromList b, M.union opMap $ opsFromList c)
+    unpackMsg (MsgMsg m) = m
+    unpackMsg (ErrMsg e) = e
