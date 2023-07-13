@@ -193,6 +193,7 @@ evalS ex = case ex of
                          . (`function` "")
                          . abs . numerator . realPart $ t1
       else throwError (ErrMsg "Can't convert rational yet")
+  Call ":" [a, b] -> evm (Call "if" [a, b, b])
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     maps <- gets fst
     let pr = getPrecedences (maps^._3) <> getFakePrecedences (maps^._2)
@@ -221,7 +222,7 @@ evalS ex = case ex of
     if n == 0:+0
       then throwError . ErrMsg $ "Division by zero: " <> exprToString oc
       else return ((:+0) . toRational $ mod (floor . realPart $ n1 :: Integer) (floor . realPart $ n :: Integer))
-  Call op [x, Id y] | op == "|>" -> evm $ Call y [x]
+  Call "|>" [x, Id y] -> evm $ Call y [x]
   Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
       then throwError (ErrMsg "I'm afraid you can't do that.")

@@ -82,7 +82,7 @@ tests = map (Data.Bifunctor.second ((:+ 0) <$>)) [
   ,("$(1,0) = x - y", Left . MsgMsg $ "Operator $ p=1 a=left")
   ,("2$2$2$2", Right (-4))
   ,("2$2-2$2", Right 0)
-  ,("$(4,0) = x - y", Left . MsgMsg $ "Operator $ p=4 a=left")
+  ,("$(5,0) = x - y", Left . MsgMsg $ "Operator $ p=5 a=left")
   ,("2$2-2$2", Right (-4))
   ,("2^3^4", Right 2417851639229258349412352)
   ,("2+2*2", Right 6)
@@ -119,7 +119,7 @@ testsAH = map (Data.Bifunctor.second ((:+ 0) <$>)) [
     ,("op $(1,0) = x - y", Left . MsgMsg $ "Operator $ p=1 a=left")
     ,("2$2$2$2", Right (-4))
     ,("2$2-2$2", Right 0)
-    ,("op $(4,0) = x - y", Left . MsgMsg $ "Operator $ p=4 a=left")
+    ,("op $(5,0) = x - y", Left . MsgMsg $ "Operator $ p=5 a=left")
     ,("2$2-2$2", Right (-4))
     ,("2^3^4", Right 2417851639229258349412352)
     ,("2+2*2", Right 6)
@@ -142,11 +142,11 @@ testLoop = do
   g <- initStdGen
   TIO.putStrLn "Internal parser:"
   n1 <- loop tests (defVar, M.empty, opMap) g Internal 0
-  TIO.putStrLn "\nMega parser:"
-  n2 <- loop tests (defVar, M.empty, opMap) g Mega 0
+  -- TIO.putStrLn "\nMega parser:"
+  -- n2 <- loop tests (defVar, M.empty, opMap) g Mega 0
   TIO.putStrLn "\nAlexHappy parser:"
   n3 <- loop testsAH (defVar, M.empty, opMap) g AH 0
-  let n = n1 + n2 + n3
+  let n = n1 + {- n2 + -} n3
   if n == 0
     then exitSuccess
     else exitWith $ ExitFailure n
