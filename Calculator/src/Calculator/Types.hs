@@ -15,7 +15,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Data.Complex
-import Data.Scientific
+import qualified Data.Scientific as S
+import Data.Maybe (fromMaybe)
 
 data Token = TNumber Rational Rational
            | TLPar
@@ -193,8 +194,17 @@ simplifyExpr ex = case ex of
   Call name e -> Call name (map simplifyExpr e)
   x -> x
 
+showScientific :: S.Scientific -> Text
+showScientific = T.pack . S.formatScientific S.Fixed Nothing
+
 showRational :: Rational -> Text
-showRational r = if denominator r == 1 then showT $ numerator r else showT (either fst fst $ fromRationalRepetend Nothing r)
+showRational r = if denominator r == 1 
+  then showT $ numerator r 
+  else case S.fromRationalRepetendUnlimited r of
+    (s, Nothing) -> showT s
+    (s, Just n) -> let st = showScientific s 
+                       idx = (+(n+1)) . fromMaybe 0 . T.findIndex (=='.') $ st
+                   in T.take idx st <> "(" <> T.drop idx st <> ")"
 
 showComplex :: Complex Rational -> Text
 showComplex c =
