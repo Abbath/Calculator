@@ -2,6 +2,7 @@
 {-# LANGUAGE ViewPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 module Calculator.HomebrewLexer (tloop) where
 
 import Control.Applicative ( Alternative(..) )
@@ -11,6 +12,7 @@ import Data.Char
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Calculator.Types    (Token (..), opSymbols)
+import qualified Data.Scientific as S
 
 data Input = Input
   { inputLoc :: Int
@@ -110,18 +112,17 @@ parseIf desc f =
 doubleLiteral :: Parser Rational
 doubleLiteral =
   (\sign int frac expo ->
-       toRational (sign * (int + frac) * (10 ** expo) :: Double))
-    <$> (minus <|> pure 1)
-    <*> (read <$> digits)
-    <*> opt (read <$> (('0':) <$> ((:) <$> charP '.' <*> digits)))
-    <*> opt (e *> ((*) <$> (plus <|> minus <|> pure 1) <*> (read <$> digits)))
+       toRational . read @S.Scientific $ (sign : int ++ frac ++ expo))
+    <$> plusminus
+    <*> digits
+    <*> opt ((:) <$> charP '.' <*> digits)
+    <*> opt ((:) <$> e <*> ((:) <$> plusminus <*> digits))
   where
     digits = (++) <$> some (parseIf "digit" isDigit) <*> (concat <$> many ud)
     ud = some (parseIf "underscore" (=='_')) *> some (parseIf "digit" isDigit)
-    minus = (-1) <$ charP '-'
-    plus = 1 <$ charP '+'
+    plusminus = charP '+' <|> charP '+' <|> pure '+'
     e = charP 'e' <|> charP 'E'
-    opt = (<|> pure 0)
+    opt = (<|> pure "")
 
 basedLiteral :: (Char -> Bool) -> Char -> Parser Rational
 basedLiteral f p = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . (['0', p] ++) <$> digits)

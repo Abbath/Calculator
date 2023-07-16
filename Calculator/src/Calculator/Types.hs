@@ -15,6 +15,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Data.Complex
+import Data.Scientific
+
 data Token = TNumber Rational Rational
            | TLPar
            | TRPar
@@ -192,7 +194,7 @@ simplifyExpr ex = case ex of
   x -> x
 
 showRational :: Rational -> Text
-showRational r = if denominator r == 1 then showT $ numerator r else showT (fromRational r :: Double)
+showRational r = if denominator r == 1 then showT $ numerator r else showT (either fst fst $ fromRationalRepetend Nothing r)
 
 showComplex :: Complex Rational -> Text
 showComplex c =
