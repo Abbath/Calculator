@@ -13,7 +13,7 @@ import Calculator.Types
     exprToString,
     isOp,
     preprocess,
-    showT, FunOp (..), Op(..), ExecOp(..), ExecFn(..), FunFun(..), Fun(..), showComplex
+    showT, FunOp (..), Op(..), ExecOp(..), ExecFn(..), FunFun(..), Fun(..), showComplex, showFraction
   )
 import Control.Arrow (first, second)
 import Control.Lens ((%~), (.~), (^.), _1, _2, _3)
@@ -176,7 +176,14 @@ evalS ex = case ex of
     return $ toRational <$> logBase (fromRational <$> t1 :: Complex Double) (fromRational <$> t2 :: Complex Double)
   Call "prat" [e] -> do
     t1 <- evm e
-    throwError . MsgMsg $ showT (numerator (realPart t1)) <> " / " <> showT (denominator (realPart t1))
+    throwError . MsgMsg $ showFraction (realPart t1)
+  Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text])-> do
+    t1 <- evm e
+    case f of 
+      "real" -> return $ realPart t1 :+ 0
+      "imag" -> return $ imagPart t1 :+ 0
+      "conj" -> return $ conjugate t1
+      _ -> throwError . ErrMsg $ "No such complex function: " <> f
   Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
     t1 <- evm e
     if denominator (realPart t1) == 1
@@ -383,8 +390,7 @@ extractFormat = go T.empty []
            '%' -> let (c1, cs1) = fromMaybe ('%', "") $ T.uncons cs
                   in case c1 of
                        '%' -> go (T.snoc chunk '%') acc cs1
-                       's' -> go T.empty (FormatFmt "s":FormatTxt chunk:acc) cs1
-                       'f' -> go T.empty (FormatFmt "f":FormatTxt chunk:acc) cs1
+                       _ | c1 `T.elem` "sfr" -> go T.empty (FormatFmt (T.singleton c1):FormatTxt chunk:acc) cs1
                        _ -> Left "Wrong format string!"
            _ -> go (T.snoc chunk c) acc cs
 
@@ -400,6 +406,7 @@ zipFormat = go T.empty
         txt <- numToText r
         go (acc <> txt) fs rs
       | t == "f" = go (acc <> showComplex r) fs rs
+      | t == "r" = go (acc <> showFraction (realPart r)) fs rs
       | otherwise = Left $ "Wrong format: " <> t
 
 derivative :: Expr -> Expr -> Either Text Expr

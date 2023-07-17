@@ -4,7 +4,7 @@
 module Calculator.Types (Expr (..), Token (..), Assoc (..), Op (..), ExecOp (..), FunOp (..), getPrA,
                          exprToString, unTOp, isOp, preprocess, ListTuple, Fun (..), ExecFn (..), FunFun (..),
                          showRational, showT, opSymbols, Maps, OpMap, VarMap, FunMap, opsFromList, opsToList,
-                         funsFromList, funsToList, showComplex) where
+                         funsFromList, funsToList, showComplex, showFraction) where
 
 import Control.Arrow (second)
 import Data.Aeson (FromJSON, ToJSON)
@@ -205,6 +205,9 @@ showRational r = if denominator r == 1
     (s, Just n) -> let st = showScientific s 
                        idx = (+(n+1)) . fromMaybe 0 . T.findIndex (=='.') $ st
                    in T.take idx st <> "(" <> T.drop idx st <> ")"
+
+showFraction :: Rational -> Text
+showFraction t = showT (numerator t) <> " / " <> showT (denominator t)
 
 showComplex :: Complex Rational -> Text
 showComplex c =

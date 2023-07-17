@@ -183,7 +183,7 @@ alfaNum :: Parser Char
 alfaNum = alfa <|> parseIf "alfas and numbas" isDigit
 
 alfaNumDot :: Parser Char
-alfaNumDot = alfaNum <|> parseIf "alfas and numbas" (== '.')
+alfaNumDot = alfaNum <|> parseIf "dot" (== '.')
 
 ident :: Parser Token
 ident = TIdent <$> wsBracket (T.cons <$> alfa <*> (T.pack <$> many alfaNumDot))
