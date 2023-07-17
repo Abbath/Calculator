@@ -120,7 +120,7 @@ parseToken str =
     (TIdent name:TLPar:rest) -> Call name <$> parseFuncall rest
     [TNumber n ni]           -> return $ Number n ni
     (TLPar:rest)             -> Par <$> ps rest
-    x                        -> throwError $ "Unknown token: " <> stringify x
+    x                        -> throwError $ "Unknown token combination: " <> showT x
   where
     ps l = do
       (par, rest) <- lift $ takePar l

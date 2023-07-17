@@ -120,7 +120,7 @@ doubleLiteral =
   where
     digits = (++) <$> some (parseIf "digit" isDigit) <*> (concat <$> many ud)
     ud = some (parseIf "underscore" (=='_')) *> some (parseIf "digit" isDigit)
-    plusminus = charP '+' <|> charP '+' <|> pure '+'
+    plusminus = charP '+' <|> charP '-' <|> pure '+'
     e = charP 'e' <|> charP 'E'
     opt = (<|> pure "")
 
