@@ -12,7 +12,7 @@ Features
 * Underscores can be used in numbers: `1_000_000`
 * Built-in constants `m.pi`, `m.phi`, `m.e`, `b.true` and `b.false`
 * Locally unchangeable constants with a `c.` prefix: `c.x`
-* Built-in functions `sin cos tan asin acos atan cot sec csc coth sech csch acot asec acsc acoth asech acsch sinc cosc sincn coscn log exp sqrt abs trunc round floor ceil`
+* Built-in functions `sin cos tan asin acos atan cot sec csc coth sech csch acot asec acsc acoth asech acsch sinc cosc sincn coscn log exp sqrt abs trunc round floor ceil hypot pow log1p expm1` etc.
 * Built-in integral functions `gcd lcm mod div quot rem`
 * Ability to print rational numbers using function `prat`
 * If conditions with a following syntax `if(<cond_expression>,<expression1>,<expression2>)`

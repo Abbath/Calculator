@@ -5,13 +5,14 @@ module Calculator.Builtins where
 
 import Calculator.Types (Assoc (..), OpMap, FunMap, VarMap, Op(..), ExecOp(..), FunOp(..), Fun(..), ExecFn(..), FunFun(..), Expr(..))
 import Data.Bits ((.|.), (.&.), xor, shift, popCount, complement, Bits (complement))
-import Data.Ratio (denominator, numerator)
+import Data.Ratio (denominator, numerator, (%))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T
 import Control.Arrow (second)
-import Data.Complex
+import Data.Complex ( imagPart, realPart, Complex(..) )
+import Numeric (log1p, log1pexp, log1mexp, expm1)
 
 operators :: Map Text Op
 operators =
@@ -69,22 +70,28 @@ functions =
        (("ne", 2), Fun { params = [], fexec = FnFn (CmpFn (/=)) }),
        (("le", 2), Fun { params = [], fexec = FnFn (CmpFn (<=)) }),
        (("ge", 2), Fun { params = [], fexec = FnFn (CmpFn (>=)) }),
-       (("sin", 1), Fun { params = [], fexec = FnFn (MathFn sin) }),
-       (("cos", 1), Fun { params = [], fexec = FnFn (MathFn cos) }),
-       (("asin", 1), Fun { params = [], fexec = FnFn (MathFn asin) }),
-       (("acos", 1), Fun { params = [], fexec = FnFn (MathFn acos) }),
-       (("tan", 1), Fun { params = [], fexec = FnFn (MathFn tan) }),
-       (("atan", 1), Fun { params = [], fexec = FnFn (MathFn atan) }),
-       (("log", 1), Fun { params = [], fexec = FnFn (MathFn log) }),
-       (("exp", 1), Fun { params = [], fexec = FnFn (MathFn exp) }),
-       (("sqrt", 1), Fun { params = [], fexec = FnFn (MathFn sqrt) }),
-       (("abs", 1), Fun { params = [], fexec = FnFn (MathFn abs) }),
-       (("sinh", 1), Fun { params = [], fexec = FnFn (MathFn sinh) }),
-       (("cosh", 1), Fun { params = [], fexec = FnFn (MathFn cosh) }),
-       (("tanh", 1), Fun { params = [], fexec = FnFn (MathFn tanh) }),
-       (("asinh", 1), Fun { params = [], fexec = FnFn (MathFn asinh) }),
-       (("acosh", 1), Fun { params = [], fexec = FnFn (MathFn acosh) }),
-       (("atanh", 1), Fun { params = [], fexec = FnFn (MathFn atanh) }),
+       (("sin", 1), Fun { params = [], fexec = FnFn (MathFn1 sin) }),
+       (("cos", 1), Fun { params = [], fexec = FnFn (MathFn1 cos) }),
+       (("asin", 1), Fun { params = [], fexec = FnFn (MathFn1 asin) }),
+       (("acos", 1), Fun { params = [], fexec = FnFn (MathFn1 acos) }),
+       (("tan", 1), Fun { params = [], fexec = FnFn (MathFn1 tan) }),
+       (("atan", 1), Fun { params = [], fexec = FnFn (MathFn1 atan) }),
+       (("log", 1), Fun { params = [], fexec = FnFn (MathFn1 log) }),
+       (("exp", 1), Fun { params = [], fexec = FnFn (MathFn1 exp) }),
+       (("log1p", 1), Fun { params = [], fexec = FnFn (MathFn1 log1p) }),
+       (("expm1", 1), Fun { params = [], fexec = FnFn (MathFn1 expm1) }),
+       (("log1pexp", 1), Fun { params = [], fexec = FnFn (MathFn1 log1pexp) }),
+       (("log1mexp", 1), Fun { params = [], fexec = FnFn (MathFn1 log1mexp) }),
+       (("sqrt", 1), Fun { params = [], fexec = FnFn (MathFn1 sqrt) }),
+       (("abs", 1), Fun { params = [], fexec = FnFn (MathFn1 abs) }),
+       (("sinh", 1), Fun { params = [], fexec = FnFn (MathFn1 sinh) }),
+       (("cosh", 1), Fun { params = [], fexec = FnFn (MathFn1 cosh) }),
+       (("tanh", 1), Fun { params = [], fexec = FnFn (MathFn1 tanh) }),
+       (("asinh", 1), Fun { params = [], fexec = FnFn (MathFn1 asinh) }),
+       (("acosh", 1), Fun { params = [], fexec = FnFn (MathFn1 acosh) }),
+       (("atanh", 1), Fun { params = [], fexec = FnFn (MathFn1 atanh) }),
+       (("hypot", 2), Fun { params = [], fexec = FnFn (MathFn2 hypot) }),
+       (("pow", 2), Fun { params = [], fexec = FnFn (MathFn2 pow) }),
        (("cot", 1), Fun { params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "tan" [Id "x"]]) }),
        (("sec", 1), Fun { params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "sin" [Id "x"]]) }),
        (("csc", 1), Fun { params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "cos" [Id "x"]]) }),
@@ -151,6 +158,13 @@ pow a b
         then (:+0) . toRational $ na ^ nb
         else (:+0) . toRational $ (fromRational (realPart a) :: Double) ** (fromRational (realPart b) :: Double)
 pow a b = toRational <$> (fromRational <$> a :: Complex Double) ** (fromRational <$> b :: Complex Double)
+
+hypot :: Complex Rational -> Complex Rational -> Complex Rational
+hypot cx cy = let (x, y) = (realPart cx, realPart cy)
+                  min' = min x y
+                  max' = max x y
+                  r = min' / max'
+              in max' * realPart (pow ((1 + r*r) :+ 0) (1%2 :+ 0)) :+ 0    
 
 names :: [String]
 names = T.unpack <$> M.keys operators ++ map fst (M.keys functions)
