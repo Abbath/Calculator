@@ -82,7 +82,7 @@ parseOp 0 s = parseOp 1 s
 parseOp n (TOp op:rest)
   | op == "~" = Call "comp" . (:[]) <$> parseOp (n+1) rest
   | op == "+" = parseOp (n+1) rest
-  | op == "-" = UMinus <$> parseOp (n+1) rest
+  | op == "-" = Call "-" . (:[]) <$> parseOp (n+1) rest
 parseOp 15 s = parseToken s
 parseOp l s = do
   m <- ask

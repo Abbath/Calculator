@@ -49,7 +49,6 @@ funNames = map (\(f,_) -> (f, f)) . M.keys
 goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
   (Par e)    -> Par <$> f e
-  (UMinus e) -> UMinus <$> f e
   (Call n e) -> Call n <$> mapM f e
   e          -> return e
 
@@ -179,7 +178,7 @@ evalS ex = case ex of
     throwError . MsgMsg $ showFraction (realPart t1)
   Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text])-> do
     t1 <- evm e
-    case f of 
+    case f of
       "real" -> return $ realPart t1 :+ 0
       "imag" -> return $ imagPart t1 :+ 0
       "conj" -> return $ conjugate t1
@@ -268,6 +267,8 @@ evalS ex = case ex of
     if n == 0:+0
       then return res
       else evm $ Call "loop" [c, a]
+  Call "-" [Call "^" [x, y]] -> evm $ Call "^" [Call "-" [x], y]
+  Call "-" [x]         -> evm $ Call "-" [Number 0 0, x]
   Call f ps | M.member (f, length ps) functions -> do
     let builtin_fun = functions M.! (f, length ps)
     case fexec builtin_fun of
@@ -314,8 +315,6 @@ evalS ex = case ex of
     let val = asum ([M.lookup ("_." <> s) (maps^._1), M.lookup s (maps^._1)] :: [Maybe (Complex Rational)])
     maybe (throwError (ErrMsg $ "No such variable: " <> s)) return val
   Number x xi -> return $ x :+ xi
-  UMinus (Call "^" [x, y]) -> evm $ Call "^" [UMinus x, y]
-  UMinus x         -> evm $ Call "-" [Number 0 0, x]
   Par e            -> evm e
   where
     evalBuiltinOp bop x y = do
@@ -416,7 +415,7 @@ zipFormat = go T.empty
 derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of
   Par ex -> Par <$> derivative ex x
-  UMinus ex -> UMinus <$> derivative ex x
+  Call "-" [ex] -> Call "-" . (:[]) <$> derivative ex x
   Number _ _ -> return $ Number 0 0
   i@(Id _) | i == x -> return $ Number 1 0
   (Id _) -> return $ Number 0 0
@@ -438,7 +437,7 @@ derivative e x = case e of
   ex@(Call "exp" [i]) | i == x -> return ex
   Call "log" [i] | i == x -> return $ Call "/" [Number 1 0, i]
   Call "sin" [i] | i == x -> return $ Call "cos" [i]
-  Call "cos" [i] | i == x -> return $ UMinus (Call "sin" [i])
+  Call "cos" [i] | i == x -> return $ Call "-" [Call "sin" [i]]
   Call "tan" [i] | i == x ->
     return $ Call "/" [Number 1 0, Call "^" [Call "cos" [i], Number 2 0]]
   ex@(Call _ [i]) -> do

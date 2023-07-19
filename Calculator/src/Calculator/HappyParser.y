@@ -42,7 +42,7 @@ Exprs:
     | Expr op Exprs {Call $2 [$1, $3]}
 
 Expr:
-    '-' Expr {UMinus $2}
+    '-' Expr {Call "-" [$2]}
     | '(' Exprs ')' {Par $2}
     | fn ')' {Call $1 []}
     | fn exprs ')' {Call $1 $2}

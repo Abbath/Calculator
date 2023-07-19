@@ -110,7 +110,7 @@ opcallExpr = do
 
 operators :: [[Operator PReader Expr]]
 operators =
-  [[Prefix (try (symbol "-") $> UMinus)]
+  [[Prefix (try (symbol "-") $> Call "-" . (:[]))]
   ,[sop InfixR "^"]
   ,[sop InfixL "*", sop InfixL "/" {-((symbol "/" <* notFollowedBy (symbol "=")) *> pure (OpCall "/"))-}]
   ,[sop InfixL "+", sop InfixL "-"]

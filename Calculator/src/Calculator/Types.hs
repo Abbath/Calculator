@@ -39,7 +39,6 @@ data Expr = Number Rational Rational
           | UDF Text [Text] Expr
           | UDO Text Int Assoc Expr
           | Call Text [Expr]
-          | UMinus Expr
           | Par Expr
           | Id Text
           deriving (Eq, Show, Read, Generic)
@@ -89,11 +88,11 @@ getPrA om = let lst = M.toList om
                 ps = M.fromList $ map (second (\o -> (precedence o, associativity o))) lst
             in ps
 
-data FunFun = CmpFn (Rational -> Rational -> Bool) | 
-              MathFn1 (Complex Double -> Complex Double) | 
-              MathFn2 (Complex Rational -> Complex Rational -> Complex Rational) | 
-              IntFn1 (Double -> Integer) | 
-              IntFn2 (Integer -> Integer -> Integer) | 
+data FunFun = CmpFn (Rational -> Rational -> Bool) |
+              MathFn1 (Complex Double -> Complex Double) |
+              MathFn2 (Complex Rational -> Complex Rational -> Complex Rational) |
+              IntFn1 (Double -> Integer) |
+              IntFn2 (Integer -> Integer -> Integer) |
               BitFn (Integer -> Integer)
 
 instance Show FunFun where
@@ -153,7 +152,7 @@ exprToString ex = case ex of
   Asgn i e        -> i <> " = " <> exprToString e
   Number x _       -> showT . (fromRational :: Rational -> Double) $ x
   Par e           -> "(" <> exprToString e <> ")"
-  UMinus e        -> "(-" <> exprToString e <> ")"
+  Call op [e]       -> "(" <> op <> exprToString e <> ")"
   Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
   Call n e     -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
   Id s            -> s
@@ -178,25 +177,17 @@ simplifyExpr ex = case ex of
   UDF n s e -> UDF n s (simplifyExpr e)
   UDO n p a e -> UDO n p a (simplifyExpr e)
   Par (Par e) -> Par (simplifyExpr e)
-  Par (UMinus e) -> UMinus (simplifyExpr e)
   Par e -> Par (simplifyExpr e)
-  UMinus (Par (UMinus e)) -> Par (simplifyExpr e)
-  UMinus (Call op [e1, e2]) | isOp op -> Call op [UMinus (simplifyExpr e1), simplifyExpr e2]
-  UMinus e -> UMinus (simplifyExpr e)
-  Call "-" [Number 0.0 _, Call op [e1, e2]]
-    | op `elem` ["+", "-"] ->
-        Call op [simplifyExpr . UMinus $ e1, simplifyExpr e2]
-  Call "-" [Number 0.0 _, n] -> UMinus (simplifyExpr n)
-  Call "+" [Number 0.0 _, n] -> simplifyExpr n
-  Call op [n, Number 0.0 _] | op `elem` ["+", "-"] -> simplifyExpr n
-  Call "*" [Number 1.0 _, n] -> simplifyExpr n
-  Call "*" [Number 0.0 _, n] -> Number 0.0 0.0
-  Call op [n, Number 1.0 _] | op `elem` ["*", "/", "%"] -> simplifyExpr n
-  Call "^" [n, Number 1.0 _] -> simplifyExpr n
-  Call "^" [Call "sqrt" [e], Number 2.0 _] -> simplifyExpr e
+  Call "+" [Number 0.0 0.0, n] -> simplifyExpr n
+  Call op [n, Number 0.0 0.0] | op `elem` ["+", "-"] -> simplifyExpr n
+  Call "*" [Number 1.0 0.0, n] -> simplifyExpr n
+  Call "*" [Number 0.0 0.0, n] -> Number 0.0 0.0
+  Call op [n, Number 1.0 0.0] | op `elem` ["*", "/", "%"] -> simplifyExpr n
+  Call "^" [n, Number 1.0 0.0] -> simplifyExpr n
+  Call "^" [Call "sqrt" [e], Number 2.0 0.0] -> simplifyExpr e
   Call "exp" [Call "log" [e]] -> simplifyExpr e
   Call "log" [Call "exp" [e]] -> simplifyExpr e
-  Call "sqrt" [Call "^" [e, Number 2.0 _]] -> simplifyExpr e
+  Call "sqrt" [Call "^" [e, Number 2.0 0.0]] -> simplifyExpr e
   Call name e -> Call name (map simplifyExpr e)
   x -> x
 
@@ -204,11 +195,11 @@ showScientific :: S.Scientific -> Text
 showScientific = T.pack . S.formatScientific S.Fixed Nothing
 
 showRational :: Rational -> Text
-showRational r = if denominator r == 1 
-  then showT $ numerator r 
+showRational r = if denominator r == 1
+  then showT $ numerator r
   else case S.fromRationalRepetendUnlimited r of
     (s, Nothing) -> showT s
-    (s, Just n) -> let st = showScientific s 
+    (s, Just n) -> let st = showScientific s
                        idx = (+(n+1)) . fromMaybe 0 . T.findIndex (=='.') $ st
                    in T.take idx st <> "(" <> T.drop idx st <> ")"
 
