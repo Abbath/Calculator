@@ -121,8 +121,12 @@ functions =
        (("xor", 2), Fun { params = [], fexec = FnFn (IntFn2 xor) }),
        (("pop", 1), Fun { params = [], fexec = FnFn (BitFn $ fromIntegral . popCount) }),
        (("comp", 1), Fun { params = [], fexec = FnFn (BitFn complement) }),
+       (("fact", 1), Fun { params = [], fexec = FnFn (BitFn prod)}),
        (("not", 1), Fun { params = ["x"], fexec = ExFn (Call "if" [Id "x", Number 0 0, Number 1 0])})
     ]
+
+prod :: Integer -> Integer
+prod n = product ([1..n] :: [Integer])
 
 opMap :: OpMap
 opMap = operators

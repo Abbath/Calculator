@@ -1,7 +1,7 @@
 # Calculator
 [![CircleCI](https://circleci.com/gh/Abbath/Calculator.svg?style=shield)](https://circleci.com/gh/Abbath/Calculator)
 
-A simple string calculator
+A simple calculator
 
 Features
 --
