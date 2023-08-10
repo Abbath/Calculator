@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TypeApplications #-}
+{-# LANGUAGE OverloadedStrings, TypeApplications, GeneralisedNewtypeDeriving #-}
 module Calculator.Generator where
 
 import Calculator.Types
@@ -7,6 +7,8 @@ import qualified Data.Text as T
 import Control.Monad.State
 import Control.Monad.Except
 import Control.Lens ((^.), (%~), _3, _1, _2)
+import Data.Word
+import qualified Data.Vector as V
 
 data Tac = TacOp Text Text Text Text
          | TacFun Text Text Text
@@ -92,3 +94,55 @@ generate' expr = do
 
 generate :: Expr -> [Tac]
 generate e = let a = runExceptT (generate' e) in reverse $ execState a (0, 0, []) ^. _3
+
+-- Here is the scaffolding for the future bytecode.
+
+data OpCode = OpReturn | OpConstant deriving (Show, Bounded, Enum)
+
+data Chunk = Chunk { code :: V.Vector Word8, constants :: ValueArray } deriving Show
+
+type Value = Double
+
+newtype ValueArray = ValueArray { unarray :: V.Vector Value } deriving Show
+
+data VM = VM { chunks :: Chunk, ip :: Int } deriving Show
+
+data InterpretResult = IrOk | IrCompileError | IrRuntimeError deriving Show
+
+writeChunk :: Chunk -> Word8 -> Chunk
+writeChunk (Chunk c s) w = Chunk (V.snoc c w) s
+
+disassembleChunk :: Chunk -> String
+disassembleChunk = show
+
+writeValueArray :: ValueArray -> Value -> ValueArray
+writeValueArray (ValueArray v) w = ValueArray (V.snoc v w)
+
+addConstant :: Chunk -> Value -> (Chunk, Int)
+addConstant (Chunk c s) v = let i = V.length (unarray s) in (Chunk c $ writeValueArray s v, i)
+
+toWord8 :: (Enum a) => a -> Word8
+toWord8 = fromIntegral . fromEnum
+
+fromWord8 :: (Enum a) => Word8 -> a
+fromWord8 = toEnum . fromIntegral
+
+interpret :: Chunk -> (VM, InterpretResult)
+interpret c = run $ VM c 0
+
+run :: VM -> (VM, InterpretResult)
+run vm@(VM c i) =
+  if i >= V.length (code c)
+    then (vm, IrRuntimeError)
+    else let new_i = i + 1
+         in case fromWord8 $ code c V.! i of
+      OpReturn -> (vm, IrOk)
+      _ -> run $ VM c new_i
+
+testBytecode :: Chunk
+testBytecode = let c = Chunk V.empty (ValueArray V.empty)
+                   (c2, n) = addConstant c 1.2
+                   c3 = writeChunk c2 (toWord8 OpConstant)
+                   c4 = writeChunk c3 (toWord8 n)
+                   c5 = writeChunk c4 (toWord8 OpReturn)
+               in c5

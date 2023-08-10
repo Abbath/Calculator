@@ -19,7 +19,10 @@ import Calculator.Types
       opsFromList,
       getPrA,
       funsToList,
-      funsFromList, showComplex )
+      funsFromList,
+      showComplex,
+      EvalState (EvalState),
+      maps)
 import Clay (render)
 import Control.Arrow (first, left, second)
 import Control.Lens ((%~), (&), (^.), _1, _2, _3)
@@ -100,7 +103,7 @@ import qualified Control.Exception as CE
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Complex
 
-newtype Model = Model {getMaps :: (Maps, StdGen)}
+newtype Model = Model {getMaps :: EvalState}
 
 -- | Actions bot can perform.
 data Action
@@ -111,7 +114,7 @@ data Action
 -- | Bot application.
 bot :: Mode -> StdGen -> BotApp Model Action
 bot mode gen = BotApp
-  { botInitialModel = Model ((defVar, M.empty, opMap), gen)
+  { botInitialModel = Model (EvalState (defVar, M.empty, opMap) gen M.empty)
   , botAction = flip handleUpdate
   , botHandler = handleAction mode
   , botJobs = []
@@ -133,7 +136,7 @@ handleAction mode (Reply msg) model = model2 <# do
   where (response, model2) = second Model $ either
           Prelude.id
           (first (MsgMsg . showComplex))
-          (let (mps, gen) = getMaps model in parseEval mode mps gen msg)
+          (let (EvalState mps rgen _) = getMaps model in parseEval mode mps rgen msg)
 
 -- | Run bot with a given 'Telegram.Token'.
 run :: Mode -> Telegram.Token -> IO ()
@@ -156,9 +159,9 @@ parseString m s ms = case m of
                          tloop s >>= parse (getPrecedences (ms^._3) <> getFakePrecedences (ms^._2))
                        AlexHappy -> Right $ preprocess . HP.parse . Calculator.AlexLexer.alexScanTokens $ TS.unpack s
 
-evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (MessageType, (Maps, StdGen)) (Complex Rational, (Maps, StdGen))
-evalExprS t maps g = either (Left . (,(maps, g)) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
-  where getShit e = let a = runExceptT (evalS e) in S.runState a (maps, g)
+evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (MessageType, EvalState) (Complex Rational, EvalState)
+evalExprS t mps g = either (Left . (, EvalState mps g M.empty) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
+  where getShit e = let a = runExceptT (evalS e) in S.runState a (EvalState mps g M.empty)
 
 type StateData = [String]
 
@@ -182,16 +185,16 @@ extractNames :: Maps -> [String]
 extractNames (v, f, o) = map TS.unpack $ M.keys o <> M.keys v <> map fst (M.keys f)
 
 loop :: Mode -> Maps -> IO ()
-loop mode maps = do
+loop mode mps = do
     g <- initStdGen
     hd <- getHomeDirectory
     x <- CE.try $ flip S.evalStateT [] $ runInputT
        (replSettings { historyFile = Just (hd ++ "/.mycalchist")})
-       (loop' mode maps g)
+       (loop' mode mps g)
     case x of
       Left (CE.ErrorCall s) -> do
         putStrLn s
-        Calculator.loop mode maps
+        Calculator.loop mode mps
       Right _ -> return ()
   where
   removeLocals = _1 %~ M.filterWithKey (\k v -> not $ "_." `TS.isInfixOf` k)
@@ -205,22 +208,22 @@ loop mode maps = do
       Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' md ms g) . withInterrupt $ do
           let y = parseEval md ms g (TS.pack x)
           case y of
-            Left (err, (m, ng)) -> do
+            Left (err, EvalState m ng _) -> do
               let m' = removeLocals m
               case err of
                 MsgMsg msg -> liftIO $ TSIO.putStrLn msg
                 ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
               loop' md m' ng
-            Right (r, (m, ng)) -> do
+            Right (r, EvalState m ng _) -> do
               let m' = removeLocals m
               liftIO . TSIO.putStrLn $ showComplex r
               loop' md (m' & _1 %~ M.insert "_" r) ng
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
-interpret path mode maps = do
+interpret path mode mps = do
     g <- initStdGen
     source <- TS.lines <$> TSIO.readFile path
-    x <- CE.try $ flip S.evalStateT [] $ loop' source mode maps g
+    x <- CE.try $ flip S.evalStateT [] $ loop' source mode mps g
     case x of
       Left (CE.ErrorCall s) -> do
         putStrLn s
@@ -236,16 +239,16 @@ interpret path mode maps = do
       x -> do
         let y = parseEval md ms g x
         case y of
-          Left (err, (m, ng)) -> do
+          Left (err, EvalState m ng _) -> do
             case err of
               MsgMsg msg -> liftIO $ TSIO.putStrLn msg
               ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
             loop' ls md m ng
-          Right (r, (m, ng)) -> do
+          Right (r, EvalState m ng _) -> do
             liftIO . TSIO.putStrLn $ showComplex r
             loop' ls md (m & _1 %~ M.insert "_" r) ng
 
-parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (MessageType, (Maps, StdGen)) (Complex Rational, (Maps, StdGen))
+parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (MessageType, EvalState) (Complex Rational, EvalState)
 parseEval md ms g x = evalExprS (parseString md x ms) ms g
 
 evalLoop :: Mode -> IO ()
@@ -325,9 +328,9 @@ webLoop port mode = do
           let t = parseString mode fs ms
           gen <- liftIO $ readIORef ref
           let res = evalExprS t ms gen
-          let txt = let (ress, (mps, ng)) = either
+          let txt = let (ress, EvalState mps ng _) = either
                           Prelude.id
-                          (\(r, mg) -> (MsgMsg . showComplex $ r, first (_1 %~ M.insert "_" r) mg))
+                          (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . _1 %~ M.insert "_" r) mg))
                           res
                     in do
                         storeMaps storagename mps

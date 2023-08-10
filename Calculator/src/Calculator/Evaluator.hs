@@ -5,17 +5,28 @@ import Calculator.Builtins
 import Calculator.Generator
 import Calculator.Types
   ( Assoc (..),
+    ExecFn (..),
+    ExecOp (..),
     Expr (..),
+    Fun (..),
+    FunFun (..),
     FunMap,
+    FunOp (..),
     Maps,
+    Op (..),
     OpMap,
     VarMap,
     exprToString,
     isOp,
     preprocess,
-    showT, FunOp (..), Op(..), ExecOp(..), ExecFn(..), FunFun(..), Fun(..), showComplex, showFraction
+    showComplex,
+    showFraction,
+    showT,
+    EvalState (..),
+    maps,
+    gen,
+    mem
   )
-import Control.Arrow (first, second)
 import Control.Lens ((%~), (.~), (^.), _1, _2, _3)
 import Control.Monad.Except
   ( ExceptT,
@@ -36,7 +47,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Metrics (damerauLevenshteinNorm)
 import Numeric (showBin, showHex, showInt, showOct)
-import System.Random (Random (randomR), StdGen)
+import System.Random (Random (randomR))
 import Data.Char (chr)
 import Data.Bits (shiftR, (.&.))
 import Data.Maybe (fromMaybe)
@@ -107,42 +118,42 @@ catchVar (vm, fm) ex = case ex of
 
 data MessageType = ErrMsg Text | MsgMsg Text deriving (Show, Eq)
 
-type Result = ExceptT MessageType (State (Maps, StdGen))
+type Result = ExceptT MessageType (State EvalState)
 
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
   Asgn s _ | M.member s defVar -> throwError . ErrMsg $ "Cannot change a constant value: " <> s
   Asgn s e -> do
     r <- evm e
-    modify (first (_1 %~ M.insert s r))
+    modify (maps . _1 %~ M.insert s r)
     throwError . MsgMsg $ ((if "c." `T.isPrefixOf` s then "Constant " else "Variable ") <> s <> "=" <> showComplex r)
   UDF n [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
     either (throwError . ErrMsg) (evm . UDF n [s]) de
   UDF n s e -> do
-    maps <- gets fst
-    let newe = localize s e >>= catchVar (maps^._1, maps ^._2)
+    mps <- gets (^. maps)
+    let newe = localize s e >>= catchVar (mps^._1, mps ^._2)
     either (throwError . ErrMsg)  (\r -> do
-      let newmap = M.insert (n, length s) (Fun (map (T.cons '@') s) (ExFn r)) $ maps^._2
-      modify (first (_2 .~ newmap))
+      let newmap = M.insert (n, length s) (Fun (map (T.cons '@') s) (ExFn r)) $ mps^._2
+      modify (maps . _2 .~ newmap)
       throwError . MsgMsg $ ("Function " <> n <> "/" <> showT (length s))) newe
   UDO n (-1) _ e@(Call op _) -> do
-    maps <- gets fst
-    case M.lookup op (maps^._3) of
+    mps <- gets (^. maps)
+    case M.lookup op (mps^._3) of
       Just o@Op{} -> do
-        let newmap = M.insert n (o { oexec = AOp op }) (maps^._3)
-        modify (first (_3 .~ newmap))
+        let newmap = M.insert n (o { oexec = AOp op }) (mps^._3)
+        modify (maps . _3 .~ newmap)
         throwError . MsgMsg $ "Operator alias " <> n <> " = " <> op
       Nothing -> throwError . ErrMsg $ "No such operator: " <> op
   UDO n p a e
     | M.member n operators -> throwError . ErrMsg $ "Can not redefine the built-in operator: " <> n
     | p < 1 || p > 14 ->  throwError . ErrMsg $ "Bad precedence: " <> showT p
     | otherwise -> do
-        maps <- gets fst
-        let t = localize ["x","y"] e >>= catchVar (maps^._1, maps^._2)
+        mps <- gets (^. maps)
+        let t = localize ["x","y"] e >>= catchVar (mps^._1, mps^._2)
         either (throwError . ErrMsg) (\r -> do
-          let newmap = M.insert n Op {precedence = p, associativity = a, oexec = ExOp r} (maps^._3)
-          modify (first (_3 .~ newmap))
+          let newmap = M.insert n Op {precedence = p, associativity = a, oexec = ExOp r} (mps^._3)
+          modify (maps ._3 .~ newmap)
           throwError . MsgMsg $ ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
   Call "debug" [e] -> throwError . MsgMsg . showT . preprocess $ e
   Call "str" [e] -> evm e >>= (either (throwError . ErrMsg) (throwError . MsgMsg . (\s -> "\"" <> s <> "\"")) . numToText)
@@ -160,11 +171,11 @@ evalS ex = case ex of
       let e = derivative a x
       either (throwError . ErrMsg) (throwError . MsgMsg . exprToString . preprocess) e
   Call "int" [Id fun, a, b, eps] -> do
-      maps <- get
+      mps <- get
       a1 <- evm a
       b1 <- evm b
       e1 <- evm eps
-      return $ integrate (realPart . fromRight (0:+0) . procListElem maps fun) (realPart a1) (realPart b1) (realPart e1)
+      return $ integrate (realPart . fromRight (0:+0) . procListElem mps fun) (realPart a1) (realPart b1) (realPart e1)
   Call "atan" [Call "/" [e1, e2]] -> do
     t1 <- evm e1
     t2 <- evm e2
@@ -201,16 +212,16 @@ evalS ex = case ex of
       else throwError (ErrMsg "Can't convert rational yet")
   Call ":" [a, b] -> evm (Call "if" [a, b, b])
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
-    maps <- gets fst
-    let pr = getPrecedences (maps^._3) <> getFakePrecedences (maps^._2)
+    mps <- gets (^. maps)
+    let pr = getPrecedences (mps^._3) <> getFakePrecedences (mps^._2)
     let a = M.lookup op1 pr
     let b = M.lookup op2 pr
     if a == b
     then case a of
       Nothing -> throwError . ErrMsg $ "No such operators: " <> op1 <> " " <> op2
       Just _ -> do
-        let Op {associativity = asc1 } = (maps^._3) M.! op1
-        let Op {associativity = asc2 } = (maps^._3) M.! op2
+        let Op {associativity = asc1 } = (mps^._3) M.! op1
+        let Op {associativity = asc2 } = (mps^._3) M.! op2
         case (asc1, asc2) of
           (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
           (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
@@ -234,17 +245,17 @@ evalS ex = case ex of
       then throwError (ErrMsg "I'm afraid you can't do that.")
       else do
         n <- evm y
-        maps <- gets fst
-        if x `M.member` (maps^._1)
-          then modify (first (_1 %~ M.insert x n))
-          else modify (first (_1 %~ M.insert ("_." <> x) n))
+        mps <- gets (^. maps)
+        if x `M.member` (mps^._1)
+          then modify (maps . _1 %~ M.insert x n)
+          else modify (maps . _1 %~ M.insert ("_." <> x) n)
         return n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwError . ErrMsg $ "Cannot assign to an expression with: " <> op
   Call op [x, y] | M.member op operators -> evalBuiltinOp op x y
   Call op [x, y] | isOp op -> do
-    maps <- gets fst
-    case (M.lookup op (maps^._3) :: Maybe Op) of
+    mps <- gets (^. maps)
+    case (M.lookup op (mps^._3) :: Maybe Op) of
       Just Op{ oexec = ExOp expr } -> do
         let expr1 = substitute (["@x", "@y"], [x,y]) expr
         either (throwError . ErrMsg) evm expr1
@@ -289,15 +300,15 @@ evalS ex = case ex of
         either (throwError . ErrMsg) evm expr1
       _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do
-    maps <- gets fst
-    case (M.lookup (name, length e) (maps^._2) :: Maybe Fun) of
+    mps <- gets (^. maps)
+    case (M.lookup (name, length e) (mps^._2) :: Maybe Fun) of
       Just (Fun al (ExFn expr)) -> do
         let expr1 = substitute (al, e) expr
         either (throwError . ErrMsg) evm expr1
       Nothing -> case name of
         x | T.head x == '@' -> throwError . ErrMsg $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ -> let
-               (wa, wn) = findSimilar (name, length e) (M.keys (maps^._2))
+               (wa, wn) = findSimilar (name, length e) (M.keys (mps^._2))
                cvt_nls txt nls = if not (null nls)
                   then txt <> T.init (T.concat (map (\(n, l) -> "\t" <> n <> "/" <> showT l <> "\n") nls))
                   else ""
@@ -306,13 +317,13 @@ evalS ex = case ex of
              in throwError . ErrMsg $ "No such function: " <> name <> "/" <> showT (length e) <> wat <> wnt
       _ -> throwError . ErrMsg $ "Suspicious function: " <> name
   Id "m.r" -> do
-    gen <- gets snd
-    let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) gen
-    modify (second (const newGen))
+    rgen <- gets (^. gen)
+    let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
+    modify (gen %~ const newGen)
     return . (:+0) . toRational $ randomNumber
   Id s     -> do
-    maps <- gets fst
-    let val = asum ([M.lookup ("_." <> s) (maps^._1), M.lookup s (maps^._1)] :: [Maybe (Complex Rational)])
+    mps <- gets (^. maps)
+    let val = asum ([M.lookup ("_." <> s) (mps^._1), M.lookup s (mps^._1)] :: [Maybe (Complex Rational)])
     maybe (throwError (ErrMsg $ "No such variable: " <> s)) return val
   Number x xi -> return $ x :+ xi
   Par e            -> evm e

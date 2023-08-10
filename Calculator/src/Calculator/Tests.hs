@@ -8,7 +8,7 @@ import qualified Calculator.HappyParser as HP
 import Calculator.HomebrewLexer (tloop)
 import qualified Calculator.MegaParser as CMP
 import Calculator.Parser (parse)
-import Calculator.Types (getPrA, preprocess, showT, Maps, VarMap)
+import Calculator.Types (getPrA, preprocess, showT, Maps, VarMap, EvalState(..))
 import Control.Lens ((%~), (&), (^.), _1, _2, _3)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (ReaderT (runReaderT))
@@ -29,18 +29,18 @@ type Tests = [(Text, Either MessageType (Complex Rational))]
 
 loop :: Tests -> Maps -> StdGen -> Backend -> Int -> IO Int
 loop [] _ _ _ n = return n
-loop (x:xs) maps gen bk n = do
+loop (x:xs) mps rgen bk n = do
   let sample = fst x
   if not $ T.null sample
   then do
     let e = case bk of
-              Internal -> tloop sample >>= parse (getPrecedences (maps^._3) <> getFakePrecedences (maps^._2))
-              Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ maps^._3)) "" (sample <> "\n"))
+              Internal -> tloop sample >>= parse (getPrecedences (mps^._3) <> getFakePrecedences (mps^._2))
+              Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ mps^._3)) "" (sample <> "\n"))
               AH -> Right $ preprocess . HP.parse . alexScanTokens $ T.unpack sample
     --print e
     let t = case e of
-              Left err -> (Left (ErrMsg err), (maps, gen))
-              Right r  -> runState (runExceptT (evalS r)) (maps, gen)
+              Left err -> (Left (ErrMsg err), EvalState mps rgen M.empty)
+              Right r  -> runState (runExceptT (evalS r)) (EvalState mps rgen M.empty)
     let tt = fst t
     do
       new_n <- if tt == snd x
@@ -51,13 +51,13 @@ loop (x:xs) maps gen bk n = do
           TIO.putStrLn $ "Failed: " <> sample <> " expected: " <> showT x <> " received: " <> showT t
           return 1
       let (m, g) = case t of
-                    (Right r, (m_, g_))  -> (m_ & _1 %~ M.insert "_" r, g_)
-                    (Left _, (m_, g_)) -> (m_, g_)
+                    (Right r, EvalState m_ g_ _)  -> (m_ & _1 %~ M.insert "_" r, g_)
+                    (Left _, EvalState m_ g_ _) -> (m_, g_)
       loop xs m g bk (n + new_n)
 
   else do
     TIO.putStrLn "Empty!"
-    loop xs maps gen bk n
+    loop xs mps rgen bk n
 
 errorToEither :: Show a => Either a b -> Either Text b
 errorToEither (Left err) = Left (showT err)

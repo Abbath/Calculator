@@ -1,10 +1,11 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Calculator.Types (Expr (..), Token (..), Assoc (..), Op (..), ExecOp (..), FunOp (..), getPrA,
                          exprToString, unTOp, isOp, preprocess, ListTuple, Fun (..), ExecFn (..), FunFun (..),
                          showRational, showT, opSymbols, Maps, OpMap, VarMap, FunMap, opsFromList, opsToList,
-                         funsFromList, funsToList, showComplex, showFraction) where
+                         funsFromList, funsToList, showComplex, showFraction, EvalState(..), maps, gen, mem) where
 
 import Control.Arrow (second)
 import Data.Aeson (FromJSON, ToJSON)
@@ -17,6 +18,8 @@ import GHC.Generics (Generic)
 import Data.Complex
 import qualified Data.Scientific as S
 import Data.Maybe (fromMaybe)
+import Control.Lens.TH
+import System.Random (StdGen)
 
 data Token = TNumber Rational Rational
            | TLPar
@@ -211,3 +214,7 @@ showComplex c =
   let cr = realPart c
       ci = imagPart c
   in showRational cr <> if ci /= 0 then "j" <> showRational ci else ""
+
+data EvalState = EvalState {_maps :: Maps, _gen :: StdGen, _mem :: Map (Text, Int) (Map (Complex Rational) (Complex Rational))} deriving (Show)
+
+$(makeLenses ''EvalState)
