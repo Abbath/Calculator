@@ -10,6 +10,8 @@ import Control.Lens ((^.), (%~), _3, _1, _2)
 import Data.Word
 import qualified Data.Vector as V
 
+import Debug.Trace
+
 data Tac = TacOp Text Text Text Text
          | TacFun Text Text Text
 
@@ -137,7 +139,12 @@ run vm@(VM c i) =
     else let new_i = i + 1
          in case fromWord8 $ code c V.! i of
       OpReturn -> (vm, IrOk)
-      _ -> run $ VM c new_i
+      OpConstant -> let new_i_2 = new_i + 1
+                        n = fromWord8 @Int $ code c V.! new_i
+                        v = readConstant c n
+                    in trace (show v) . run $ VM c new_i_2
+  where readConstant cc n = (V.!n) . unarray . constants $ cc
+      -- _ -> run $ VM c new_i
 
 testBytecode :: Chunk
 testBytecode = let c = Chunk V.empty (ValueArray V.empty)
