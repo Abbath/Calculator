@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, CPP #-}
 module Main where
 
 import Calculator
@@ -33,7 +33,9 @@ main = do
   case map toLower $ frontend opts2 of
     "c"  -> evalLoop f
     "w"  -> webLoop (port opts2) f
+#ifdef TELEGRAM
     "t"  -> telegramSimple f
+#endif
     _    -> webLoop (port opts2) f
   where opts = info (helper <*> options)
           ( fullDesc

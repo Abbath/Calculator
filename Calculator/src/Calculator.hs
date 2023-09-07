@@ -1,5 +1,12 @@
-{-# LANGUAGE OverloadedStrings, TupleSections, OverloadedLists #-}
-module Calculator (Mode(..), evalLoop, webLoop, telegramSimple, evalFile) where
+{-# LANGUAGE OverloadedStrings, TupleSections, OverloadedLists, CPP #-}
+module Calculator (
+  Mode(..),
+  evalLoop,
+  webLoop,
+#ifdef TELEGRAM
+  telegramSimple,
+#endif
+  evalFile) where
 
 import Calculator.AlexLexer (alexScanTokens)
 import Calculator.Builtins (opMap, names, funMap, defVar, getPrecedences, getFakePrecedences)
@@ -89,6 +96,11 @@ import System.Random ( randomIO, initStdGen, StdGen )
 import qualified Text.Megaparsec               as MP
 import           Text.Read                     (readMaybe)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
+import qualified Control.Exception as CE
+import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.Complex
+
+#ifdef TELEGRAM
 import qualified Telegram.Bot.API                 as Telegram
 import Telegram.Bot.Simple
     ( getEnvToken,
@@ -99,9 +111,7 @@ import Telegram.Bot.Simple
       BotApp(..),
       Eff )
 import Telegram.Bot.Simple.UpdateParser ( parseUpdate, text )
-import qualified Control.Exception as CE
-import Data.IORef (newIORef, readIORef, writeIORef)
-import Data.Complex
+
 
 newtype Model = Model {getMaps :: EvalState}
 
@@ -148,6 +158,8 @@ run mode token = do
 -- | Run bot using 'Telegram.Token' from @TELEGRAM_BOT_TOKEN@ environment.
 telegramSimple :: Mode -> IO ()
 telegramSimple mode = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run mode
+
+#endif
 
 data Mode = Internal | Megaparsec | AlexHappy deriving Show
 
