@@ -31,7 +31,7 @@ import Calculator.Types
       EvalState (EvalState),
       maps)
 import Clay (render)
-import Control.Arrow (first, left, second)
+import Control.Arrow (left)
 import Control.Lens ((%~), (&), (^.), _1, _2, _3)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
@@ -93,15 +93,16 @@ import System.Console.Haskeline
       handleInterrupt, outputStrLn)
 import System.Directory ( findFile, getHomeDirectory, removeFile )
 import System.Random ( randomIO, initStdGen, StdGen )
-import qualified Text.Megaparsec               as MP
+import qualified Text.Megaparsec  as MP
 import           Text.Read                     (readMaybe)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import qualified Control.Exception as CE
 import Data.IORef (newIORef, readIORef, writeIORef)
-import Data.Complex
+import Data.Complex ( imagPart, realPart, Complex(..) )
 
 #ifdef TELEGRAM
-import qualified Telegram.Bot.API                 as Telegram
+import Control.Arrow (first, second)
+import qualified Telegram.Bot.API  as Telegram
 import Telegram.Bot.Simple
     ( getEnvToken,
       startBot_,

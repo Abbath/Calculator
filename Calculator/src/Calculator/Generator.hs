@@ -99,7 +99,7 @@ generate e = let a = runExceptT (generate' e) in reverse $ execState a (0, 0, []
 
 -- Here is the scaffolding for the future bytecode.
 
-data OpCode = OpReturn | OpConstant deriving (Show, Bounded, Enum)
+data OpCode = OpReturn | OpConstant | OpNegate | OpAdd | OpSubtract | OpMultiply | OpDivide deriving (Show, Bounded, Enum)
 
 data Chunk = Chunk { code :: V.Vector Word8, constants :: ValueArray } deriving Show
 
@@ -107,7 +107,7 @@ type Value = Double
 
 newtype ValueArray = ValueArray { unarray :: V.Vector Value } deriving Show
 
-data VM = VM { chunks :: Chunk, ip :: Int } deriving Show
+data VM = VM { chunks :: Chunk, ip :: Int , stack :: [Value]} deriving Show
 
 data InterpretResult = IrOk | IrCompileError | IrRuntimeError deriving Show
 
@@ -130,20 +130,35 @@ fromWord8 :: (Enum a) => Word8 -> a
 fromWord8 = toEnum . fromIntegral
 
 interpret :: Chunk -> (VM, InterpretResult)
-interpret c = run $ VM c 0
+interpret c = run $ VM c 0 []
+
+push :: Value -> [Value] -> [Value]
+push = (:)
+
+pop :: [Value] -> (Value, [Value])
+pop [] = error "Stack underflow!"
+pop (x:xs) = (x, xs)
 
 run :: VM -> (VM, InterpretResult)
-run vm@(VM c i) =
+run vm@(VM c i s) =
   if i >= V.length (code c)
     then (vm, IrRuntimeError)
     else let new_i = i + 1
          in case fromWord8 $ code c V.! i of
-      OpReturn -> (vm, IrOk)
+      OpReturn -> let (v, s1) = pop s in trace (show v) (VM c i s1, IrOk)
       OpConstant -> let new_i_2 = new_i + 1
                         n = fromWord8 @Int $ code c V.! new_i
                         v = readConstant c n
-                    in trace (show v) . run $ VM c new_i_2
+                    in trace (show s) . run $ VM c new_i_2 (push v s)
+      OpNegate -> let (v, s1) = pop s in run $ VM c new_i (push (-v) s1)
+      OpAdd -> binaryOp (+)
+      OpSubtract -> binaryOp (-)
+      OpMultiply -> binaryOp (*)
+      OpDivide -> binaryOp (/)
   where readConstant cc n = (V.!n) . unarray . constants $ cc
+        binaryOp f = let (v1, s1) = pop s
+                         (v2, s2) = pop s1
+                   in run $ VM c (i + 1) (push (f v2 v1) s2)
       -- _ -> run $ VM c new_i
 
 testBytecode :: Chunk
@@ -151,5 +166,6 @@ testBytecode = let c = Chunk V.empty (ValueArray V.empty)
                    (c2, n) = addConstant c 1.2
                    c3 = writeChunk c2 (toWord8 OpConstant)
                    c4 = writeChunk c3 (toWord8 n)
-                   c5 = writeChunk c4 (toWord8 OpReturn)
-               in c5
+                   c5 = writeChunk c4 (toWord8 OpNegate)
+                   c6 = writeChunk c5 (toWord8 OpReturn)
+               in c6
