@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TypeApplications, GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings, TypeApplications, FlexibleContexts #-}
 module Calculator.Generator where
 
 import Calculator.Types
@@ -99,6 +99,8 @@ generate e = let a = runExceptT (generate' e) in reverse $ execState a (0, 0, []
 
 -- Here is the scaffolding for the future bytecode.
 
+data StateChunk = ExceptT Text (State Chunk ())
+
 data OpCode = OpReturn | OpConstant | OpNegate | OpAdd | OpSubtract | OpMultiply | OpDivide deriving (Show, Bounded, Enum)
 
 data Chunk = Chunk { code :: V.Vector Word8, constants :: ValueArray } deriving Show
@@ -111,8 +113,8 @@ data VM = VM { chunks :: Chunk, ip :: Int , stack :: [Value]} deriving Show
 
 data InterpretResult = IrOk | IrCompileError | IrRuntimeError deriving Show
 
-writeChunk :: Chunk -> Word8 -> Chunk
-writeChunk (Chunk c s) w = Chunk (V.snoc c w) s
+-- writeChunk :: Chunk -> Word8 -> Chunk
+-- writeChunk (Chunk c s) w = Chunk (V.snoc c w) s
 
 disassembleChunk :: Chunk -> String
 disassembleChunk = show
@@ -120,8 +122,8 @@ disassembleChunk = show
 writeValueArray :: ValueArray -> Value -> ValueArray
 writeValueArray (ValueArray v) w = ValueArray (V.snoc v w)
 
-addConstant :: Chunk -> Value -> (Chunk, Int)
-addConstant (Chunk c s) v = let i = V.length (unarray s) in (Chunk c $ writeValueArray s v, i)
+-- addConstant :: Chunk -> Value -> (Chunk, Int)
+-- addConstant (Chunk c s) v = let i = V.length (unarray s) in (Chunk c $ writeValueArray s v, i)
 
 toWord8 :: (Enum a) => a -> Word8
 toWord8 = fromIntegral . fromEnum
@@ -162,10 +164,28 @@ run vm@(VM c i s) =
       -- _ -> run $ VM c new_i
 
 testBytecode :: Chunk
-testBytecode = let c = Chunk V.empty (ValueArray V.empty)
-                   (c2, n) = addConstant c 1.2
-                   c3 = writeChunk c2 (toWord8 OpConstant)
-                   c4 = writeChunk c3 (toWord8 n)
-                   c5 = writeChunk c4 (toWord8 OpNegate)
-                   c6 = writeChunk c5 (toWord8 OpReturn)
-               in c6
+testBytecode = execState go (Chunk V.empty (ValueArray V.empty))
+  where
+    go = do
+      n <- addConstant 1.2
+      writeChunk OpConstant
+      writeChunk n
+      n1 <- addConstant 3.4
+      writeChunk OpConstant
+      writeChunk n1
+      writeChunk OpAdd
+      n2 <- addConstant 5.6
+      writeChunk OpConstant
+      writeChunk n2
+      writeChunk OpDivide
+      writeChunk OpReturn
+    writeChunk v = do
+      (Chunk c s) <- get
+      put (Chunk (V.snoc c (toWord8 v)) s)
+    addConstant v = do
+      (Chunk c s) <- get
+      let i = V.length (unarray s)
+      put (Chunk c $ writeValueArray s v)
+      return i
+
+
