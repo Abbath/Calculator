@@ -101,13 +101,13 @@ parseIf desc f =
           ("Expected " <> desc <> ", but reached end of string")
 
 numExpr :: Parser Expr
-numExpr = Number <$> number
+numExpr = Number <$> number <*> 0
 
 number :: Parser Rational
 number = exctractNum <$> parseIf "number" isTNumber
-  where isTNumber (TNumber _) = True
+  where isTNumber (TNumber _ _) = True
         isTNumber _ = False
-        exctractNum (TNumber n) = n
+        exctractNum (TNumber n _) = n
         exctractNum _ = ""
 
 idExpr :: Parser Expr

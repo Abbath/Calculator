@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, OverloadedLists #-}
 
 module Calculator.Parser
   ( parse
@@ -76,11 +76,7 @@ parseOp 0 (TIdent s:TOp op:rest) | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=
   a <- parseOp 1 rest
   return $ Asgn s (Call (T.init op) [Id s, a])
 parseOp 0 s = parseOp 1 s
-parseOp n (TOp op:rest)
-  | op == "~" = Call "comp" . (:[]) <$> parseOp (n+1) rest
-  | op == "+" = parseOp (n+1) rest
-  | op == "-" = Call "-" . (:[]) <$> parseOp (n+1) rest
-  | op == "!" = Call "fact" . (:[]) <$> parseOp (n+1) rest
+parseOp n (TOp op:rest) = parseUnaryOp op n rest
 parseOp 15 s = parseToken s
 parseOp l s = do
   m <- ask
@@ -93,6 +89,19 @@ parseOp l s = do
       a1 <- parseOp (l + 1) s1
       a2 <- parseOp l s2
       return $ Call (unTOp op) [a1, a2]
+
+parseUnaryOp :: Text -> Int -> [Token] -> ParseReader
+parseUnaryOp op n rest = do
+  x <- parseOp (n+1) rest
+  if op == "+"
+    then return x
+    else 
+      case x of
+        (Call op1 y@(hy:ty)) | length y == 2 -> return $ Call op1 (Call (selectOp M.! op) [hy]:ty)
+        _ -> return $ Call (selectOp M.! op) [x]
+      where 
+        selectOp :: Map Text Text
+        selectOp = [("~", "comp"), ("!", "fact"), ("-", "-")]
 
 parseFunDec :: [Token] -> Except Text (Text, [Text])
 parseFunDec [TIdent name, TLPar, TRPar] = return (name, [])

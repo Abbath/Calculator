@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TypeApplications, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings, TypeApplications #-}
 module Calculator.Generator where
 
 import Calculator.Types
@@ -113,8 +113,8 @@ data VM = VM { chunks :: Chunk, ip :: Int , stack :: [Value]} deriving Show
 
 data InterpretResult = IrOk | IrCompileError | IrRuntimeError deriving Show
 
--- writeChunk :: Chunk -> Word8 -> Chunk
--- writeChunk (Chunk c s) w = Chunk (V.snoc c w) s
+writeChunk :: Enum a => a -> State Chunk ()
+writeChunk v = modify (\(Chunk c s) -> Chunk (V.snoc c (toWord8 v)) s)
 
 disassembleChunk :: Chunk -> String
 disassembleChunk = show
@@ -122,8 +122,12 @@ disassembleChunk = show
 writeValueArray :: ValueArray -> Value -> ValueArray
 writeValueArray (ValueArray v) w = ValueArray (V.snoc v w)
 
--- addConstant :: Chunk -> Value -> (Chunk, Int)
--- addConstant (Chunk c s) v = let i = V.length (unarray s) in (Chunk c $ writeValueArray s v, i)
+addConstant :: Value -> State Chunk Int
+addConstant v = do
+      (Chunk c s) <- get
+      let i = V.length (unarray s)
+      put (Chunk c $ writeValueArray s v)
+      return i
 
 toWord8 :: (Enum a) => a -> Word8
 toWord8 = fromIntegral . fromEnum
@@ -167,25 +171,12 @@ testBytecode :: Chunk
 testBytecode = execState go (Chunk V.empty (ValueArray V.empty))
   where
     go = do
-      n <- addConstant 1.2
       writeChunk OpConstant
-      writeChunk n
-      n1 <- addConstant 3.4
+      addConstant 1.2 >>= writeChunk
       writeChunk OpConstant
-      writeChunk n1
+      addConstant 3.4 >>= writeChunk
       writeChunk OpAdd
-      n2 <- addConstant 5.6
       writeChunk OpConstant
-      writeChunk n2
+      addConstant 5.6 >>= writeChunk 
       writeChunk OpDivide
       writeChunk OpReturn
-    writeChunk v = do
-      (Chunk c s) <- get
-      put (Chunk (V.snoc c (toWord8 v)) s)
-    addConstant v = do
-      (Chunk c s) <- get
-      let i = V.length (unarray s)
-      put (Chunk c $ writeValueArray s v)
-      return i
-
-
