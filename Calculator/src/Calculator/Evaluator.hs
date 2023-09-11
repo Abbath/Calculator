@@ -280,7 +280,6 @@ evalS ex = case ex of
       else evm $ Call "loop" [c, a]
   Call "-" [Call "^" [x, y]] -> evm $ Call "^" [Call "-" [x], y]
   Call "-" [x]         -> evm $ Call "-" [Number 0 0, x]
-  Call op [Call op1 (x:xs)] -> evm $ Call op1 (Call op [x]:xs)
   Call f ps | M.member (f, length ps) functions -> do
     let builtin_fun = functions M.! (f, length ps)
     case fexec builtin_fun of
