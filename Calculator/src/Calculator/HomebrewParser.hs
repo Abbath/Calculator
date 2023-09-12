@@ -1,22 +1,21 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Calculator.HomebrewParser (parser) where
+{-# LANGUAGE InstanceSigs #-}
+module Calculator.HomebrewParser (parser, runParser, Input(..)) where
 
 import           Control.Applicative
 
-import           Calculator.HomebrewLexer 
 import           Calculator.Types
 -- import           Control.Lens         ((%~), (&))
 -- import           Control.Lens.At
 import           Control.Monad.Reader
 import           Data.Map.Strict      (Map)
 import qualified Data.Map.Strict      as M
-import           Data.Scientific
--- import           Control.Monad.Combinators.Expr
--- import           Data.Functor (($>))
+
 import qualified Data.Text as T
 import           Data.Text    (Text)
+import Data.Ratio
 
 data Input = Input
   { inputLoc :: Int
@@ -57,31 +56,51 @@ instance Alternative Parser where
   (Parser p1) <|> (Parser p2) =
     Parser $ \input -> p1 input <|> p2 input
 
-parser :: Parser Expr
-parser = expr 
+instance Monad Parser where
+  (>>=) :: Parser a -> (a -> Parser b) -> Parser b
+  (>>=) (Parser p) f = Parser $ \input -> let x = p input in case x of
+    Left err -> Left err
+    Right (i, a) -> runParser (f a) i
 
-expr :: Parser Expr
-expr =  udfExpr <|> udoExpr <|> assignExpr <|> opAliasExpr <|> expr2
+data OpMapWithPrecedence = OMWP {
+  ops :: OpMap,
+  prec :: Int
+}
 
-expr2 :: Parser Expr
-expr2 =  opcallExpr <|> parExpr <|> funcallExpr <|> expr3
+parser :: OpMap -> Parser Expr
+parser om = expr $ OMWP om 0
 
-expr3 :: Parser Expr
-expr3 = parExpr <|> funcallExpr <|> idExpr <|> numExpr
+expr :: OpMapWithPrecedence -> Parser Expr
+expr om = udfExpr om <|> udoExpr om <|> assignExpr om <|> opAliasExpr <|> expr2 om
+
+expr2 :: OpMapWithPrecedence -> Parser Expr
+expr2 om = opcallExpr om <|> parExpr om <|> funcallExpr om <|> expr3 om
+
+expr3 :: OpMapWithPrecedence -> Parser Expr
+expr3 om = parExpr om <|> funcallExpr om <|> idExpr <|> numExpr
+
+eq :: Parser Token
+eq = parseIf "=" (==TOp "=")
 
 opAliasExpr :: Parser Expr
 opAliasExpr = do
-  op1 <- operator
+  op1 <- operator Nothing
   void eq
-  op2 <- operator
-  return $ UDO op1 (-1) L (OpCall op2 (Id "@x") (Id "@y"))
+  op2 <- operator Nothing
+  return $ UDO op1 (-1) L (Call op2 [Id "@x", Id "@y"])
 
-operator :: Parser Text
-operator = exctractOp <$> parseIf "operator" isTOp
+operator :: Maybe OpMapWithPrecedence -> Parser Text
+operator Nothing = exctractOp <$> parseIf "operator" isTOp
   where isTOp (TOp _) = True
         isTOp _ = False
         exctractOp (TOp op) = op
         exctractOp _ = ""
+operator (Just (OMWP om p)) = exctractOp <$> parseIf "operator2" isTOp
+  where
+    isTOp (TOp op) = precedence (om M.! op) == p
+    isTOp _ = False
+    exctractOp (TOp op) = op
+    exctractOp _ = ""
 
 parseIf :: Text -> (Token -> Bool) -> Parser Token
 parseIf desc f =
@@ -101,17 +120,19 @@ parseIf desc f =
           ("Expected " <> desc <> ", but reached end of string")
 
 numExpr :: Parser Expr
-numExpr = Number <$> number <*> 0
+numExpr = do
+  n <- number
+  return $ Number n 0
 
 number :: Parser Rational
 number = exctractNum <$> parseIf "number" isTNumber
   where isTNumber (TNumber _ _) = True
         isTNumber _ = False
         exctractNum (TNumber n _) = n
-        exctractNum _ = ""
+        exctractNum _ = 0
 
 idExpr :: Parser Expr
-idExpr = Id <$> identifier 
+idExpr = Id <$> identifier
 
 identifier :: Parser Text
 identifier = exctractId <$> parseIf "id" isTIdent
@@ -120,69 +141,73 @@ identifier = exctractId <$> parseIf "id" isTIdent
         exctractId (TIdent _id) = _id
         exctractId _ = ""
 
-parExpr :: Parser Expr
-parExpr = do
+parExpr :: OpMapWithPrecedence -> Parser Expr
+parExpr om = do
   parLeft
-  ex <- expr2
+  ex <- expr2 om
   parRight
   return $ Par ex
 
 parLeft :: Parser ()
 parLeft = do
-    parseIf "(" isParLeft
+    _ <- parseIf "(" isParLeft
     return ()
   where isParLeft TLPar = True
         isParLeft _ = False
 
 parRight :: Parser ()
 parRight = do
-    parseIf "(" isParRight
+    _ <- parseIf "(" isParRight
     return ()
   where isParRight TRPar = True
         isParRight _ = False
 
--- udfExpr :: PReader Expr
--- udfExpr = do
---   name <- identifier
---   args <- parens $ sepBy1 identifier comma
---   void eq
---   UDF name args <$> expr2 
+parens :: Parser a -> Parser a
+parens x = parLeft *> x <* parRight
 
--- udoExpr :: PReader Expr
--- udoExpr = do
---   name <- operator
---   void $ symbol "("
---   p <- number
---   void comma
---   a <- number
---   void $ symbol ")"
---   void eq
---   e <- expr2
---   case (floatingOrInteger p :: Either Double Integer,  floatingOrInteger a :: Either Double Integer) of
---     (Right in1, Right in2) -> ret in1 (fromInteger in2) name e
---     (Left db, Right int)   -> ret (floor db) (fromInteger int)  name e
---     (Right int, Left db)   -> ret int db name e
---     (Left d1, Left d2)     -> ret (floor d1) d2 name e
---   where
---     ret :: Integer -> Double -> Text -> Expr -> PReader Expr
---     ret a b n e = return $ UDO n (fromInteger a) (if b == 0 then L else R) e
+comma :: Parser Token
+comma = parseIf "," (==TComma)
 
--- assignExpr :: PReader Expr
--- assignExpr = do
---   name <- identifier
---   void eq
---   Asgn name <$> expr2
+sepBy1 :: Parser a -> Parser Token -> Parser [a]
+sepBy1 p s = concat <$> many ps
+  where ps = some p <* s
 
--- funcallExpr :: PReader Expr
--- funcallExpr = do
---   fname <- identifier
---   args <- parens (sepBy1 expr2 comma) <* notFollowedBy (symbol "=" <* notFollowedBy (symbol "="))
---   return $ FunCall fname args
+udfExpr :: OpMapWithPrecedence -> Parser Expr
+udfExpr om = do
+  name <- identifier
+  args <- parens $ sepBy1 identifier comma
+  void eq
+  UDF name args <$> expr2 om
 
--- opcallExpr :: PReader Expr
--- opcallExpr = do
---   opMap <- ask
---   makeExprParser expr3 (insertOps operators opMap)
+udoExpr :: OpMapWithPrecedence -> Parser Expr
+udoExpr om = do
+  name <- operator Nothing
+  void parLeft
+  p <- number
+  void comma
+  a <- number
+  void parLeft
+  void eq
+  UDO name (fromInteger . numerator $ p) (if a == 0 then L else R) <$> expr2 om
+
+assignExpr :: OpMapWithPrecedence -> Parser Expr
+assignExpr om = do
+  name <- identifier
+  void eq
+  Asgn name <$> expr2 om
+
+funcallExpr :: OpMapWithPrecedence -> Parser Expr
+funcallExpr om = do
+  fname <- identifier
+  args <- parens (sepBy1 (expr2 om) comma) <* parseIf "=" (/=TEqual)
+  return $ Call fname args
+
+opcallExpr :: OpMapWithPrecedence -> Parser Expr
+opcallExpr omwp@(OMWP om p) = do
+  a <- expr3 omwp{prec = p + 1}
+  op <- operator (Just omwp)
+  b <- expr3 omwp{prec = p + 1}
+  return $ Call op [a, b]
 
 -- operators :: [[Operator PReader Expr]]
 -- operators =
@@ -206,4 +231,3 @@ parRight = do
 -- insertOps ops m = let (k,a) = M.elemAt 0 m
 --                       op = genOp k a
 --                   in insertOps (ops & ix (5 - fst a) %~ (op:)) (M.deleteAt 0 m)
-

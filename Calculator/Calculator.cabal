@@ -24,6 +24,7 @@ library
   exposed-modules:    Calculator
                       , Calculator.Tests
   other-modules:      Calculator.HomebrewLexer
+                      , Calculator.HomebrewParser
                       , Calculator.Evaluator
                       , Calculator.AlexLexer
                       , Calculator.HappyParser
