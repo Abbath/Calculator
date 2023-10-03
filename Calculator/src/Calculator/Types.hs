@@ -200,11 +200,12 @@ showScientific = T.pack . S.formatScientific S.Fixed Nothing
 showRational :: Rational -> Text
 showRational r = if denominator r == 1
   then showT $ numerator r
-  else case S.fromRationalRepetendUnlimited r of
-    (s, Nothing) -> showT s
-    (s, Just n) -> let st = showScientific s
-                       idx = (+(n+1)) . fromMaybe 0 . T.findIndex (=='.') $ st
-                   in T.take idx st <> "(" <> T.drop idx st <> ")"
+  else case S.fromRationalRepetend (Just 1024) r of
+    Left (s, rest) -> showT s
+    Right (s, Nothing) -> showT s
+    Right (s, Just n) -> let st = showScientific s
+                             idx = (+(n+1)) . fromMaybe 0 . T.findIndex (=='.') $ st
+                         in T.take idx st <> "(" <> T.drop idx st <> ")"
 
 showFraction :: Rational -> Text
 showFraction t = showT (numerator t) <> " / " <> showT (denominator t)

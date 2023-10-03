@@ -74,11 +74,12 @@ import Web.Scotty
     get,
     html,
     middleware,
-    param,
     post,
     redirect,
     request,
     scotty,
+    captureParam,
+    formParam,
   )
 
 import System.Console.Haskeline
@@ -229,7 +230,7 @@ loop mode mps = do
               loop' md m' ng
             Right (r, EvalState m ng _) -> do
               let m' = removeLocals m
-              liftIO . TSIO.putStrLn $ showComplex r
+              liftIO . TSIO.putStrLn . showComplex $ r
               loop' md (m' & _1 %~ M.insert "_" r) ng
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
@@ -308,7 +309,7 @@ webLoop port mode = do
             Web.Scotty.redirect $ T.append "/" $ T.pack (show $ abs y)
     Web.Scotty.get "/favicon.ico" $ Web.Scotty.file "./Static/favicon.ico"
     Web.Scotty.get "/:id" $ do
-      iD <- Web.Scotty.param "id"
+      iD <- Web.Scotty.captureParam "id"
       liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ((map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ defVar, [], opsToList opMap) :: ListTuple ))
       liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
       Web.Scotty.html $ renderHtml
@@ -318,12 +319,12 @@ webLoop port mode = do
             H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
           H.style $ H.toHtml . render $ getCss
     Web.Scotty.post "/clear/:id" $ do
-      iD <- Web.Scotty.param "id"
+      iD <- Web.Scotty.captureParam "id"
       Web.Scotty.redirect $ T.append "/" iD
     Web.Scotty.post "/:id" $ do
-      iD <- Web.Scotty.param "id"
+      iD <- Web.Scotty.captureParam "id"
       liftIO $ updateIDS (read . T.unpack $ iD :: Integer)
-      fs <- Web.Scotty.param "foo"
+      fs <- Web.Scotty.formParam "foo"
       f1 <- liftIO $ findFile ["."] ("storage" ++ T.unpack iD ++ ".dat")
       f2 <- liftIO $ findFile ["."] ("log" ++ T.unpack iD ++ ".dat")
       if isNothing f1 || isNothing f2
