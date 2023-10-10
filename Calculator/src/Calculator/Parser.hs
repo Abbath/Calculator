@@ -95,11 +95,11 @@ parseUnaryOp op n rest = do
   x <- parseOp (n+1) rest
   if op == "+"
     then return x
-    else 
+    else
       case x of
         (Call op1 y@(hy:ty)) | length y == 2 -> return $ Call op1 (Call (selectOp M.! op) [hy]:ty)
         _ -> return $ Call (selectOp M.! op) [x]
-      where 
+      where
         selectOp :: Map Text Text
         selectOp = [("~", "comp"), ("!", "fact"), ("-", "-")]
 
@@ -125,6 +125,7 @@ parseToken str =
     []                       -> throwError "Expected more tokens"
     [TIdent s]               -> return $ Id s
     (TIdent name:TLPar:rest) -> Call name <$> parseFuncall rest
+    (TLPar:TOp name:TRPar:TLPar:rest) -> Call name <$> parseFuncall rest
     [TNumber n ni]           -> return $ Number n ni
     (TLPar:rest)             -> Par <$> ps rest
     x                        -> throwError $ "Unknown token combination: " <> showT x
