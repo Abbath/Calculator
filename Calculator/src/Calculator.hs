@@ -14,6 +14,7 @@ import Calculator.Css (getCss, postCss)
 import Calculator.Evaluator (evalS, MessageType(..))
 import qualified Calculator.HappyParser as HP
 import Calculator.HomebrewLexer (tloop)
+import qualified Calculator.HomebrewParser as P
 import qualified Calculator.MegaParser as CMP
 import Calculator.Parser (parse)
 import Calculator.Types
@@ -163,7 +164,7 @@ telegramSimple mode = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run mode
 
 #endif
 
-data Mode = Internal | Megaparsec | AlexHappy deriving Show
+data Mode = Internal | Megaparsec | AlexHappy | Experimental deriving Show
 
 parseString :: Mode -> TS.Text -> Maps -> Either TS.Text Expr
 parseString m s ms = case m of
@@ -172,6 +173,11 @@ parseString m s ms = case m of
                        Internal ->
                          tloop s >>= parse (getPrecedences (ms^._3) <> getFakePrecedences (ms^._2))
                        AlexHappy -> Right $ preprocess . HP.parse . Calculator.AlexLexer.alexScanTokens $ TS.unpack s
+                       Experimental -> case tloop s of
+                        Left err -> Left err
+                        Right ts -> case P.parse (ms^._3) ts of
+                          Left (P.ParserError _ msg) -> Left msg
+                          Right e -> Right e
 
 evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (MessageType, EvalState) (Complex Rational, EvalState)
 evalExprS t mps g = either (Left . (, EvalState mps g M.empty) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t

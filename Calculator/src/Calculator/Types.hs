@@ -29,7 +29,6 @@ data Token = TNumber Rational Rational
            | TOp Text
            | TComma
            | TEqual
-           | TMinus
            | TEnd
            | TLet
            | TFun

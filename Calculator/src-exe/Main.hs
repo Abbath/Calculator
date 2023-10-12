@@ -45,4 +45,5 @@ main = do
           "i" -> Internal
           "m" -> Megaparsec
           "a" -> AlexHappy
+          "e" -> Experimental
           _ -> Internal

@@ -6,6 +6,7 @@ import Calculator.Builtins (opMap, getPrecedences, getFakePrecedences)
 import Calculator.Evaluator (evalS, MessageType(ErrMsg, MsgMsg))
 import qualified Calculator.HappyParser as HP
 import Calculator.HomebrewLexer (tloop)
+import qualified Calculator.HomebrewParser as P
 import qualified Calculator.MegaParser as CMP
 import Calculator.Parser (parse)
 import Calculator.Types (getPrA, preprocess, showT, Maps, VarMap, EvalState(..))
@@ -23,7 +24,7 @@ import qualified Text.Megaparsec as MP
 import Data.Complex
 import Data.Bifunctor
 
-data Backend = Internal | Mega | AH deriving Show
+data Backend = Internal | Mega | AH | Exp deriving Show
 
 type Tests = [(Text, Either MessageType (Complex Rational))]
 
@@ -37,6 +38,11 @@ loop (x:xs) mps rgen bk n = do
               Internal -> tloop sample >>= parse (getPrecedences (mps^._3) <> getFakePrecedences (mps^._2))
               Mega -> errorToEither (MP.runParser (runReaderT CMP.parser (getPrA $ mps^._3)) "" (sample <> "\n"))
               AH -> Right $ preprocess . HP.parse . alexScanTokens $ T.unpack sample
+              Exp -> case tloop sample of
+                        Left err -> Left err
+                        Right ts -> case P.parse (mps^._3) ts of
+                          Left (P.ParserError _ msg) -> Left msg
+                          Right ex -> Right ex
     --print e
     let t = case e of
               Left err -> (Left (ErrMsg err), EvalState mps rgen M.empty)
@@ -142,11 +148,13 @@ testLoop = do
   g <- initStdGen
   TIO.putStrLn "Internal parser:"
   n1 <- loop tests (defVar, M.empty, opMap) g Internal 0
+  TIO.putStrLn "Experimental parser:"
+  n2 <- loop tests (defVar, M.empty, opMap) g Exp 0
   -- TIO.putStrLn "\nMega parser:"
   -- n2 <- loop tests (defVar, M.empty, opMap) g Mega 0
   TIO.putStrLn "\nAlexHappy parser:"
   n3 <- loop testsAH (defVar, M.empty, opMap) g AH 0
-  let n = n1 + {- n2 + -} n3
+  let n = n1 +  n2 + n3
   if n == 0
     then exitSuccess
     else exitWith $ ExitFailure n

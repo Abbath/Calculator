@@ -197,15 +197,6 @@ operata = TOp . T.pack <$> wsBracket (some opsym <|> charP '`' *> ((:) <$> alfa 
 comma :: Parser Token
 comma = TComma <$ wsBracket (charP ',')
 
--- equal :: Parser Token
--- equal = TEqual <$ charP '='
-
--- lett :: Parser Token
--- lett = TLet <$ textP "let"
-
--- funn :: Parser Token
--- funn = TLet <$ textP "fun"
-
 tokah :: Parser Token
 tokah = lpar <|> rpar <|> comma <|> operata <|> numba <|> ident
 
