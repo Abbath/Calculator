@@ -11,10 +11,11 @@ import Control.Monad.Reader
 import qualified Data.Map.Strict as M
 import Data.Ratio
 import Data.Text (Text)
+import Debug.Trace
 
 data Input = Input
   { inputLoc :: Int
-  , inputStr :: [Token]
+  , inputTok :: [Token]
   } deriving (Show, Eq)
 
 inputUncons :: Input -> Maybe (Token, Input)
@@ -56,18 +57,23 @@ instance Alternative Parser where
 
 instance Monad Parser where
   (>>=) :: Parser a -> (a -> Parser b) -> Parser b
-  (>>=) p f = Parser $ \input -> let x = runParser p input in case x of
+  (>>=) p f = Parser $ \input -> case runParser p input of
     Left err -> Left err
     Right (i, a) -> runParser (f a) i
+
+eof :: Parser ()
+eof = Parser $ \input -> case input of 
+  (inputUncons -> Just (_, _)) -> Left $ ParserError (inputLoc input) "DUPA"
+  _ -> return (input, ())
 
 parse :: OpMap -> [Token] -> Either ParserError Expr
 parse om ts = runParser (expr om) (Input 0 ts) >>= \(i, e) -> return e
 
 expr :: OpMap -> Parser Expr
-expr om = udfExpr om <|> udoExpr om <|> assignExpr om <|> opAliasExpr <|> expr2 0.0 om
+expr om = udfExpr om <|> udoExpr om <|> assignExpr om <|> opAliasExpr <|> (expr2 0.0 om <* eof)
 
 expr2 :: Double -> OpMap -> Parser Expr
-expr2 bp om = funcallExpr om <|> opcallExpr bp om <|> expr3 om
+expr2 bp om = opcallExpr bp om <|> funcallExpr om <|> expr3 om
 
 expr3 :: OpMap -> Parser Expr
 expr3 om = parExpr om <|> idExpr <|> numExpr
@@ -108,15 +114,15 @@ parseIf desc f =
 
 numExpr :: Parser Expr
 numExpr = do
-  n <- number
-  return $ Number n 0
+  (n, m) <- number
+  return $ Number n m
 
-number :: Parser Rational
+number :: Parser (Rational, Rational)
 number = exctractNum <$> parseIf "number" isTNumber
   where isTNumber (TNumber _ _) = True
         isTNumber _ = False
-        exctractNum (TNumber n _) = n
-        exctractNum _ = 0
+        exctractNum (TNumber n m) = (n, m)
+        exctractNum _ = (0, 0)
 
 idExpr :: Parser Expr
 idExpr = Id <$> identifier
@@ -170,9 +176,9 @@ udoExpr :: OpMap -> Parser Expr
 udoExpr om = do
   name <- operator
   void parLeft
-  p <- number
+  (p, _) <- number
   void comma
-  a <- number
+  (a, _) <- number
   void parRight
   void eq
   UDO name (fromInteger . numerator $ p) (if a == 0 then L else R) <$> expr2 0.0 om
@@ -184,23 +190,27 @@ assignExpr om = do
   Asgn name <$> expr2 0.0 om
 
 funcallExpr :: OpMap -> Parser Expr
-funcallExpr om = Call <$> identifier <*> parens (sepBy (expr2 0.0 om) comma)
+funcallExpr om = do
+  name <- identifier
+  void parLeft
+  args <- sepBy (expr2 0.0 om) comma
+  void parRight
+  return $ Call name args
 
 opcallExpr :: Double -> OpMap -> Parser Expr
 opcallExpr min_bp o = Parser $ \input ->
   case input of
     (inputUncons -> Just (t, ts)) -> case t of
-      TOp op -> let r_bp = prefix_binding_power op o
-                    rhs = runParser (expr2 r_bp o) ts
-                in case rhs of
+      TOp op -> case runParser (expr2 (prefix_binding_power op o) o) ts of
                   Left err -> Left err
                   Right (i, e) -> inner_loop (Call op [e]) min_bp o i
       TNumber a b -> inner_loop (Number a b) min_bp o ts
       TIdent a -> inner_loop (Id a) min_bp o ts
-      TLPar -> let lhs = runParser (expr2 0.0 o) ts
-               in case lhs of
-                    Left err -> Left err
-                    Right (i, e) -> inner_loop (Par e) min_bp o i
+      TLPar -> case runParser (expr2 0.0 o) ts of
+                 Left err -> Left err
+                 Right (i, e) -> case i of 
+                   (inputUncons -> Just (TRPar, i1)) -> inner_loop (Par e) min_bp o i1
+                   _ -> Left $ ParserError (inputLoc i) "No closing bracket"
       _ -> Left $
         ParserError
           (inputLoc input)
@@ -213,14 +223,13 @@ opcallExpr min_bp o = Parser $ \input ->
     inner_loop :: Expr -> Double -> OpMap -> Input -> Either ParserError (Input, Expr)
     inner_loop lhs bp om ts = case ts of
       (inputUncons -> Just (t, ts1)) -> case t of
-        TRPar -> Right (ts1, lhs)
+        TRPar -> Right (ts, lhs)
         TOp op -> let (l_bp, r_bp) = infix_binding_power op om
                   in if l_bp < bp
                      then Right (ts, lhs)
-                     else let rhs = runParser (expr2 r_bp om) ts1
-                          in case rhs of
+                     else case runParser (expr2 r_bp om) ts1 of
                             Left err -> Left err
-                            Right (ts2, e) -> let lhs1 = Call op [lhs, e] in inner_loop lhs1 bp om ts2
+                            Right (ts2, e) -> inner_loop (Call op [lhs, e]) bp om ts2
         tok -> Left $ ParserError (inputLoc ts) $ "Wrong token: " <> showT tok
       _ -> Right (ts, lhs)
     infix_binding_power :: Text -> OpMap -> (Double, Double)

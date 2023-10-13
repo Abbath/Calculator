@@ -148,7 +148,7 @@ testLoop = do
   g <- initStdGen
   TIO.putStrLn "Internal parser:"
   n1 <- loop tests (defVar, M.empty, opMap) g Internal 0
-  TIO.putStrLn "Experimental parser:"
+  TIO.putStrLn "\nExperimental parser:"
   n2 <- loop tests (defVar, M.empty, opMap) g Exp 0
   -- TIO.putStrLn "\nMega parser:"
   -- n2 <- loop tests (defVar, M.empty, opMap) g Mega 0
