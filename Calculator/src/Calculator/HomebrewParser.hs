@@ -184,7 +184,8 @@ expr min_bp m = Parser $ \input ->
           inner_loop (Call op e) min_bp m i
         _ -> do
           (i, e) <- runParser (expr (prefix_binding_power op m) m) ts
-          inner_loop (Call (selectOp M.! op) [e]) min_bp m i
+          funop <- selectOp op
+          inner_loop (Call funop [e]) min_bp m i
       TNumber a b -> inner_loop (Number a b) min_bp m ts
       TIdent a -> case inputPeek ts of
         Just TLPar -> do
@@ -210,28 +211,34 @@ expr min_bp m = Parser $ \input ->
       (inputUncons -> Just (t, ts1)) -> case t of
         TRPar -> Right (ts, lhs)
         TComma -> Right (ts, lhs)
-        TOp op -> let (l_bp, r_bp) = infix_binding_power op om
-                  in if l_bp < bp
-                     then Right (ts, lhs)
-                     else do
-                       (ts2, e) <- runParser (expr r_bp om) ts1
-                       inner_loop (Call op [lhs, e]) bp om ts2
+        TOp op -> case infix_binding_power op om of
+          Nothing -> Left $ ParserError (inputLoc ts) $ "Operator does not exist: " <> showT op
+          Just (l_bp, r_bp) ->
+            if l_bp < bp
+            then Right (ts, lhs)
+            else do
+              (ts2, e) <- runParser (expr r_bp om) ts1
+              inner_loop (Call op [lhs, e]) bp om ts2
         tok -> Left $ ParserError (inputLoc ts) $ "Wrong token: " <> showT tok
       _ -> Right (ts, lhs)
-    infix_binding_power :: Text -> Maps -> (Double, Double)
+    infix_binding_power :: Text -> Maps -> Maybe (Double, Double)
     infix_binding_power op ms =
       if T.all (`elem` opSymbols) op
-        then let (Op pr asoc _) = (ms^._3) M.! op
-                 p = fromIntegral pr
-             in case asoc of
-               L -> (p, p + 0.25)
-               R -> (p + 0.25, p)
-        else (13, 13.25)
+        then do
+          (Op pr asoc _) <- op `M.lookup` (ms^._3)
+          let p = fromIntegral pr
+          return $ case asoc of
+            L -> (p, p + 0.25)
+            R -> (p + 0.25, p)
+        else return (13, 13.25)
     prefix_binding_power :: Text -> Maps -> Double
     prefix_binding_power op ms = let (Op pr _ _) = (ms^._3) M.! op
                                  in fromIntegral pr
-    selectOp :: M.Map Text Text
-    selectOp = [("~", "comp"), ("!", "fact"), ("-", "-")]
+    selectOp :: Text -> Either ParserError Text
+    selectOp op = let ops = [("~", "comp"), ("!", "fact"), ("-", "-")]
+                  in case M.lookup op ops of
+                    Nothing -> Left $ ParserError 0 ("No such operator: " <> op)
+                    Just fun -> return fun
 
 testParser :: Parser a -> Text -> Either ParserError (Input, a)
 testParser p input = case tloop input of
