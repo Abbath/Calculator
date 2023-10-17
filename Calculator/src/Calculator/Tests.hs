@@ -40,7 +40,7 @@ loop (x:xs) mps rgen bk n = do
               AH -> Right $ preprocess . HP.parse . alexScanTokens $ T.unpack sample
               Exp -> case tloop sample of
                         Left err -> Left err
-                        Right ts -> case P.parse (mps^._3) ts of
+                        Right ts -> case P.parse mps ts of
                           Left (P.ParserError _ msg) -> Left msg
                           Right ex -> Right ex
     --print e

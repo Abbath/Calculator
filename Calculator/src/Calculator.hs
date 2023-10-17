@@ -175,7 +175,7 @@ parseString m s ms = case m of
                        AlexHappy -> Right $ preprocess . HP.parse . Calculator.AlexLexer.alexScanTokens $ TS.unpack s
                        Experimental -> case tloop s of
                         Left err -> Left err
-                        Right ts -> case P.parse (ms^._3) ts of
+                        Right ts -> case P.parse ms ts of
                           Left (P.ParserError _ msg) -> Left msg
                           Right e -> Right e
 

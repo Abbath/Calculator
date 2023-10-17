@@ -2,10 +2,43 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Calculator.Types (Expr (..), Token (..), Assoc (..), Op (..), ExecOp (..), FunOp (..), getPrA,
-                         exprToString, unTOp, isOp, preprocess, ListTuple, Fun (..), ExecFn (..), FunFun (..),
-                         showRational, showT, opSymbols, Maps, OpMap, VarMap, FunMap, opsFromList, opsToList,
-                         funsFromList, funsToList, showComplex, showFraction, EvalState(..), maps, gen, mem) where
+module Calculator.Types
+  ( Expr (..),
+    Token (..),
+    Assoc (..),
+    Op (..),
+    ExecOp (..),
+    FunOp (..),
+    getPrA,
+    exprToString,
+    unTOp,
+    isOp,
+    preprocess,
+    ListTuple,
+    Fun (..),
+    ExecFn (..),
+    FunFun (..),
+    showRational,
+    showT,
+    opSymbols,
+    Maps,
+    OpMap,
+    VarMap,
+    FunMap,
+    opsFromList,
+    opsToList,
+    funsFromList,
+    funsToList,
+    showComplex,
+    showFraction,
+    EvalState (..),
+    maps,
+    gen,
+    mem,
+    isNumber,
+    isId,
+  )
+where
 
 import Control.Arrow (second)
 import Data.Aeson (FromJSON, ToJSON)
@@ -44,6 +77,14 @@ data Expr = Number Rational Rational
           | Par Expr
           | Id Text
           deriving (Eq, Show, Read, Generic)
+
+isNumber :: Expr -> Bool
+isNumber (Number _ _) = True
+isNumber _ = False
+
+isId :: Expr -> Bool
+isId (Id _) = True
+isId _ = False
 
 instance ToJSON Expr
 
