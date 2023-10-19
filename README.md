@@ -35,12 +35,8 @@ Features
 * A function or operator can take other functions as arguments
 * An operator alias can be defined using syntax `<alias_operator> = <operator>`
 * Outer variables' values are captured inside user-defined functions
-* A signature of the user-defined function consists of a name and arity so `f/0` and `f/1` are different functions 
-* Megaparsec backend is available by running with `-bM` or `--backend M` command line flag
-* AlexHappy backend is available by running with `-bA` or `--backend A` command line flag
+* A signature of the user-defined function consists of a name and arity so `f/0` and `f/1` are different functions
 * The web interface can be used by running with `-fW` of `--frontend W` command line flag. The web interface is available on 3000 port
-* Comments are supported under Megaparsec backend with syntax `#end comment` and `{inner comment}`
-* With Megaparsec backend you shall not define an operator that starts with the same symbols as the operator with a higher precedence
 * Autocompletion of variables, functions and operators is available on the `Tab` key
 * History is available on the `Up` and `Down` keys
 * Derivative of a function can be symbolically calculated using syntax `df(<function_expression>, <variable name>)`
@@ -49,14 +45,8 @@ Features
 * Random numbers between `0` and `1` via `m.r` constant
 * "Strings" delimited by `"`. Can't do anything with those strings though. Function `str(<expression>)` displays a value as a string
 * `fmt(<format_string>, <args...>)` function for C-style formatting. Use `%s` for a string and `%f` for a number
-* Local assignment operators `:=` and `::=` for creating binding visible in the same line only 
+* Local assignment operators `:=` and `::=` for creating binding visible in the same line only
 * Colon operator `:` for sequential computing of expressions
 * Pipe operator `|>` for piping the computation: `value |> f1 |> f2 |> f3`
 * Functions can be used as infix operators by surrounding with backticks "`"
 * Aliases top-level operators `+= -= *= /= %= ^= |= &=` which unsugar into: `x <op>= value` -> `x = x <op> value`
-
-Bugs & Todo
---
-* The Megaparsec backend is broken
-* The AlexHappy backend has poor support in general
-* Improve the calculation of the derivative

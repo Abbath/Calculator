@@ -1,6 +1,6 @@
-cabal-version:        3.0
+cabal-version:        3.4
 name:                 Calculator
-version:              0.8.6.0
+version:              9.0.0
 synopsis:             Calculator
 -- description:
 -- license:
@@ -23,19 +23,14 @@ flag telegram
 library
   exposed-modules:    Calculator
                       , Calculator.Tests
-  other-modules:      Calculator.HomebrewLexer
-                      , Calculator.HomebrewParser
-                      , Calculator.Evaluator
-                      , Calculator.AlexLexer
-                      , Calculator.HappyParser
-                      , Calculator.Lexer
+  other-modules:      Calculator.Lexer
                       , Calculator.Parser
+                      , Calculator.Evaluator
                       , Calculator.Types
-                      , Calculator.MegaLexer
-                      , Calculator.MegaParser
                       , Calculator.Css
                       , Calculator.Builtins
                       , Calculator.Generator
+                      , Calculator.Compiler
   build-depends:      aeson
                     , array
                     , base >= 4.7 && < 5
@@ -53,9 +48,7 @@ library
                     , integration
                     , lens
                     , lens-aeson
-                    , megaparsec
                     , mtl
-                    , parser-combinators
                     , random
                     , scientific
                     , scotty
@@ -67,9 +60,6 @@ library
                     , wai-middleware-static
                     , wreq
   hs-source-dirs:      src
-  build-tool-depends:   alex:alex
-                      , happy:happy
-  default-language:    Haskell2010
   ghc-options:         -O2 -Wall -fno-warn-unused-matches
                        -fwrite-ide-info -hiedir=.hie
   if flag(telegram)
@@ -83,7 +73,6 @@ executable Calculator
                       , base >= 4.7 && < 5
                       , optparse-applicative
   hs-source-dirs:       src-exe
-  default-language:     Haskell2010
   ghc-options:         -O2 -Wall -fno-warn-unused-matches
                        -fwrite-ide-info -hiedir=.hie
   if flag(telegram)
@@ -93,7 +82,6 @@ test-suite Test
   type:                 exitcode-stdio-1.0
   main-is:              MainTest.hs
   hs-source-dirs:       src-test
-  default-language:     Haskell2010
   build-depends:        Calculator
                       , base >= 4.7 && < 5
                       , optparse-applicative >= 0.15.1.0

@@ -217,16 +217,16 @@ evalS ex = case ex of
     let a = M.lookup op1 pr
     let b = M.lookup op2 pr
     if a == b
-    then case a of
-      Nothing -> throwError . ErrMsg $ "No such operators: " <> op1 <> " " <> op2
-      Just _ -> do
-        let Op {associativity = asc1 } = (mps^._3) M.! op1
-        let Op {associativity = asc2 } = (mps^._3) M.! op2
-        case (asc1, asc2) of
-          (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
-          (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
-          _ -> throwError . ErrMsg $ "Operators with a different associativity: " <> op1 <> " and " <> op2
-    else evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
+      then case a of
+        Nothing -> throwError . ErrMsg $ "No such operators: " <> op1 <> " " <> op2
+        Just _ -> do
+          let Op {associativity = asc1 } = (mps^._3) M.! op1
+          let Op {associativity = asc2 } = (mps^._3) M.! op2
+          case (asc1, asc2) of
+            (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
+            (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
+            _ -> throwError . ErrMsg $ "Operators with a different associativity: " <> op1 <> " and " <> op2
+      else evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
   oc@(Call "/" [x, y]) -> do
     n <- evm y
     n1 <- evm x

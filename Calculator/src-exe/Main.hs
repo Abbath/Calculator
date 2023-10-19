@@ -19,7 +19,7 @@ options :: Parser Options
 options = Options
           <$> strOption (long "input" <> short 'i' <> help "Input file" <> metavar "FILENAME" <> value "")
           <*> strOption (long "frontend" <> short 'f' <> help "Frontend (C, W, T)" <> metavar "FRONTEND" <> value "C")
-          <*> strOption (long "backend" <> short 'b' <> help "Backend (I, M, A)" <> metavar "BACKEND" <> value "I")
+          <*> strOption (long "backend" <> short 'b' <> help "Backend (I)" <> metavar "BACKEND" <> value "I")
           <*> switch (long "test" <> short 't' <> help "Run tests")
           <*> option auto (long "port" <> short 'p' <> help "Port" <> metavar "PORT" <> value 3000)
 
@@ -43,7 +43,4 @@ main = do
             <> header "Calculator - a simple string calculator" )
         selectBack s = case map toLower s of
           "i" -> Internal
-          "m" -> Megaparsec
-          "a" -> AlexHappy
-          "e" -> Experimental
           _ -> Internal

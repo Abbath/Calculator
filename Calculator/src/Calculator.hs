@@ -8,36 +8,27 @@ module Calculator (
 #endif
   evalFile) where
 
-import Calculator.AlexLexer (alexScanTokens)
-import Calculator.Builtins (opMap, names, funMap, defVar, getPrecedences, getFakePrecedences)
+import Calculator.Builtins (defVar, funMap, names, opMap)
 import Calculator.Css (getCss, postCss)
 import Calculator.Evaluator (evalS, MessageType(..))
-import qualified Calculator.HappyParser as HP
-import Calculator.HomebrewLexer (tloop)
-import qualified Calculator.HomebrewParser as P
-import qualified Calculator.MegaParser as CMP
-import Calculator.Parser (parse)
+import Calculator.Lexer (tloop)
+import qualified Calculator.Parser as P
 import Calculator.Types
-    ( preprocess,
-      showT,
-      Expr,
+    ( Expr,
       ListTuple,
       Maps,
       opsToList,
       opsFromList,
-      getPrA,
       funsToList,
       funsFromList,
       showComplex,
       EvalState (EvalState),
       maps)
 import Clay (render)
-import Control.Arrow (left)
-import Control.Lens ((%~), (&), (^.), _1, _2, _3)
+import Control.Lens ((%~), (&), _1)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
   ( MonadIO (liftIO),
-    ReaderT (runReaderT),
     when,
   )
 import Control.Monad.State (StateT)
@@ -95,7 +86,6 @@ import System.Console.Haskeline
       handleInterrupt, outputStrLn)
 import System.Directory ( findFile, getHomeDirectory, removeFile )
 import System.Random ( randomIO, initStdGen, StdGen )
-import qualified Text.Megaparsec  as MP
 import           Text.Read                     (readMaybe)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import qualified Control.Exception as CE
@@ -164,16 +154,11 @@ telegramSimple mode = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run mode
 
 #endif
 
-data Mode = Internal | Megaparsec | AlexHappy | Experimental deriving Show
+data Mode = Internal deriving Show
 
 parseString :: Mode -> TS.Text -> Maps -> Either TS.Text Expr
 parseString m s ms = case m of
-                       Megaparsec ->
-                         left showT (MP.runParser (runReaderT CMP.parser (getPrA $ ms^._3)) "" (s <> "\n"))
-                       Internal ->
-                         tloop s >>= parse (getPrecedences (ms^._3) <> getFakePrecedences (ms^._2))
-                       AlexHappy -> Right $ preprocess . HP.parse . Calculator.AlexLexer.alexScanTokens $ TS.unpack s
-                       Experimental -> case tloop s of
+                       Internal -> case tloop s of
                         Left err -> Left err
                         Right ts -> case P.parse ms ts of
                           Left (P.ParserError _ msg) -> Left msg
