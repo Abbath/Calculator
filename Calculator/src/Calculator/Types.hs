@@ -96,7 +96,7 @@ type VarMap = Map Text (Complex Rational)
 type OpMap = Map Text Op
 type Maps = (VarMap, FunMap, OpMap)
 
-data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer )
+data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer)
 
 instance Show FunOp where
   show (CmpOp _) = "CmpOp"

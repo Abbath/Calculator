@@ -13,6 +13,7 @@ import Control.Monad.State
 import Data.Text (Text)
 import Calculator.Types
 import Control.Lens ((^.), _3, _1, _2)
+import Data.Ratio
 
 type StateChunk = ExceptT Text (State Chunk)
 
@@ -74,13 +75,34 @@ run m vm@(VM c i s) =
                 in if n > 127
                   then let (_, fun) = M.elemAt (n .&. 0x7f) (m^._2)
                        in case fexec fun of
+                         FnFn (CmpFn f)   -> let (v1, s1) = pop s
+                                                 (v2, s2) = pop s1
+                                             in runNext new_i (push (if f (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0) s2)
                          FnFn (MathFn1 f) -> let (v1, s1) = pop s
                                              in runNext new_i (push (fmap toRational . f . fmap fromRational $ v1) s1)
                          FnFn (MathFn2 f) -> let (v1, s1) = pop s
                                                  (v2, s2) = pop s1
                                              in runNext new_i (push (f v2 v1) s2)
+                         FnFn (IntFn1 f)  -> let (v1, s1) = pop s
+                                             in runNext new_i (push (toRational . f . fromRational <$> v1) s1)
+                         FnFn (IntFn2 f)  -> let (v1, s1) = pop s
+                                                 (v2, s2) = pop s1
+                                             in runNext new_i (push (f (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0) s2)
+                         FnFn (BitFn f)   -> let (v1, s1) = pop s
+                                             in runNext new_i (push (toRational . f . numerator . fromRational <$> v1) s1)
                          _ -> error "Function is not computable yet"
-                  else error "Operators are not supported yet"
+                  else let (_, op) = M.elemAt n (m^._3)
+                       in case oexec op of
+                         FnOp (CmpOp o)  -> let (v1, s1) = pop s
+                                                (v2, s2) = pop s1
+                                            in runNext new_i (push (if o (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0) s2)
+                         FnOp (MathOp o) -> let (v1, s1) = pop s
+                                                (v2, s2) = pop s1
+                                            in runNext new_i (push (o v2 v1) s2)
+                         FnOp (BitOp o)  -> let (v1, s1) = pop s
+                                                (v2, s2) = pop s1
+                                            in runNext new_i (push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0) s2)
+                         _ -> error "Operator is not computable yet"
   where readConstant cc n = (V.!n) . unarray . constants $ cc
         runNext ni val = run m $ VM c (ni + 1) val
 
@@ -91,7 +113,7 @@ compile :: Maps -> Expr -> Either Text Chunk
 compile m e = let (a, s) = runState (runExceptT (compile' m e >> writeChunk OpReturn)) emptyChunk
                in case a of
                 Left err -> Left err
-                Right () -> trace (show . vec2Bytes . code $ s) $ Right s
+                Right () -> trace (show (code s)) $ Right s
 
 compile' :: Maps -> Expr -> StateChunk ()
 compile' m = go
