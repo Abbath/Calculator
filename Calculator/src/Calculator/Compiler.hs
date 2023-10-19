@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TypeApplications #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Calculator.Compiler where
 
 import Data.Word

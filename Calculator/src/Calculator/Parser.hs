@@ -1,8 +1,6 @@
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE InstanceSigs #-}
 module Calculator.Parser where
 
 import Calculator.Lexer (tloop)

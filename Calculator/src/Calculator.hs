@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TupleSections, OverloadedLists, CPP #-}
+{-# LANGUAGE OverloadedStrings, OverloadedLists, CPP #-}
 module Calculator (
   Mode(..),
   evalLoop,

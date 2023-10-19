@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TypeApplications #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 module Calculator.Generator where
 

@@ -22,15 +22,15 @@ flag telegram
 
 library
   exposed-modules:    Calculator
-                      , Calculator.Tests
+                    , Calculator.Tests
   other-modules:      Calculator.Lexer
-                      , Calculator.Parser
-                      , Calculator.Evaluator
-                      , Calculator.Types
-                      , Calculator.Css
-                      , Calculator.Builtins
-                      , Calculator.Generator
-                      , Calculator.Compiler
+                    , Calculator.Parser
+                    , Calculator.Evaluator
+                    , Calculator.Types
+                    , Calculator.Css
+                    , Calculator.Builtins
+                    , Calculator.Generator
+                    , Calculator.Compiler
   build-depends:      aeson
                     , array
                     , base >= 4.7 && < 5
@@ -59,13 +59,14 @@ library
                     , wai
                     , wai-middleware-static
                     , wreq
-  hs-source-dirs:      src
-  ghc-options:         -O2 -Wall -fno-warn-unused-matches
-                       -fwrite-ide-info -hiedir=.hie
+  hs-source-dirs:     src
+  ghc-options:       -O2 -Wall -fno-warn-unused-matches
+                     -fwrite-ide-info -hiedir=.hie
+  default-language:   GHC2021
   if flag(telegram)
     build-depends:    telegram-bot-simple
                     , telegram-bot-api
-    cpp-options:  -DTELEGRAM
+    cpp-options:     -DTELEGRAM
 
 executable Calculator
   main-is:              Main.hs
@@ -75,6 +76,7 @@ executable Calculator
   hs-source-dirs:       src-exe
   ghc-options:         -O2 -Wall -fno-warn-unused-matches
                        -fwrite-ide-info -hiedir=.hie
+  default-language:     GHC2021
   if flag(telegram)
     cpp-options:  -DTELEGRAM
 
@@ -85,3 +87,4 @@ test-suite Test
   build-depends:        Calculator
                       , base >= 4.7 && < 5
                       , optparse-applicative >= 0.15.1.0
+  default-language:     GHC2021

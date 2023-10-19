@@ -1,8 +1,5 @@
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeApplications #-}
 module Calculator.Lexer (tloop) where
 
 import Control.Applicative ( Alternative(..) )
