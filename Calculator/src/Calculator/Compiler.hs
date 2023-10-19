@@ -74,9 +74,13 @@ run m vm@(VM c i s) =
                 in if n > 127
                   then let (_, fun) = M.elemAt (n .&. 0x7f) (m^._2)
                        in case fexec fun of
-                         FnFn (MathFn1 f) -> let (v1, s1) = pop s in runNext new_i (push (fmap toRational . f . fmap fromRational $ v1) s1)
-                         _ -> error "DUPA3"
-                  else error "DUPA2"
+                         FnFn (MathFn1 f) -> let (v1, s1) = pop s
+                                             in runNext new_i (push (fmap toRational . f . fmap fromRational $ v1) s1)
+                         FnFn (MathFn2 f) -> let (v1, s1) = pop s
+                                                 (v2, s2) = pop s1
+                                             in runNext new_i (push (f v2 v1) s2)
+                         _ -> error "Function is not computable yet"
+                  else error "Operators are not supported yet"
   where readConstant cc n = (V.!n) . unarray . constants $ cc
         runNext ni val = run m $ VM c (ni + 1) val
 

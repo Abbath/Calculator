@@ -12,8 +12,6 @@ category:
 -- copyright:
 build-type:           Simple
 -- extra-source-files:
-extra-source-files:   src/Calculator/AlexLexer.x
-                      src/Calculator/HappyParser.y
 
 flag telegram
   description: Enable telegram support
