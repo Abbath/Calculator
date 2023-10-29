@@ -75,6 +75,7 @@ data Expr = Number Rational Rational
           | Call Text [Expr]
           | Par Expr
           | Id Text
+          | Seq [Expr]
           deriving (Eq, Show, Read, Generic)
 
 isNumber :: Expr -> Bool
@@ -189,15 +190,16 @@ showT = T.pack . show
 
 exprToString :: Expr -> Text
 exprToString ex = case ex of
-  UDF n a e       -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
-  UDO n p a e     -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Double else 1) <> ")" <> " = " <>  exprToString e
-  Asgn i e        -> i <> " = " <> exprToString e
-  Number x _       -> showT . (fromRational :: Rational -> Double) $ x
-  Par e           -> "(" <> exprToString e <> ")"
-  Call op [e]       -> "(" <> op <> exprToString e <> ")"
+  UDF n a e -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
+  UDO n p a e -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Double else 1) <> ")" <> " = " <> exprToString e
+  Asgn i e -> i <> " = " <> exprToString e
+  Number x _ -> showT . (fromRational :: Rational -> Double) $ x
+  Par e -> "(" <> exprToString e <> ")"
+  Call op [e] -> "(" <> op <> exprToString e <> ")"
   Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
-  Call n e     -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
-  Id s            -> s
+  Call n e -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
+  Id s -> s
+  Seq es -> T.intercalate "\n" (map exprToString es)
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><:"
