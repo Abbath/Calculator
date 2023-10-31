@@ -21,8 +21,6 @@ import Data.Vector qualified as V
 import Data.Word
 import Debug.Trace (trace)
 
-data OpCode = OpReturn | OpConstant | OpCall | OpJmp deriving (Show, Bounded, Enum, Eq)
-
 newtype UserVar = UV {
   _uval :: Expr
 } deriving Show
@@ -62,14 +60,16 @@ makeLenses ''Chunk
 
 type StateChunk = ExceptT Text (State Chunk)
 
-data VM = VM {_chunks :: Chunk, _ip :: Int, _stack :: [Value]} deriving (Show)
+data VM = VM {_chunk :: Chunk, _ip :: Int, _stack :: [Value]} deriving (Show)
 
 makeLenses ''VM
 
 data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int deriving (Show)
 
+data OpCode = OpReturn | OpConstant | OpCall | OpJmp deriving (Show, Bounded, Enum, Eq)
+
 writeChunk :: (Enum a) => a -> StateChunk ()
-writeChunk v = modify (\(Chunk c s m) -> Chunk (V.snoc c (toWord8 v)) s m)
+writeChunk v = modify $ code %~ flip V.snoc (toWord8 v)
 
 disassembleChunk :: V.Vector Word8 -> String
 disassembleChunk v = case V.uncons v of
@@ -103,28 +103,25 @@ goInside f ex = case ex of
   (Call n e) -> Call n <$> mapM f e
   e          -> return e
 
-substitute :: ([Text], [Expr]) -> Expr -> Either Text Expr
-substitute ([], []) e = return e
-substitute (x, y) _
-  | length x /= length y =
-      Left $ "Bad argument number: " <> showT (length y) <> " instead of " <> showT (length x)
-substitute (x : xs, y : ys) (Id i) =
+substitute :: [(Text, Expr)] -> Expr -> Either Text Expr
+substitute [] e = return e
+substitute ((x, y) : xs) (Id i) =
   if i == x
     then return $ case y of
-      n@(Number _ _) -> n
-      iD@(Id _) -> iD
-      p@(Par _) -> p
+      Number _ _ -> y
+      Id _ -> y
+      Par _ -> y
       t -> Par t
-    else substitute (xs, ys) (Id i)
-substitute s@(x : xs, Id fname : ys) (Call n e) =
+    else substitute xs (Id i)
+substitute s@((x, Id fname) : xs) (Call n e) =
   if n == x
     then Call fname <$> mapM (substitute s) e
     else do
       t <- mapM (substitute s) e
-      substitute (xs, ys) (Call n t)
-substitute s@(_ : xs, _ : ys) (Call n e) = do
+      substitute xs (Call n t)
+substitute s@(_ : xs) (Call n e) = do
   t <- mapM (substitute s) e
-  substitute (xs, ys) (Call n t)
+  substitute xs (Call n t)
 substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
@@ -187,13 +184,6 @@ extendWord8 = fromIntegral
 
 interpretBc :: Maps -> Chunk -> InterpretResult
 interpretBc m c = evalState (run m) $ VM c 0 []
-
--- push :: Value -> [Value] -> [Value]
--- push = (:)
-
--- pop :: [Value] -> (Value, [Value])
--- pop [] = error "Stack underflow!"
--- pop (x : xs) = (x, xs)
 
 type StateVM = State VM
 
@@ -273,7 +263,7 @@ run m = do
     runNext = run m
     push v = modify $ stack %~ (v:)
     readWord = do
-      oc <- gets (\vm -> (vm ^. chunks . code) V.! (vm ^. ip))
+      oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
       step
       return oc
     pop = do
@@ -284,15 +274,15 @@ run m = do
           modify (stack %~ const (tail s))
           return . head $ s
     readOpcode = do
-      oc <- gets (\vm -> (vm ^. chunks . code) V.! (vm ^. ip))
+      oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
       step
       return oc
     step = modify (ip %~ (+ 1))
     sanityCheck = do
       i <- gets (^. ip)
-      l <- gets (\vm -> V.length $ vm ^. chunks . code)
+      l <- gets (\vm -> V.length $ vm ^. chunk . code)
       return $ i < l
-    readConstant n = gets $ (V.! fromWord8 n) . unarray . (^.chunks.constants)
+    readConstant n = gets $ (V.! fromWord8 n) . unarray . (^.chunk . constants)
 
 emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty M.empty)
@@ -364,11 +354,11 @@ compile' m = go
       UM fm om _ <- gets (^.umaps)
       when (M.member (callee, length args) fm) $ do
         let UF ps e = fm M.! (callee, length args)
-        ne <- liftEither $ substitute (ps, args) e
+        ne <- liftEither $ substitute (zip ps args) e
         go ne
       when (M.member callee om) $ do
         let UO _ _ e = om M.! callee
-        ne <- liftEither $ substitute (["@x", "@y"], args) e
+        ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
         go ne
     go (Number a b) = do
       addConstant (a :+ b)
