@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module Calculator.Compiler where
 
@@ -20,10 +21,10 @@ import Data.Vector qualified as V
 import Data.Word
 import Debug.Trace (trace)
 
-data OpCode = OpReturn | OpConstant | OpCall deriving (Show, Bounded, Enum)
+data OpCode = OpReturn | OpConstant | OpCall | OpJmp deriving (Show, Bounded, Enum, Eq)
 
 newtype UserVar = UV {
-  _uval :: Expr 
+  _uval :: Expr
 } deriving Show
 
 makeLenses ''UserVar
@@ -61,15 +62,37 @@ makeLenses ''Chunk
 
 type StateChunk = ExceptT Text (State Chunk)
 
-data VM = VM {chunks :: Chunk, ip :: Int, stack :: [Value]} deriving (Show)
+data VM = VM {_chunks :: Chunk, _ip :: Int, _stack :: [Value]} deriving (Show)
 
-data InterpretResult = IrOk | IrCompileError | IrRuntimeError deriving (Show)
+makeLenses ''VM
+
+data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int deriving (Show)
 
 writeChunk :: (Enum a) => a -> StateChunk ()
 writeChunk v = modify (\(Chunk c s m) -> Chunk (V.snoc c (toWord8 v)) s m)
 
-disassembleChunk :: Chunk -> String
-disassembleChunk = show
+disassembleChunk :: V.Vector Word8 -> String
+disassembleChunk v = case V.uncons v of
+  Nothing -> ""
+  Just (n, ns) ->
+    if | n > 3 -> "err (too much)"
+       | fromWord8 n == OpReturn -> "ret"
+       | fromWord8 n == OpConstant ->
+          case V.uncons ns of
+            Nothing -> "err (no constant)"
+            Just (n1, ns1) -> "const (" <> show n1 <> ")\n" <> disassembleChunk ns1
+       | fromWord8 n == OpCall ->
+          case V.uncons ns of
+            Nothing -> "err (no callee number)"
+            Just (n1, ns1) -> "call (" <> show n1 <> ")\n" <> disassembleChunk ns1
+       | fromWord8 n == OpJmp ->
+          case V.uncons ns of
+            Nothing -> "err (no offset 1)"
+            Just (n1, ns1) ->
+              case V.uncons ns1 of
+                Nothing -> "err (no offset 1)"
+                Just (n2, ns2) -> "jmp (" <> show n1 <> ", " <> show n2 <> ")\n" <> disassembleChunk ns2
+       | otherwise -> "err (unknown)"
 
 writeValueArray :: ValueArray -> Value -> ValueArray
 writeValueArray (ValueArray v) w = ValueArray (V.snoc v w)
@@ -114,8 +137,8 @@ localize s@(x:xs) (Call nm e) = if nm == x
     localize xs (Call nm t)
 localize s ex = goInside (localize s) ex
 
-catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
-catchVar (vm, fm) ex = case ex of
+catchVar :: Maps -> Expr -> Either Text Expr
+catchVar ms@(vm, fm, _) ex = case ex of
   (Id i) | T.head i == '@' -> return $ Id i
   (Id i) ->
     let a = M.lookup i vm :: Maybe (Complex Rational)
@@ -130,25 +153,28 @@ catchVar (vm, fm) ex = case ex of
       randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number (realPart n) (imagPart n)
   e -> goInside st e
     where
-      st = catchVar (vm, fm)
+      st = catchVar ms
 
-addConstant :: Value -> StateChunk Int
+addConstant :: Value -> StateChunk ()
 addConstant v = do
+  writeChunk OpConstant
   (Chunk c s m) <- get
   let i = V.length (unarray s)
   put (Chunk c (writeValueArray s v) m)
-  return i
+  writeChunk i
 
 addVar :: Text -> Expr -> StateChunk ()
 addVar name expr = modify $ (umaps . uvars) %~ M.insert name (UV expr)
 
-addFun :: Text -> [Text] -> Expr -> StateChunk ()
-addFun name args expr = do
-  new_expr <- liftEither $ localize args expr
+addFun :: Maps -> Text -> [Text] -> Expr -> StateChunk ()
+addFun ms name args expr = do
+  new_expr <- liftEither $ localize args expr >>= catchVar ms
   modify $ (umaps . ufuns) %~ M.insert (name, length args) (UF args new_expr)
 
-addOp :: Text -> Int -> Assoc -> Expr -> StateChunk ()
-addOp name prec assoc expr = modify $ (umaps . uops) %~ M.insert name (UO prec assoc expr)
+addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
+addOp ms name prec assoc expr = do
+  new_expr <- liftEither $ localize ["x", "y"] expr >>= catchVar ms
+  modify $ (umaps . uops) %~ M.insert name (UO prec assoc new_expr)
 
 toWord8 :: (Enum a) => a -> Word8
 toWord8 = fromIntegral . fromEnum
@@ -156,75 +182,117 @@ toWord8 = fromIntegral . fromEnum
 fromWord8 :: (Enum a) => Word8 -> a
 fromWord8 = toEnum . fromIntegral
 
-interpretBc :: Maps -> Chunk -> (VM, InterpretResult)
-interpretBc m c = run m $ VM c 0 []
+extendWord8 :: Word8 -> Int
+extendWord8 = fromIntegral
 
-push :: Value -> [Value] -> [Value]
-push = (:)
+interpretBc :: Maps -> Chunk -> InterpretResult
+interpretBc m c = evalState (run m) $ VM c 0 []
 
-pop :: [Value] -> (Value, [Value])
-pop [] = error "Stack underflow!"
-pop (x : xs) = (x, xs)
+-- push :: Value -> [Value] -> [Value]
+-- push = (:)
 
-run :: Maps -> VM -> (VM, InterpretResult)
-run m vm@(VM c i s) =
-  if i >= V.length (c^.code)
-    then (vm, IrRuntimeError)
-    else
-      let new_i = i + 1
-       in case fromWord8 $ (c^.code) V.! i of
-            OpReturn -> let (v, s1) = pop s in trace (show v) (VM c i s1, IrOk)
-            OpConstant ->
-              let n = fromWord8 @Int $ (c^.code) V.! new_i
-                  v = readConstant c n
-               in runNext new_i (push v s)
-            OpCall ->
-              let n = fromWord8 @Int $ (c^.code) V.! new_i
-               in if n > 127
-                    then
-                      let (_, fun) = M.elemAt (n .&. 0x7f) (m ^. _2)
-                       in case fexec fun of
-                            FnFn (CmpFn f) ->
-                              let (v1, s1) = pop s
-                                  (v2, s2) = pop s1
-                               in runNext new_i (push (if f (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0) s2)
-                            FnFn (MathFn1 f) ->
-                              let (v1, s1) = pop s
-                               in runNext new_i (push (fmap toRational . f . fmap fromRational $ v1) s1)
-                            FnFn (MathFn2 f) ->
-                              let (v1, s1) = pop s
-                                  (v2, s2) = pop s1
-                               in runNext new_i (push (f v2 v1) s2)
-                            FnFn (IntFn1 f) ->
-                              let (v1, s1) = pop s
-                               in runNext new_i (push (toRational . f . fromRational <$> v1) s1)
-                            FnFn (IntFn2 f) ->
-                              let (v1, s1) = pop s
-                                  (v2, s2) = pop s1
-                               in runNext new_i (push (f (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0) s2)
-                            FnFn (BitFn f) ->
-                              let (v1, s1) = pop s
-                               in runNext new_i (push (toRational . f . numerator . fromRational <$> v1) s1)
-                            _ -> error "Function is not computable yet"
-                    else
-                      let (_, op) = M.elemAt n (m ^. _3)
-                       in case oexec op of
-                            FnOp (CmpOp o) ->
-                              let (v1, s1) = pop s
-                                  (v2, s2) = pop s1
-                               in runNext new_i (push (if o (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0) s2)
-                            FnOp (MathOp o) ->
-                              let (v1, s1) = pop s
-                                  (v2, s2) = pop s1
-                               in runNext new_i (push (o v2 v1) s2)
-                            FnOp (BitOp o) ->
-                              let (v1, s1) = pop s
-                                  (v2, s2) = pop s1
-                               in runNext new_i (push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0) s2)
-                            _ -> error "Operator is not computable yet"
+-- pop :: [Value] -> (Value, [Value])
+-- pop [] = error "Stack underflow!"
+-- pop (x : xs) = (x, xs)
+
+type StateVM = State VM
+
+run :: Maps -> StateVM InterpretResult
+run m = do
+  ok <- sanityCheck
+  if not ok
+    then gets (IrRuntimeError . (^. ip))
+    else do
+      opcode <- readOpcode
+      case fromWord8 opcode of
+        OpReturn -> do
+          v <- pop
+          return (trace (show v) IrOk)
+        OpConstant -> do
+          n <- readWord
+          c <- readConstant n
+          push c
+          trace ("constant " <> show c) runNext
+        OpJmp -> do
+          cond <- pop
+          msb <- extendWord8 <$> readWord
+          lsb <- extendWord8 <$> readWord
+          let offset = (shiftL (msb .&. 0x7f) 8 .|. lsb) * if msb .&. 0x80 == 0x80 then -1 else 1
+          when (cond == 0 :+ 0) $ jump offset
+          trace ("jump " <> show msb <> " " <> show lsb) runNext
+        OpCall -> do
+          n <- readWord
+          if n > 127
+            then
+              let (_, fun) = M.elemAt (fromWord8 n .&. 0x7f) (m ^. _2)
+                in do
+                  case fexec fun of
+                    FnFn (CmpFn f) -> do
+                      v1 <- pop
+                      v2 <- pop
+                      push (if f (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
+                    FnFn (MathFn1 f) -> do
+                      v1 <- pop
+                      push (fmap toRational . f . fmap fromRational $ v1)
+                    FnFn (MathFn2 f) -> do
+                      v1 <- pop
+                      v2 <- pop
+                      push (f v2 v1)
+                    FnFn (IntFn1 f) -> do
+                      v1 <- pop
+                      push (toRational . f . fromRational <$> v1)
+                    FnFn (IntFn2 f) -> do
+                      v1 <- pop
+                      v2 <- pop
+                      push (f (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
+                    FnFn (BitFn f) -> do
+                      v1 <- pop
+                      push (toRational . f . numerator . fromRational <$> v1)
+                    _ -> error "Function is not computable yet"
+                  trace ("call " <> show fun) runNext
+            else
+              let (_, op) = M.elemAt (fromWord8 n) (m ^. _3)
+                in do
+                  case oexec op of
+                    FnOp (CmpOp o) -> do
+                      v1 <- pop
+                      v2 <- pop
+                      push (if o (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
+                    FnOp (MathOp o) -> do
+                      v1 <- pop
+                      v2 <- pop
+                      push (o v2 v1)
+                    FnOp (BitOp o) -> do
+                      v1 <- pop
+                      v2 <- pop
+                      push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
+                    _ -> error "Operator is not computable yet"
+                  trace ("call " <> show op) runNext
   where
-    readConstant cc n = (V.! n) . unarray . (^.constants) $ cc
-    runNext ni val = run m $ VM c (ni + 1) val
+    jump offset = modify $ ip %~ (+offset)
+    runNext = run m
+    push v = modify $ stack %~ (v:)
+    readWord = do
+      oc <- gets (\vm -> (vm ^. chunks . code) V.! (vm ^. ip))
+      step
+      return oc
+    pop = do
+      s <- gets (^.stack)
+      if null s
+        then error "Stack underflow!"
+        else do
+          modify (stack %~ const (tail s))
+          return . head $ s
+    readOpcode = do
+      oc <- gets (\vm -> (vm ^. chunks . code) V.! (vm ^. ip))
+      step
+      return oc
+    step = modify (ip %~ (+ 1))
+    sanityCheck = do
+      i <- gets (^. ip)
+      l <- gets (\vm -> V.length $ vm ^. chunks . code)
+      return $ i < l
+    readConstant n = gets $ (V.! fromWord8 n) . unarray . (^.chunks.constants)
 
 emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty M.empty)
@@ -232,33 +300,84 @@ emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty M.empty)
 compile :: Maps -> Expr -> Either Text Chunk
 compile m e =
   let (a, s) = runState (runExceptT (compile' m e >> writeChunk OpReturn)) emptyChunk
-   in case a of
-        Left err -> Left err
-        Right () -> trace (show (s^.code)) $ Right s
+    in case a of
+      Left err -> Left err
+      Right () -> trace (disassembleChunk (s^.code)) $ Right s
+
+getOffset :: StateChunk Int
+getOffset = gets $ V.length . (^.code)
+
+writeOffset :: Int -> Int -> StateChunk ()
+writeOffset addr value = do
+  let val = abs value
+  let msb = toWord8 (val `shiftR` 8) .|. if value < 0 then 0x80 else 0x0
+  let lsb = toWord8 (val .&. 0xff)
+  modify (code %~ (V.// [(addr, msb), (addr+1, lsb)]))
+
+unfinishedJump :: StateChunk (Int, Int)
+unfinishedJump = do
+  writeChunk OpJmp
+  off1 <- getOffset
+  writeChunk (0 :: Word8)
+  writeChunk (0 :: Word8)
+  off2 <- getOffset
+  return (off1, off2)
 
 compile' :: Maps -> Expr -> StateChunk ()
 compile' m = go
   where
     go (Asgn name expr) = addVar name expr
-    go (UDF name args body) = addFun name args body
-    go (UDO name prec assoc body) = addOp name prec assoc body
-    go (Par e) = do
-      go e
+    go (UDF name args body) = addFun m name args body
+    go (UDO name prec assoc body) = addOp m name prec assoc body
+    go (Par e) = go e
+    go (Call ":=" [Id name, expr]) = addVar name expr
+    go (Call "if" [cond, t, f]) = do
+      go cond
+      (off1, off2) <- unfinishedJump
+      go t
+      addConstant (0 :+ 0)
+      (off3, off4) <- unfinishedJump
+      go f
+      off5 <- getOffset
+      writeOffset off1 (off4 - off2)
+      writeOffset off3 (off5 - off4)
+    go (Call "loop" [s, c, a]) = do
+      go s
+      off1 <- getOffset
+      go c
+      (off2, off3) <- unfinishedJump
+      go a
+      addConstant (0 :+ 0)
+      (off4, off5) <- unfinishedJump
+      writeOffset off2 (off5 - off3)
+      writeOffset off4 (off1 - off5)
     go (Call op [x, y]) | M.member op (m ^. _3) = do
       go x
       go y
       writeChunk OpCall
       writeChunk (op2Code (m ^. _3) op)
-    go (Call fun args) = do
+    go (Call fun args) | M.member (fun, length args) ( m ^. _2) = do
       forM_ args go
       writeChunk OpCall
       writeChunk (fun2Code (m ^. _2) (fun, length args))
+    go (Call callee args) = do
+      UM fm om _ <- gets (^.umaps)
+      when (M.member (callee, length args) fm) $ do
+        let UF ps e = fm M.! (callee, length args)
+        ne <- liftEither $ substitute (ps, args) e
+        go ne
+      when (M.member callee om) $ do
+        let UO _ _ e = om M.! callee
+        ne <- liftEither $ substitute (["@x", "@y"], args) e
+        go ne
     go (Number a b) = do
-      writeChunk OpConstant
-      addConstant (a :+ b) >>= writeChunk
+      addConstant (a :+ b)
     go (Id a) = do
-      writeChunk OpConstant
-      addConstant ((m ^. _1) M.! a) >>= writeChunk
+      uv <- gets (^.umaps . uvars)
+      if M.member a (m ^. _1)
+        then do
+          addConstant ((m ^. _1) M.! a)
+        else go ((uv M.! a)^.uval)
     go (Seq es) = forM_ es go
 
 op2Code :: OpMap -> Text -> Word8
