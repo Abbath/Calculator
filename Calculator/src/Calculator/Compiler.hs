@@ -50,7 +50,9 @@ data UserMaps = UM
 
 makeLenses ''UserMaps
 
-type Value = Complex Rational
+data Value = NumVal (Complex Rational) | StrVal Text deriving (Show, Eq)
+
+type Val = Complex Rational
 
 newtype ValueArray = ValueArray {unarray :: V.Vector Value} deriving (Show)
 
@@ -60,13 +62,13 @@ makeLenses ''Chunk
 
 type StateChunk = ExceptT Text (State Chunk)
 
-data VM = VM {_chunk :: Chunk, _ip :: Int, _stack :: [Value]} deriving (Show)
+data VM = VM {_chunk :: Chunk, _ip :: Int, _stack :: [Val], _vars :: Map Text Val} deriving (Show)
 
 makeLenses ''VM
 
 data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int deriving (Show)
 
-data OpCode = OpReturn | OpConstant | OpCall | OpJmp deriving (Show, Bounded, Enum, Eq)
+data OpCode = OpReturn | OpConstant | OpCall | OpJmp | OpSet | OpGet deriving (Show, Bounded, Enum, Eq)
 
 writeChunk :: (Enum a) => a -> StateChunk ()
 writeChunk v = modify $ code %~ flip V.snoc (toWord8 v)
@@ -75,7 +77,13 @@ disassembleChunk :: V.Vector Word8 -> String
 disassembleChunk v = case V.uncons v of
   Nothing -> ""
   Just (n, ns) ->
-    if | n > 3 -> "err (too much)"
+    if | n > 5 -> "err (too much)"
+       | fromWord8 n == OpSet -> case V.uncons ns of
+            Nothing -> "err (no constant)"
+            Just (n1, ns1) -> "set (" <> show n1 <> ")\n" <> disassembleChunk ns1
+       | fromWord8 n == OpGet -> case V.uncons ns of
+            Nothing -> "err (no constant)"
+            Just (n1, ns1) -> "get (" <> show n1 <> ")\n" <> disassembleChunk ns1
        | fromWord8 n == OpReturn -> "ret"
        | fromWord8 n == OpConstant ->
           case V.uncons ns of
@@ -96,6 +104,9 @@ disassembleChunk v = case V.uncons v of
 
 writeValueArray :: ValueArray -> Value -> ValueArray
 writeValueArray (ValueArray v) w = ValueArray (V.snoc v w)
+
+indexValueArray :: ValueArray -> Value -> Maybe Int
+indexValueArray (ValueArray v) val = V.elemIndex val v
 
 goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
@@ -156,9 +167,34 @@ addConstant :: Value -> StateChunk ()
 addConstant v = do
   writeChunk OpConstant
   (Chunk c s m) <- get
-  let i = V.length (unarray s)
-  put (Chunk c (writeValueArray s v) m)
-  writeChunk i
+  case indexValueArray s v of
+    Nothing -> do
+      let i = V.length (unarray s)
+      put (Chunk c (writeValueArray s v) m)
+      writeChunk i
+    Just idx -> writeChunk idx
+
+getVar :: Value -> StateChunk ()
+getVar name = do
+  writeChunk OpGet
+  (Chunk c s m) <- get
+  case indexValueArray s name of
+    Nothing -> do
+      let i = V.length (unarray s)
+      put (Chunk c (writeValueArray s name) m)
+      writeChunk i
+    Just idx -> writeChunk idx
+
+setVar :: Value -> StateChunk ()
+setVar name = do
+  writeChunk OpSet
+  (Chunk c s m) <- get
+  case indexValueArray s name of
+    Nothing -> do
+      let i = V.length (unarray s)
+      put (Chunk c (writeValueArray s name) m)
+      writeChunk i
+    Just idx -> writeChunk idx
 
 addVar :: Text -> Expr -> StateChunk ()
 addVar name expr = modify $ (umaps . uvars) %~ M.insert name (UV expr)
@@ -183,7 +219,7 @@ extendWord8 :: Word8 -> Int
 extendWord8 = fromIntegral
 
 interpretBc :: Maps -> Chunk -> InterpretResult
-interpretBc m c = evalState (run m) $ VM c 0 []
+interpretBc m c = evalState (run m) $ VM c 0 [] M.empty
 
 type StateVM = State VM
 
@@ -195,26 +231,42 @@ run m = do
     else do
       opcode <- readOpcode
       case fromWord8 opcode of
-        OpReturn -> do
+        OpSet -> do
           v <- pop
-          return (trace (show v) IrOk)
+          n <- readWord
+          c <- readConstant n
+          case c of
+            NumVal _ -> error "Not a var name"
+            StrVal name -> trace ("set " <> T.unpack name <> " " <> show v) $ setvar name v
+          runNext
+        OpGet -> do
+          n <- readWord
+          c <- readConstant n
+          case c of
+            NumVal _ -> error "Not a var name"
+            StrVal name -> trace ("get " <> T.unpack name) $ getvar name >>= push
+          runNext
+        OpReturn -> do
+          return IrOk
         OpConstant -> do
           n <- readWord
           c <- readConstant n
-          push c
+          case c of
+            NumVal nv -> push nv
+            StrVal _ -> error "Can't push strings"
           trace ("constant " <> show c) runNext
         OpJmp -> do
           cond <- pop
           msb <- extendWord8 <$> readWord
           lsb <- extendWord8 <$> readWord
           let offset = (shiftL (msb .&. 0x7f) 8 .|. lsb) * if msb .&. 0x80 == 0x80 then -1 else 1
-          when (cond == 0 :+ 0) $ jump offset
-          trace ("jump " <> show msb <> " " <> show lsb) runNext
+          when (cond == 0 :+ 0) $ trace ("jump " <> show offset <> " " <> show msb <> " " <> show lsb) $ jump offset
+          runNext
         OpCall -> do
           n <- readWord
           if n > 127
             then
-              let (_, fun) = M.elemAt (fromWord8 n .&. 0x7f) (m ^. _2)
+              let (k, fun) = M.elemAt (fromWord8 n .&. 0x7f) (m ^. _2)
                 in do
                   case fexec fun of
                     FnFn (CmpFn f) -> do
@@ -239,9 +291,9 @@ run m = do
                       v1 <- pop
                       push (toRational . f . numerator . fromRational <$> v1)
                     _ -> error "Function is not computable yet"
-                  trace ("call " <> show fun) runNext
+                  trace ("call " <> show k <> " " <> show fun) runNext
             else
-              let (_, op) = M.elemAt (fromWord8 n) (m ^. _3)
+              let (k, op) = M.elemAt (fromWord8 n) (m ^. _3)
                 in do
                   case oexec op of
                     FnOp (CmpOp o) -> do
@@ -257,11 +309,11 @@ run m = do
                       v2 <- pop
                       push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
                     _ -> error "Operator is not computable yet"
-                  trace ("call " <> show op) runNext
+                  trace ("call " <> show k <> " " <> show op) runNext
   where
     jump offset = modify $ ip %~ (+offset)
     runNext = run m
-    push v = modify $ stack %~ (v:)
+    push v = trace ("pushed " <> show v) $ modify $ stack %~ (v:)
     readWord = do
       oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
       step
@@ -271,18 +323,20 @@ run m = do
       if null s
         then error "Stack underflow!"
         else do
-          modify (stack %~ const (tail s))
-          return . head $ s
+          modify $ stack %~ const (tail s)
+          return . head $ trace ("poped " <> show (head s)) s
     readOpcode = do
       oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
       step
       return oc
-    step = modify (ip %~ (+ 1))
+    step = modify $ ip %~ (+ 1)
     sanityCheck = do
       i <- gets (^. ip)
       l <- gets (\vm -> V.length $ vm ^. chunk . code)
       return $ i < l
     readConstant n = gets $ (V.! fromWord8 n) . unarray . (^.chunk . constants)
+    getvar name = gets $ (M.! name) . (^.vars)
+    setvar name val = modify $ vars %~ M.insert name val
 
 emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty M.empty)
@@ -316,16 +370,20 @@ unfinishedJump = do
 compile' :: Maps -> Expr -> StateChunk ()
 compile' m = go
   where
-    go (Asgn name expr) = addVar name expr
+    go (Asgn name expr) = do
+      go expr
+      setVar (StrVal name)
     go (UDF name args body) = addFun m name args body
     go (UDO name prec assoc body) = addOp m name prec assoc body
     go (Par e) = go e
-    go (Call ":=" [Id name, expr]) = addVar name expr
+    go (Call ":=" [Id name, expr]) = do
+      go expr
+      setVar (StrVal name)
     go (Call "if" [cond, t, f]) = do
       go cond
       (off1, off2) <- unfinishedJump
       go t
-      addConstant (0 :+ 0)
+      addConstant (NumVal $ 0 :+ 0)
       (off3, off4) <- unfinishedJump
       go f
       off5 <- getOffset
@@ -337,7 +395,7 @@ compile' m = go
       go c
       (off2, off3) <- unfinishedJump
       go a
-      addConstant (0 :+ 0)
+      addConstant (NumVal $ 0 :+ 0)
       (off4, off5) <- unfinishedJump
       writeOffset off2 (off5 - off3)
       writeOffset off4 (off1 - off5)
@@ -361,13 +419,14 @@ compile' m = go
         ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
         go ne
     go (Number a b) = do
-      addConstant (a :+ b)
+      addConstant (NumVal $ a :+ b)
     go (Id a) = do
       uv <- gets (^.umaps . uvars)
       if M.member a (m ^. _1)
         then do
-          addConstant ((m ^. _1) M.! a)
-        else go ((uv M.! a)^.uval)
+          addConstant (NumVal $ (m ^. _1) M.! a)
+        else do
+          getVar (StrVal a)
     go (Seq es) = forM_ es go
 
 op2Code :: OpMap -> Text -> Word8
