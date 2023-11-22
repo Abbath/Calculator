@@ -237,7 +237,7 @@ run m = do
           c <- readConstant n
           case c of
             NumVal _ -> error "Not a var name"
-            StrVal name -> trace ("set " <> T.unpack name <> " " <> show v) $ setvar name v
+            StrVal name -> trace ("set " <> T.unpack name <> " " <> show v) $ setvar name v >>= push
           runNext
         OpGet -> do
           n <- readWord
@@ -247,7 +247,8 @@ run m = do
             StrVal name -> trace ("get " <> T.unpack name) $ getvar name >>= push
           runNext
         OpReturn -> do
-          return IrOk
+          v <- pop
+          return (trace (show v) IrOk)
         OpConstant -> do
           n <- readWord
           c <- readConstant n
@@ -257,10 +258,8 @@ run m = do
           trace ("constant " <> show c) runNext
         OpJmp -> do
           cond <- pop
-          msb <- extendWord8 <$> readWord
-          lsb <- extendWord8 <$> readWord
-          let offset = (shiftL (msb .&. 0x7f) 8 .|. lsb) * if msb .&. 0x80 == 0x80 then -1 else 1
-          when (cond == 0 :+ 0) $ trace ("jump " <> show offset <> " " <> show msb <> " " <> show lsb) $ jump offset
+          offset <- readOffset
+          when (cond == 0 :+ 0) $ trace ("jump " <> show offset) $ jump offset
           runNext
         OpCall -> do
           n <- readWord
@@ -318,6 +317,10 @@ run m = do
       oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
       step
       return oc
+    readOffset = do
+      msb <- extendWord8 <$> readWord
+      lsb <- extendWord8 <$> readWord
+      return $ (shiftL (msb .&. 0x7f) 8 .|. lsb) * if msb .&. 0x80 == 0x80 then -1 else 1
     pop = do
       s <- gets (^.stack)
       if null s
@@ -336,7 +339,9 @@ run m = do
       return $ i < l
     readConstant n = gets $ (V.! fromWord8 n) . unarray . (^.chunk . constants)
     getvar name = gets $ (M.! name) . (^.vars)
-    setvar name val = modify $ vars %~ M.insert name val
+    setvar name val = do
+      modify $ vars %~ M.insert name val
+      return val
 
 emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty M.empty)
@@ -370,15 +375,11 @@ unfinishedJump = do
 compile' :: Maps -> Expr -> StateChunk ()
 compile' m = go
   where
-    go (Asgn name expr) = do
-      go expr
-      setVar (StrVal name)
+    go (Asgn name expr) = go expr >> setVar (StrVal name)
     go (UDF name args body) = addFun m name args body
     go (UDO name prec assoc body) = addOp m name prec assoc body
     go (Par e) = go e
-    go (Call ":=" [Id name, expr]) = do
-      go expr
-      setVar (StrVal name)
+    go (Call ":=" [Id name, expr]) = go expr >> setVar (StrVal name)
     go (Call "if" [cond, t, f]) = do
       go cond
       (off1, off2) <- unfinishedJump
@@ -418,15 +419,14 @@ compile' m = go
         let UO _ _ e = om M.! callee
         ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
         go ne
+      when (callee == "-" && length args == 1) $ do
+        go (Call "-" [Number 0 0, head args])
     go (Number a b) = do
       addConstant (NumVal $ a :+ b)
     go (Id a) = do
-      uv <- gets (^.umaps . uvars)
       if M.member a (m ^. _1)
-        then do
-          addConstant (NumVal $ (m ^. _1) M.! a)
-        else do
-          getVar (StrVal a)
+        then addConstant (NumVal $ (m ^. _1) M.! a)
+        else getVar (StrVal a)
     go (Seq es) = forM_ es go
 
 op2Code :: OpMap -> Text -> Word8
