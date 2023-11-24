@@ -1,14 +1,24 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE LambdaCase #-}
+
 module Calculator.Parser where
 
 import Calculator.Lexer (tloop)
 import Calculator.Types
-import Control.Applicative
-import Control.Monad.Reader
+    ( Expr(UDF, UDO, Asgn, Par, Number, Call, Id),
+      Assoc(R, L),
+      Maps,
+      Op(Op),
+      opSymbols,
+      showT,
+      Token(TRPar, TComma, TOp, TNumber, TIdent, TLPar) )
+import Control.Applicative ( Applicative(liftA2), Alternative(..) )
+import Control.Monad.Reader ( void )
 import qualified Data.Map.Strict as M
-import Data.Ratio
+import Data.Ratio ( numerator )
 import Data.Text (Text)
 import qualified Data.Text as T
 import Control.Lens ((^.), _3)
@@ -29,10 +39,8 @@ inputPeek :: Input -> Maybe Token
 inputPeek (Input _ []) = Nothing
 inputPeek (Input _ (x:_)) = Just x
 
-data ParserError = ParserError { pe_loc :: Int, pe_msg :: Text } deriving (Show)
-
 newtype Parser a = Parser
-  { runParser :: Input -> Either ParserError (Input, a)
+  { runParser :: Input -> Either Text (Input, a)
   }
 
 instance Functor Parser where
@@ -49,8 +57,8 @@ instance Applicative Parser where
       (input'', a) <- p2 input'
       return (input'', f a)
 
-instance {-# OVERLAPPING #-} Alternative (Either ParserError) where
-  empty = Left $ ParserError 0 "empty"
+instance {-# OVERLAPPING #-} Alternative (Either Text) where
+  empty = Left "empty"
   Left _ <|> e2 = e2
   e1 <|> _ = e1
 
@@ -67,10 +75,10 @@ instance Monad Parser where
 
 eof :: Parser ()
 eof = Parser $ \input -> case input of
-  (inputUncons -> Just (_, _)) -> Left $ ParserError (inputLoc input) "DUPA"
+  (inputUncons -> Just (_, _)) -> Left "DUPA"
   _ -> return (input, ())
 
-parse :: Maps -> [Token] -> Either ParserError Expr
+parse :: Maps -> [Token] -> Either Text Expr
 parse m ts = runParser (stmt m) (Input 0 ts) >>= \(i, e) -> return e
 
 stmt :: Maps -> Parser Expr
@@ -95,20 +103,14 @@ operator = exctractOp <$> parseIf "operator" isTOp
 
 parseIf :: Text -> (Token -> Bool) -> Parser Token
 parseIf desc f =
-  Parser $ \input ->
-    case input of
+  Parser $
+    \case
       (inputUncons -> Just (y, ys))
         | f y -> Right (ys, y)
         | otherwise ->
-          Left $
-          ParserError
-            (inputLoc input)
-            ("Expected " <> desc <> ", but found " <> showT y)
+          Left ("Expected " <> desc <> ", but found " <> showT y)
       _ ->
-        Left $
-        ParserError
-          (inputLoc input)
-          ("Expected " <> desc <> ", but reached end of token list")
+        Left ("Expected " <> desc <> ", but reached end of token list")
 
 number :: Parser (Rational, Rational)
 number = exctractNum <$> parseIf "number" isTNumber
@@ -173,8 +175,8 @@ assignStmt m = do
   Asgn name <$> expr 0.0 m
 
 expr :: Double -> Maps -> Parser Expr
-expr min_bp m = Parser $ \input ->
-  case input of
+expr min_bp m = Parser $
+  \case
     (inputUncons -> Just (t, ts)) -> case t of
       TOp op -> case inputPeek ts of
         Just TLPar -> do
@@ -194,30 +196,24 @@ expr min_bp m = Parser $ \input ->
         (i, e) <- runParser (expr 0.0 m) ts
         case i of
           (inputUncons -> Just (TRPar, i1)) -> inner_loop (Par e) min_bp m i1
-          _ -> Left $ ParserError (inputLoc i) "No closing bracket"
-      tok -> Left $
-        ParserError
-          (inputLoc input)
-          ("Only numbers in the building " <> showT tok)
-    _ -> Left $
-        ParserError
-          (inputLoc input)
-          "Expected token, but the list is empty"
+          _ -> Left "No closing bracket"
+      tok -> Left ("Only numbers in the building " <> showT tok)
+    _ -> Left "Expected token, but the list is empty"
   where
-    inner_loop :: Expr -> Double -> Maps -> Input -> Either ParserError (Input, Expr)
+    inner_loop :: Expr -> Double -> Maps -> Input -> Either Text (Input, Expr)
     inner_loop lhs bp om ts = case ts of
       (inputUncons -> Just (t, ts1)) -> case t of
         TRPar -> Right (ts, lhs)
         TComma -> Right (ts, lhs)
         TOp op -> case infix_binding_power op om of
-          Nothing -> Left $ ParserError (inputLoc ts) $ "Operator does not exist: " <> showT op
+          Nothing -> Left $ "Operator does not exist: " <> showT op
           Just (l_bp, r_bp) ->
             if l_bp < bp
             then Right (ts, lhs)
             else do
               (ts2, e) <- runParser (expr r_bp om) ts1
               inner_loop (Call op [lhs, e]) bp om ts2
-        tok -> Left $ ParserError (inputLoc ts) $ "Wrong token: " <> showT tok
+        tok -> Left $ "Wrong token: " <> showT tok
       _ -> Right (ts, lhs)
     infix_binding_power :: Text -> Maps -> Maybe (Double, Double)
     infix_binding_power op ms =
@@ -232,13 +228,13 @@ expr min_bp m = Parser $ \input ->
     prefix_binding_power :: Text -> Maps -> Double
     prefix_binding_power op ms = let (Op pr _ _) = (ms^._3) M.! op
                                  in fromIntegral pr
-    selectOp :: Text -> Either ParserError Text
+    selectOp :: Text -> Either Text Text
     selectOp op = let ops = [("~", "comp"), ("!", "fact"), ("-", "-")]
                   in case M.lookup op ops of
-                    Nothing -> Left $ ParserError 0 ("No such operator: " <> op)
+                    Nothing -> Left ("No such operator: " <> op)
                     Just fun -> return fun
 
-testParser :: Parser a -> Text -> Either ParserError (Input, a)
+testParser :: Parser a -> Text -> Either Text (Input, a)
 testParser p input = case tloop input of
-    Left err -> Left (ParserError 0 err)
+    Left err -> Left err
     Right i -> runParser p (Input 0 i)

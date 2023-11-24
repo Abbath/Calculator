@@ -29,12 +29,7 @@ loop (x:xs) mps rgen bk n = do
   if not $ T.null sample
     then do
       let e = case bk of
-                Internal -> case tloop sample of
-                          Left err -> Left err
-                          Right ts -> case P.parse mps ts of
-                            Left (P.ParserError _ msg) -> Left msg
-                            Right ex -> Right ex
-      --print e
+                Internal -> tloop sample >>= P.parse mps
       let t = case e of
                 Left err -> (Left (ErrMsg err), EvalState mps rgen M.empty)
                 Right r  -> runState (runExceptT (evalS r)) (EvalState mps rgen M.empty)

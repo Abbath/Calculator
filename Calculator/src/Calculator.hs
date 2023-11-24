@@ -6,15 +6,19 @@ module Calculator (
 #ifdef TELEGRAM
   telegramSimple,
 #endif
-  evalFile) where
+  evalFile,
+  compileAndRunFile) where
+
+import Debug.Trace
 
 import Calculator.Builtins (defVar, funMap, names, opMap)
 import Calculator.Css (getCss, postCss)
 import Calculator.Evaluator (evalS, MessageType(..))
 import Calculator.Lexer (tloop)
 import qualified Calculator.Parser as P
+import qualified Calculator.Compiler as C
 import Calculator.Types
-    ( Expr,
+    ( Expr(Seq),
       ListTuple,
       Maps,
       opsToList,
@@ -105,7 +109,6 @@ import Telegram.Bot.Simple
       Eff )
 import Telegram.Bot.Simple.UpdateParser ( parseUpdate, text )
 
-
 newtype Model = Model {getMaps :: EvalState}
 
 -- | Actions bot can perform.
@@ -158,11 +161,7 @@ data Mode = Internal deriving Show
 
 parseString :: Mode -> TS.Text -> Maps -> Either TS.Text Expr
 parseString m s ms = case m of
-                       Internal -> case tloop s of
-                        Left err -> Left err
-                        Right ts -> case P.parse ms ts of
-                          Left (P.ParserError _ msg) -> Left msg
-                          Right e -> Right e
+                       Internal -> tloop s >>= P.parse ms
 
 evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (MessageType, EvalState) (Complex Rational, EvalState)
 evalExprS t mps g = either (Left . (, EvalState mps g M.empty) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
@@ -252,6 +251,33 @@ interpret path mode mps = do
           Right (r, EvalState m ng _) -> do
             liftIO . TSIO.putStrLn $ showComplex r
             loop' ls md (m & _1 %~ M.insert "_" r) ng
+
+compileAndRun :: FilePath -> Mode -> Maps -> IO ()
+compileAndRun path mode mps = do
+  source <- TS.lines <$> TSIO.readFile path
+  parsed <- flip S.execStateT [] $ loop' source mode mps
+  trace (show parsed) $ case C.compile mps (Seq parsed) of
+    Left err -> TSIO.putStrLn err
+    Right bc -> trace (show bc) $ case C.interpretBc mps bc of
+      Left err -> TSIO.putStrLn err
+      Right status -> case status of
+        C.IrOk -> putStrLn "Success"
+        C.IrCompileError -> putStrLn "Compilation error"
+        C.IrRuntimeError ir -> putStrLn "Runtime error"
+  return ()
+  where
+    loop' :: [TS.Text] -> Mode -> Maps -> StateT [Expr] IO ()
+    loop' [] _ _  = S.modify reverse
+    loop' (l:ls) md ms = case parseString md l ms of
+      Left err -> do
+        liftIO $ TSIO.putStrLn err
+        return ()
+      Right res -> do
+        S.modify (res:)
+        loop' ls mode mps
+
+compileAndRunFile :: FilePath -> IO ()
+compileAndRunFile f = compileAndRun f Internal (defVar, funMap, opMap)
 
 parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (MessageType, EvalState) (Complex Rational, EvalState)
 parseEval md ms g x = evalExprS (parseString md x ms) ms g

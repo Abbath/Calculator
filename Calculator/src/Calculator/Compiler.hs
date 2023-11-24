@@ -19,6 +19,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Vector qualified as V
 import Data.Word
+import Data.Set (Set)
+import qualified Data.Set as S
 import Debug.Trace (trace)
 
 newtype UserVar = UV {
@@ -130,6 +132,9 @@ substitute s@((x, Id fname) : xs) (Call n e) =
     else do
       t <- mapM (substitute s) e
       substitute xs (Call n t)
+substitute s (Call ":=" [Id z, e]) = do
+  ne <- substitute s e
+  return $ Call ":=" [Id z, ne]
 substitute s@(_ : xs) (Call n e) = do
   t <- mapM (substitute s) e
   substitute xs (Call n t)
@@ -145,49 +150,42 @@ localize s@(x:xs) (Call nm e) = if nm == x
     localize xs (Call nm t)
 localize s ex = goInside (localize s) ex
 
-catchVar :: Maps -> Expr -> Either Text Expr
-catchVar ms@(vm, fm, _) ex = case ex of
+catchVar :: Set Text -> Maps -> Expr -> Either Text Expr
+catchVar locals ms@(vm, fm, _) ex = case ex of
+  (Call ":=" [Id nm, e]) -> do
+    ne <- goInside (catchVar (S.insert nm locals) ms) e
+    return $ Call ":=" [Id nm, ne]
   (Id i) | T.head i == '@' -> return $ Id i
   (Id i) ->
     let a = M.lookup i vm :: Maybe (Complex Rational)
         getNames = map (\(f, _) -> (f, f)) . M.keys
         b = lookup i (getNames fm ++ getNames functions) :: Maybe Text
+        c = S.member i locals
     in case a of
          Just n -> return $ randomCheck n i
          Nothing -> case b of
            Just s -> return $ Id s
-           Nothing -> Left $ "No such variable: " <> i
+           Nothing -> if c
+              then return $ Id i
+              else Left $ "No such variable: " <> i
     where
       randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number (realPart n) (imagPart n)
   e -> goInside st e
     where
-      st = catchVar ms
+      st = catchVar locals ms
 
 addConstant :: Value -> StateChunk ()
-addConstant v = do
-  writeChunk OpConstant
-  (Chunk c s m) <- get
-  case indexValueArray s v of
-    Nothing -> do
-      let i = V.length (unarray s)
-      put (Chunk c (writeValueArray s v) m)
-      writeChunk i
-    Just idx -> writeChunk idx
+addConstant = doVar OpConstant
 
 getVar :: Value -> StateChunk ()
-getVar name = do
-  writeChunk OpGet
-  (Chunk c s m) <- get
-  case indexValueArray s name of
-    Nothing -> do
-      let i = V.length (unarray s)
-      put (Chunk c (writeValueArray s name) m)
-      writeChunk i
-    Just idx -> writeChunk idx
+getVar = doVar OpGet
 
 setVar :: Value -> StateChunk ()
-setVar name = do
-  writeChunk OpSet
+setVar = doVar OpSet
+
+doVar :: OpCode -> Value -> StateChunk ()
+doVar oc name = do
+  writeChunk oc
   (Chunk c s m) <- get
   case indexValueArray s name of
     Nothing -> do
@@ -201,12 +199,12 @@ addVar name expr = modify $ (umaps . uvars) %~ M.insert name (UV expr)
 
 addFun :: Maps -> Text -> [Text] -> Expr -> StateChunk ()
 addFun ms name args expr = do
-  new_expr <- liftEither $ localize args expr >>= catchVar ms
-  modify $ (umaps . ufuns) %~ M.insert (name, length args) (UF args new_expr)
+  new_expr <- liftEither $ localize args expr >>= catchVar S.empty ms
+  modify $ (umaps . ufuns) %~ M.insert (name, length args) (UF (map (T.cons '@') args) new_expr)
 
 addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
 addOp ms name prec assoc expr = do
-  new_expr <- liftEither $ localize ["x", "y"] expr >>= catchVar ms
+  new_expr <- liftEither $ localize ["x", "y"] expr >>= catchVar S.empty ms
   modify $ (umaps . uops) %~ M.insert name (UO prec assoc new_expr)
 
 toWord8 :: (Enum a) => a -> Word8
@@ -218,10 +216,10 @@ fromWord8 = toEnum . fromIntegral
 extendWord8 :: Word8 -> Int
 extendWord8 = fromIntegral
 
-interpretBc :: Maps -> Chunk -> InterpretResult
-interpretBc m c = evalState (run m) $ VM c 0 [] M.empty
+interpretBc :: Maps -> Chunk -> Either Text InterpretResult
+interpretBc m c = evalState (runExceptT $ run m) $ VM c 0 [] M.empty
 
-type StateVM = State VM
+type StateVM = ExceptT Text (State VM)
 
 run :: Maps -> StateVM InterpretResult
 run m = do
@@ -232,18 +230,18 @@ run m = do
       opcode <- readOpcode
       case fromWord8 opcode of
         OpSet -> do
-          v <- pop
+          v <- peek
           n <- readWord
           c <- readConstant n
           case c of
-            NumVal _ -> error "Not a var name"
-            StrVal name -> trace ("set " <> T.unpack name <> " " <> show v) $ setvar name v >>= push
+            NumVal _ -> throwError "Not a var name"
+            StrVal name -> trace ("set " <> T.unpack name <> " " <> show v) $ setvar name v
           runNext
         OpGet -> do
           n <- readWord
           c <- readConstant n
           case c of
-            NumVal _ -> error "Not a var name"
+            NumVal _ -> throwError "Not a var name"
             StrVal name -> trace ("get " <> T.unpack name) $ getvar name >>= push
           runNext
         OpReturn -> do
@@ -254,7 +252,7 @@ run m = do
           c <- readConstant n
           case c of
             NumVal nv -> push nv
-            StrVal _ -> error "Can't push strings"
+            StrVal _ -> throwError "Can't push strings"
           trace ("constant " <> show c) runNext
         OpJmp -> do
           cond <- pop
@@ -289,7 +287,7 @@ run m = do
                     FnFn (BitFn f) -> do
                       v1 <- pop
                       push (toRational . f . numerator . fromRational <$> v1)
-                    _ -> error "Function is not computable yet"
+                    _ -> throwError "Function is not computable yet"
                   trace ("call " <> show k <> " " <> show fun) runNext
             else
               let (k, op) = M.elemAt (fromWord8 n) (m ^. _3)
@@ -307,7 +305,7 @@ run m = do
                       v1 <- pop
                       v2 <- pop
                       push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
-                    _ -> error "Operator is not computable yet"
+                    _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
                   trace ("call " <> show k <> " " <> show op) runNext
   where
     jump offset = modify $ ip %~ (+offset)
@@ -324,10 +322,15 @@ run m = do
     pop = do
       s <- gets (^.stack)
       if null s
-        then error "Stack underflow!"
+        then throwError "Stack underflow!"
         else do
           modify $ stack %~ const (tail s)
           return . head $ trace ("poped " <> show (head s)) s
+    peek = do
+      s <- gets (^.stack)
+      if null s
+        then throwError "Stack underflow!"
+        else return . head $ trace ("peeked " <> show (head s)) s
     readOpcode = do
       oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
       step
@@ -338,10 +341,12 @@ run m = do
       l <- gets (\vm -> V.length $ vm ^. chunk . code)
       return $ i < l
     readConstant n = gets $ (V.! fromWord8 n) . unarray . (^.chunk . constants)
-    getvar name = gets $ (M.! name) . (^.vars)
-    setvar name val = do
-      modify $ vars %~ M.insert name val
-      return val
+    getvar name = do
+      mv <- gets $ M.lookup name . (^.vars)
+      case mv of
+        Nothing -> throwError $ "No such variable: " <> name
+        Just v -> return v
+    setvar name val = modify $ vars %~ M.insert name val
 
 emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty M.empty)
@@ -379,7 +384,8 @@ compile' m = go
     go (UDF name args body) = addFun m name args body
     go (UDO name prec assoc body) = addOp m name prec assoc body
     go (Par e) = go e
-    go (Call ":=" [Id name, expr]) = go expr >> setVar (StrVal name)
+    go (Call ":=" [Id name, expr]) = trace (show name <> " " <> show expr) $ go expr >> setVar (StrVal name)
+    go (Call ":" [a, b]) = go a >> go b
     go (Call "if" [cond, t, f]) = do
       go cond
       (off1, off2) <- unfinishedJump
