@@ -57,13 +57,9 @@ data Token = TNumber Rational Rational
            | TLPar
            | TRPar
            | TIdent Text
-           | TFIdent Text
            | TOp Text
            | TComma
            | TEqual
-           | TEnd
-           | TLet
-           | TFun
            deriving (Show, Eq)
 
 data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)

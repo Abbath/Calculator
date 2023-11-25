@@ -287,25 +287,35 @@ run m = do
                     FnFn (BitFn f) -> do
                       v1 <- pop
                       push (toRational . f . numerator . fromRational <$> v1)
-                    _ -> throwError "Function is not computable yet"
+                    _ -> throwError $ "Function is not computable yet: " <> showT k <> " " <> showT fun
                   trace ("call " <> show k <> " " <> show fun) runNext
             else
               let (k, op) = M.elemAt (fromWord8 n) (m ^. _3)
                 in do
-                  case oexec op of
-                    FnOp (CmpOp o) -> do
+                  if
+                    |k == "/" -> do
                       v1 <- pop
                       v2 <- pop
-                      push (if o (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
-                    FnOp (MathOp o) -> do
+                      push . (:+ 0) $ (realPart v2 / realPart v1)
+                    |k == "%" -> do
                       v1 <- pop
                       v2 <- pop
-                      push (o v2 v1)
-                    FnOp (BitOp o) -> do
-                      v1 <- pop
-                      v2 <- pop
-                      push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
-                    _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
+                      push . (:+ 0) $ toRational $ mod (floor . realPart $ v2 :: Integer) (floor . realPart $ v1 :: Integer)
+                    |otherwise ->
+                      case oexec op of
+                        FnOp (CmpOp o) -> do
+                          v1 <- pop
+                          v2 <- pop
+                          push (if o (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
+                        FnOp (MathOp o) -> do
+                          v1 <- pop
+                          v2 <- pop
+                          push (o v2 v1)
+                        FnOp (BitOp o) -> do
+                          v1 <- pop
+                          v2 <- pop
+                          push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
+                        _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
                   trace ("call " <> show k <> " " <> show op) runNext
   where
     jump offset = modify $ ip %~ (+offset)
@@ -386,6 +396,9 @@ compile' m = go
     go (Par e) = go e
     go (Call ":=" [Id name, expr]) = trace (show name <> " " <> show expr) $ go expr >> setVar (StrVal name)
     go (Call ":" [a, b]) = go a >> go b
+    go (Call "|>" [x, Id f]) = go $ Call f [x]
+    go (Call "atan" [Call "/" [x, y]]) = go $ Call "atan2" [x, y]
+    go (Call "log" [x, y]) = go $ Call "log2" [x, y]
     go (Call "if" [cond, t, f]) = do
       go cond
       (off1, off2) <- unfinishedJump

@@ -91,6 +91,8 @@ functions =
        (("acosh", 1), Fun { params = [], fexec = FnFn (MathFn1 acosh) }),
        (("atanh", 1), Fun { params = [], fexec = FnFn (MathFn1 atanh) }),
        (("hypot", 2), Fun { params = [], fexec = FnFn (MathFn2 hypot) }),
+       (("atan2", 2), Fun { params = [], fexec = FnFn (MathFn2 atan3) }),
+       (("log2", 2), Fun { params = [], fexec = FnFn (MathFn2 log2) }),
        (("pow", 2), Fun { params = [], fexec = FnFn (MathFn2 pow) }),
        (("cot", 1), Fun { params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "tan" [Id "x"]]) }),
        (("sec", 1), Fun { params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "sin" [Id "x"]]) }),
@@ -168,7 +170,16 @@ hypot cx cy = let (x, y) = (realPart cx, realPart cy)
                   min' = min x y
                   max' = max x y
                   r = min' / max'
-              in max' * realPart (pow ((1 + r*r) :+ 0) (1%2 :+ 0)) :+ 0    
+              in max' * realPart (pow ((1 + r*r) :+ 0) (1%2 :+ 0)) :+ 0
+
+wrapRealFun2 :: (Double -> Double -> Double) -> Complex Rational -> Complex Rational -> Complex Rational
+wrapRealFun2 f x y = (:+ 0) . toRational @Double $ f (fromRational $ realPart x) (fromRational $ realPart y)
+
+atan3 :: Complex Rational -> Complex Rational -> Complex Rational
+atan3 = wrapRealFun2 atan2
+
+log2 :: Complex Rational -> Complex Rational -> Complex Rational
+log2 = wrapRealFun2 logBase
 
 names :: [String]
 names = T.unpack <$> M.keys operators ++ map fst (M.keys functions)
