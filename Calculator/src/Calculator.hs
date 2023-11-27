@@ -17,7 +17,7 @@ import Calculator.Lexer (tloop)
 import qualified Calculator.Parser as P
 import qualified Calculator.Compiler as C
 import Calculator.Types
-    ( Expr(Seq),
+    ( Expr(Seq, Imprt),
       ListTuple,
       Maps,
       opsToList,
@@ -282,9 +282,13 @@ compileAndRun path mode mps = case mode of
     loop' (l:ls) ms = case parseString Internal l ms of
       Left err -> do
         liftIO $ TSIO.putStrLn err
-      Right res -> do
-        S.modify (res:)
-        loop' ls mps
+      Right res -> case res of
+        (Imprt filepath) -> do
+          source <- liftIO $ TS.lines <$> TSIO.readFile (T.unpack . T.fromStrict $ filepath)
+          loop' (source ++ ls) mps
+        _ -> do
+          S.modify (res:)
+          loop' ls mps
     compileAst ast act = case C.compile mps (Seq ast) of
       Left err -> TSIO.putStrLn err
       Right bc -> act bc

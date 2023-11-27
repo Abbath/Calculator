@@ -488,6 +488,7 @@ unfinishedJump = do
 compile' :: Maps -> Expr -> StateChunk ()
 compile' m = go
   where
+    go (Imprt filename) = return ()
     go (Asgn name expr) = go expr >> setVar (StrVal name)
     go (UDF name args body) = addFun m name args body
     go (UDO name opprec assoc body) = addOp m name opprec assoc body

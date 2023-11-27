@@ -8,13 +8,13 @@ module Calculator.Parser where
 
 import Calculator.Lexer (tloop)
 import Calculator.Types
-    ( Expr(UDF, UDO, Asgn, Par, Number, Call, Id),
+    ( Expr(UDF, UDO, Asgn, Par, Number, Call, Id, Imprt),
       Assoc(R, L),
       Maps,
       Op(Op),
       opSymbols,
       showT,
-      Token(TRPar, TComma, TOp, TNumber, TIdent, TLPar) )
+      Token(TRPar, TComma, TOp, TNumber, TIdent, TLPar), numToText)
 import Control.Applicative ( Applicative(liftA2), Alternative(..) )
 import Control.Monad.Reader ( void )
 import qualified Data.Map.Strict as M
@@ -22,6 +22,7 @@ import Data.Ratio ( numerator )
 import Data.Text (Text)
 import qualified Data.Text as T
 import Control.Lens ((^.), _3)
+import Data.Complex
 
 data Input = Input
   { inputLoc :: Int
@@ -82,7 +83,7 @@ parse :: Maps -> [Token] -> Either Text Expr
 parse m ts = runParser (stmt m) (Input 0 ts) >>= \(i, e) -> return e
 
 stmt :: Maps -> Parser Expr
-stmt m = udfStmt m <|> udoStmt m <|> assignStmt m <|> opAliasStmt <|> (expr 0.0 m <* eof)
+stmt m = udfStmt m <|> udoStmt m <|> assignStmt m <|> opAliasStmt <|> imprtStmt <|> (expr 0.0 m <* eof)
 
 eq :: Parser Token
 eq = parseIf "=" (==TOp "=")
@@ -173,6 +174,12 @@ assignStmt m = do
   name <- identifier
   void eq
   Asgn name <$> expr 0.0 m
+
+imprtStmt :: Parser Expr
+imprtStmt = do
+  void $ parseIf "import" (==TIdent "import")
+  (n1, n2) <- number
+  return $ Imprt . either id id . numToText $ (n1:+n2)
 
 expr :: Double -> Maps -> Parser Expr
 expr min_bp m = Parser $

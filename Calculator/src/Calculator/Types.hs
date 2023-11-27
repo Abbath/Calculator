@@ -71,6 +71,7 @@ data Token = TNumber Rational Rational
 data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
 
 data Expr = Number Rational Rational
+          | Imprt Text
           | Asgn Text Expr
           | UDF Text [Text] Expr
           | UDO Text Int Assoc Expr
@@ -202,6 +203,7 @@ exprToString ex = case ex of
   Call n e -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
   Id s -> s
   Seq es -> T.intercalate "\n" (map exprToString es)
+  Imprt t -> "import " <> t
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><:"
