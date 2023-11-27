@@ -24,8 +24,8 @@ import Data.Word
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Maybe (fromMaybe)
-import Debug.Trace (trace)
 import GHC.Generics
+-- import Debug.Trace
 
 newtype UserVar = UV {
   _uval :: Expr
@@ -72,9 +72,11 @@ data VM = VM {_chunk :: Chunk, _ip :: Int, _stack :: [Val], _vars :: Map Text Va
 
 makeLenses ''VM
 
-data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int | IrGiveMeData deriving (Show)
+data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int | IrIO OpEject (Maybe Text) deriving (Show)
 
 data OpInternal = OpReal | OpImag | OpConj deriving (Show, Bounded, Enum, Eq)
+
+data OpEject = OpInput | OpOutput | OpFmt deriving (Show, Bounded, Enum, Eq)
 
 data OpCode = OpReturn | OpConstant | OpCall | OpJmp | OpSet | OpGet | OpInternal | OpEject deriving (Show, Bounded, Enum, Eq)
 
@@ -153,7 +155,17 @@ disassembleChunk v = case V.uncons v of
           case V.uncons ns of
             Nothing -> "err (no op number)"
             Just (n1, ns1) -> "internal (" <> show n1 <> ")\n" <> disassembleChunk ns1
-       | fromWord8 n == OpEject -> "eject\n" <> disassembleChunk ns
+       | fromWord8 n == OpEject ->
+          case V.uncons ns of
+            Nothing -> "err (no eject opcode)"
+            Just (n1, ns1) -> case fromWord8 n1 of
+              OpInput -> "input\n" <> disassembleChunk ns1
+              OpOutput -> "output\n" <> disassembleChunk ns1
+              OpFmt -> case V.uncons ns1 of
+                Nothing -> "err (no format string)"
+                Just (_, ns2) -> case V.uncons ns2 of
+                  Nothing -> "err (no format string)"
+                  Just (n3, ns3) -> "fmt (" <> show n3 <> ")\n" <> disassembleChunk ns3
        | otherwise -> "err (unknown)"
 
 writeValueArray :: ValueArray -> Value -> ValueArray
@@ -299,7 +311,17 @@ run m = do
     else do
       opcode <- readOpcode
       case fromWord8 opcode of
-        OpEject -> return IrGiveMeData
+        OpEject -> do
+          n <- fromWord8 <$> readWord
+          case n of
+            OpFmt -> do
+              _ <- readOpcode
+              n1 <- readWord
+              n2 <- readConstant n1
+              return . IrIO OpFmt . Just $ case n2 of
+                StrVal s -> s
+                NumVal num -> either id id $ numToText num
+            op -> return $ IrIO op Nothing
         OpInternal -> do
           n <- readWord
           handleInternal (fromWord8 n)
@@ -310,29 +332,27 @@ run m = do
           c <- readConstant n
           case c of
             NumVal _ -> throwError "Not a var name"
-            StrVal name -> trace ("set " <> T.unpack name <> " " <> show v) $ setvar name v
+            StrVal name -> setvar name v
           runNext
         OpGet -> do
           n <- readWord
           c <- readConstant n
           case c of
             NumVal _ -> throwError "Not a var name"
-            StrVal name -> trace ("get " <> T.unpack name) $ getvar name >>= push
+            StrVal name -> getvar name >>= push
           runNext
-        OpReturn -> do
-          v <- pop
-          return (trace (T.unpack $ showComplex v) IrOk)
+        OpReturn -> return IrOk
         OpConstant -> do
           n <- readWord
           c <- readConstant n
           case c of
             NumVal nv -> push nv
             StrVal _ -> throwError "Can't push strings"
-          trace ("constant " <> show c) runNext
+          runNext
         OpJmp -> do
           cond <- pop
           offset <- readOffset
-          when (cond == 0 :+ 0) $ trace ("jump " <> show offset) $ jump offset
+          when (cond == 0 :+ 0) $ jump offset
           runNext
         OpCall -> do
           n <- readWord
@@ -363,7 +383,7 @@ run m = do
                       v1 <- pop
                       push (toRational . f . numerator . fromRational <$> v1)
                     _ -> throwError $ "Function is not computable yet: " <> showT k <> " " <> showT fun
-                  trace ("call " <> show k <> " " <> show fun) runNext
+                  runNext
             else
               let (k, op) = M.elemAt (fromWord8 n) (m ^. _3)
                 in do
@@ -391,11 +411,11 @@ run m = do
                           v2 <- pop
                           push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
                         _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
-                  trace ("call " <> show k <> " " <> show op) runNext
+                  runNext
   where
     jump offset = modify $ ip %~ (+offset)
     runNext = run m
-    push v = trace ("pushed " <> show v) $ modify $ stack %~ (v:)
+    push v = modify $ stack %~ (v:)
     readWord = do
       oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
       step
@@ -410,16 +430,13 @@ run m = do
         then throwError "Stack underflow!"
         else do
           modify $ stack %~ const (tail s)
-          return . head $ trace ("poped " <> show (head s)) s
+          return . head $ s
     peek = do
       s <- gets (^.stack)
       if null s
         then throwError "Stack underflow!"
-        else return . head $ trace ("peeked " <> show (head s)) s
-    readOpcode = do
-      oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
-      step
-      return oc
+        else return . head $ s
+    readOpcode = readWord
     step = modify $ ip %~ (+ 1)
     sanityCheck = do
       i <- gets (^. ip)
@@ -447,7 +464,7 @@ compile m e =
   let (a, s) = runState (runExceptT (compile' m e >> writeChunk OpReturn)) emptyChunk
     in case a of
       Left err -> Left err
-      Right () -> trace (disassembleChunk (s^.code)) $ Right s
+      Right () -> Right s
 
 getOffset :: StateChunk Int
 getOffset = gets $ V.length . (^.code)
@@ -475,10 +492,22 @@ compile' m = go
     go (UDF name args body) = addFun m name args body
     go (UDO name opprec assoc body) = addOp m name opprec assoc body
     go (Par e) = go e
-    go (Call ":=" [Id name, expr]) = trace (show name <> " " <> show expr) $ go expr >> setVar (StrVal name)
+    go (Call ":=" [Id name, expr]) = go expr >> setVar (StrVal name)
     go (Call ":" [a, b]) = go a >> go b
     go (Call "|>" [x, Id f]) = go $ Call f [x]
-    go (Call "input" []) = writeChunk OpEject
+    go (Call "input" []) = do
+      writeChunk OpEject
+      writeChunk OpInput
+    go (Call "print" [x]) = do
+      go x
+      writeChunk OpEject
+      writeChunk OpOutput
+    go (Call "print" (Number n ni:values)) = do
+      let format = numToText (n:+ni)
+      forM_ values go
+      writeChunk OpEject
+      writeChunk OpFmt
+      addConstant (StrVal $ either id id format)
     go (Call "atan" [Call "/" [x, y]]) = go $ Call "atan2" [x, y]
     go (Call "log" [x, y]) = go $ Call "log2" [x, y]
     go (Call "if" [cond, t, f]) = do
@@ -543,3 +572,14 @@ fun2Code m (fun, l) = 0x80 .|. toWord8 (M.findIndex (fun, l) m)
 
 injectValue :: Val -> VM -> VM
 injectValue i = stack %~ (i:)
+
+ejectValue :: VM -> (Maybe Val, VM)
+ejectValue vm = let st = vm^.stack
+                in case st of
+                  [] -> (Nothing, vm)
+                  (x:xs) -> (Just x, vm{_stack = xs})
+
+ejectValues :: Int -> VM -> ([Val], VM)
+ejectValues n vm = let st = vm^.stack
+                       (s, f) = splitAt n st
+                   in (reverse s, vm{_stack=f})

@@ -36,6 +36,10 @@ module Calculator.Types
     mem,
     isNumber,
     isId,
+    numToText,
+    extractFormat,
+    zipFormat,
+    isFormat
   )
 where
 
@@ -52,6 +56,8 @@ import qualified Data.Scientific as S
 import Data.Maybe (fromMaybe)
 import Control.Lens.TH
 import System.Random (StdGen)
+import Data.Char (chr)
+import Data.Bits (shiftR, (.&.))
 
 data Token = TNumber Rational Rational
            | TLPar
@@ -252,6 +258,47 @@ showComplex c =
   let cr = realPart c
       ci = imagPart c
   in showRational cr <> if ci /= 0 then "j" <> showRational ci else ""
+
+numToText :: Complex Rational -> Either Text Text
+numToText n | denominator (realPart n) /= 1 = Left "Can't convert rational to string!"
+numToText n = Right $ go T.empty (abs . numerator . realPart $ n)
+  where go t 0 = t
+        go t m = go (T.cons (chr . fromInteger $ (m .&. 0xff)) t) (m `shiftR` 8)
+
+data FormatChunk = FormatTxt Text | FormatFmt Text deriving Show
+
+isFormat :: FormatChunk -> Bool
+isFormat (FormatFmt _) = True
+isFormat _ = False
+
+extractFormat :: Text -> Either Text [FormatChunk]
+extractFormat = go T.empty []
+  where
+    go chunk acc t | T.null t = Right . reverse $ if T.null chunk then acc else FormatTxt chunk:acc
+    go chunk acc t =
+      let (c, cs) = fromMaybe ('a', "") $ T.uncons t
+      in case c of
+           '%' -> let (c1, cs1) = fromMaybe ('%', "") $ T.uncons cs
+                  in case c1 of
+                       '%' -> go (T.snoc chunk '%') acc cs1
+                       _ | c1 `T.elem` "sfr" -> go T.empty (FormatFmt (T.singleton c1):FormatTxt chunk:acc) cs1
+                       _ -> Left "Wrong format string!"
+           _ -> go (T.snoc chunk c) acc cs
+
+zipFormat :: [FormatChunk] -> [Complex Rational] -> Either Text Text
+zipFormat = go T.empty
+  where
+    go acc [] [] = Right acc
+    go _ [] (_:_) = Left "Too many things to format"
+    go _ (FormatFmt _:_) [] = Left "Too few things to format"
+    go acc (FormatTxt t:fs) rs = go (acc <> t) fs rs
+    go acc (FormatFmt t:fs) (r:rs)
+      | t == "s" = do
+        txt <- numToText r
+        go (acc <> txt) fs rs
+      | t == "f" = go (acc <> showComplex r) fs rs
+      | t == "r" = go (acc <> showFraction (realPart r)) fs rs
+      | otherwise = Left $ "Wrong format: " <> t
 
 data EvalState = EvalState {_maps :: Maps, _gen :: StdGen, _mem :: Map (Text, Int) (Map (Complex Rational) (Complex Rational))} deriving (Show)
 

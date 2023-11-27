@@ -10,8 +10,6 @@ module Calculator (
   evalFile,
   compileAndRunFile) where
 
-import Debug.Trace
-
 import Calculator.Builtins (defVar, funMap, names, opMap)
 import Calculator.Css (getCss, postCss)
 import Calculator.Evaluator (evalS, MessageType(..))
@@ -28,7 +26,10 @@ import Calculator.Types
       funsFromList,
       showComplex,
       EvalState (EvalState),
-      maps)
+      maps,
+      extractFormat,
+      zipFormat,
+      isFormat)
 import Clay (render)
 import Control.Lens ((%~), (&), _1)
 import Control.Monad.Except (runExceptT)
@@ -96,7 +97,9 @@ import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import qualified Control.Exception as CE
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Complex ( imagPart, realPart, Complex(..) )
-import Text.Read
+import Text.Read ( readMaybe )
+
+-- import Debug.Trace
 
 #ifdef TELEGRAM
 import Control.Arrow (first, second)
@@ -266,7 +269,7 @@ compileAndRun :: FilePath -> CompileMode -> Maps -> IO ()
 compileAndRun path mode mps = case mode of
   CompRead -> do
     parsed <- parseSource mps path
-    compileAst parsed $ \bc -> trace (show bc) $ execute mps $ C.emptyVM bc
+    compileAst parsed $ \bc -> execute mps $ C.emptyVM bc
   CompLoad -> do
     bc <- fromMaybe C.emptyChunk <$> C.loadBc path
     execute mps $ C.emptyVM bc
@@ -279,7 +282,6 @@ compileAndRun path mode mps = case mode of
     loop' (l:ls) ms = case parseString Internal l ms of
       Left err -> do
         liftIO $ TSIO.putStrLn err
-        return ()
       Right res -> do
         S.modify (res:)
         loop' ls mps
@@ -294,10 +296,24 @@ compileAndRun path mode mps = case mode of
       (Right status, new_vm) -> case status of
         C.IrOk -> putStrLn "Success"
         C.IrCompileError -> putStrLn "Compilation error"
-        C.IrRuntimeError ir -> putStrLn "Runtime error"
-        C.IrGiveMeData -> do
-          line <- TSIO.getLine
-          execute ms $ C.injectValue (parseNumber line) new_vm
+        C.IrRuntimeError ir -> putStrLn $ "Runtime error " <> show ir
+        C.IrIO operation fmt -> case operation of
+          C.OpInput -> do
+            line <- TSIO.getLine
+            execute ms $ C.injectValue (parseNumber line) new_vm
+          C.OpOutput -> case C.ejectValue new_vm of
+            (Nothing, _) -> execute ms new_vm
+            (Just v, newer_vm) -> do
+              TSIO.putStrLn (showComplex v)
+              execute ms newer_vm
+          C.OpFmt -> case fmt of
+            Nothing -> putStrLn "Nothing to format."
+            Just fmts -> case extractFormat fmts of
+              Left err -> TSIO.putStrLn err
+              Right fmtcs -> let (values, newer_vm) = C.ejectValues (length . filter isFormat $ fmtcs) new_vm
+                             in case zipFormat fmtcs values of
+                                Left err -> TSIO.putStrLn err
+                                Right res -> TSIO.putStrLn res >> execute ms newer_vm
 
 compileAndRunFile :: FilePath -> CompileMode -> IO ()
 compileAndRunFile f cm = compileAndRun f cm (defVar, funMap, opMap)
