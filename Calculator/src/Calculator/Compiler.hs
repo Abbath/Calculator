@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE MultiWayIf #-}
 
 module Calculator.Compiler where
@@ -9,8 +10,9 @@ import Calculator.Builtins
 import Control.Lens ((%~), (^.), _1, _2, _3, makeLenses)
 import Control.Monad.Except
 import Control.Monad.State
+import qualified Data.Aeson as AE
 import Data.Bits
-import Data.ByteString qualified as B
+import Data.ByteString.Lazy qualified as B
 import Data.Complex
 import Data.Map (Map)
 import Data.Map qualified as M
@@ -21,18 +23,20 @@ import Data.Vector qualified as V
 import Data.Word
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
+import GHC.Generics
 
 newtype UserVar = UV {
   _uval :: Expr
-} deriving Show
+} deriving (Show, Generic)
 
 makeLenses ''UserVar
 
 data UserFun = UF
   { _params :: [Text],
     _ufexec :: Expr
-  } deriving Show
+  } deriving (Show, Generic)
 
 makeLenses ''UserFun
 
@@ -40,7 +44,7 @@ data UserOp = UO
   { _precedence :: Int,
     _associativity :: Assoc,
     _uoexec :: Expr
-  } deriving Show
+  } deriving (Show, Generic)
 
 makeLenses ''UserOp
 
@@ -48,17 +52,17 @@ data UserMaps = UM
   { _ufuns :: Map (Text, Int) UserFun,
     _uops :: Map Text UserOp,
     _uvars :: Map Text UserVar
-  } deriving Show
+  } deriving (Show, Generic)
 
 makeLenses ''UserMaps
 
-data Value = NumVal (Complex Rational) | StrVal Text deriving (Show, Eq)
+data Value = NumVal (Complex Rational) | StrVal Text deriving (Show, Eq, Generic)
 
 type Val = Complex Rational
 
-newtype ValueArray = ValueArray {unarray :: V.Vector Value} deriving (Show)
+newtype ValueArray = ValueArray {unarray :: V.Vector Value} deriving (Show, Generic)
 
-data Chunk = Chunk {_code :: V.Vector Word8, _constants :: ValueArray, _umaps :: UserMaps} deriving (Show)
+data Chunk = Chunk {_code :: V.Vector Word8, _constants :: ValueArray, _umaps :: UserMaps} deriving (Show, Generic)
 
 makeLenses ''Chunk
 
@@ -70,7 +74,50 @@ makeLenses ''VM
 
 data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int deriving (Show)
 
-data OpCode = OpReturn | OpConstant | OpCall | OpJmp | OpSet | OpGet deriving (Show, Bounded, Enum, Eq)
+data OpInternal = OpReal | OpImag | OpConj deriving (Show, Bounded, Enum, Eq)
+
+data OpCode = OpReturn | OpConstant | OpCall | OpJmp | OpSet | OpGet | OpInternal deriving (Show, Bounded, Enum, Eq)
+
+instance AE.ToJSON UserVar
+
+instance AE.ToJSON UserOp
+
+instance AE.ToJSON UserFun
+
+instance AE.ToJSON Value where
+  toJSON (NumVal n) = AE.object ["tag" AE..= ("num" :: String), "value" AE..= (show (realPart n) <> "j" <> show (imagPart n))]
+  toJSON (StrVal s) = AE.object ["tag" AE..= ("str" :: String), "value" AE..= s]
+
+instance AE.ToJSON ValueArray
+
+instance AE.ToJSON UserMaps
+instance AE.ToJSON Chunk where
+  toEncoding = AE.genericToEncoding AE.defaultOptions
+
+instance AE.FromJSON UserVar
+
+instance AE.FromJSON UserOp
+
+instance AE.FromJSON UserFun
+
+instance AE.FromJSON UserMaps
+
+parseComplex :: Text -> Complex Rational
+parseComplex t = case T.split (=='j') t of
+  [r, i] -> read (T.unpack r) :+ read (T.unpack i)
+  _ -> error "AAAA"
+instance AE.FromJSON Value where
+  parseJSON = AE.withObject "Value" $ \v -> do
+    tag ::String <- v AE..: "tag"
+    value <- v AE..: "value"
+    return $ case tag of
+      "num" -> NumVal $ parseComplex value
+      "str" -> StrVal value
+      _ -> error "AAAAA"
+
+instance AE.FromJSON ValueArray
+
+instance AE.FromJSON Chunk
 
 writeChunk :: (Enum a) => a -> StateChunk ()
 writeChunk v = modify $ code %~ flip V.snoc (toWord8 v)
@@ -219,6 +266,18 @@ extendWord8 = fromIntegral
 interpretBc :: Maps -> Chunk -> Either Text InterpretResult
 interpretBc m c = evalState (runExceptT $ run m) $ VM c 0 [] M.empty
 
+vec2Bytes :: V.Vector Word8 -> B.ByteString
+vec2Bytes = B.unfoldr V.uncons
+
+bytes2Vec :: B.ByteString -> V.Vector Word8
+bytes2Vec = V.unfoldr B.uncons
+
+storeBc :: FilePath -> Chunk -> IO ()
+storeBc fp c = B.writeFile fp (AE.encode c)
+
+loadBc :: FilePath -> IO (Maybe Chunk)
+loadBc fp = AE.decode <$> B.readFile fp
+
 type StateVM = ExceptT Text (State VM)
 
 run :: Maps -> StateVM InterpretResult
@@ -229,6 +288,10 @@ run m = do
     else do
       opcode <- readOpcode
       case fromWord8 opcode of
+        OpInternal -> do
+          n <- readWord
+          handleInternal (fromWord8 n)
+          runNext
         OpSet -> do
           v <- peek
           n <- readWord
@@ -246,7 +309,7 @@ run m = do
           runNext
         OpReturn -> do
           v <- pop
-          return (trace (show v) IrOk)
+          return (trace (T.unpack $ showComplex v) IrOk)
         OpConstant -> do
           n <- readWord
           c <- readConstant n
@@ -357,6 +420,12 @@ run m = do
         Nothing -> throwError $ "No such variable: " <> name
         Just v -> return v
     setvar name val = modify $ vars %~ M.insert name val
+    handleInternal op = do
+      v <- pop
+      push $ case op of
+        OpReal -> realPart v :+ 0
+        OpImag -> imagPart v :+ 0
+        OpConj -> conjugate v
 
 emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty M.empty)
@@ -419,6 +488,11 @@ compile' m = go
       (off4, off5) <- unfinishedJump
       writeOffset off2 (off5 - off3)
       writeOffset off4 (off1 - off5)
+    go (Call f [x]) | f `V.elem` ["real", "imag", "conj"] = do
+      go x
+      writeChunk OpInternal
+      let idx = fromMaybe 0 $ V.elemIndex f ["real", "imag", "conj"]
+      writeChunk (toEnum idx :: OpInternal)
     go (Call op [x, y]) | M.member op (m ^. _3) = do
       go x
       go y
@@ -453,6 +527,3 @@ op2Code m op = toWord8 $ M.findIndex op m
 
 fun2Code :: FunMap -> (Text, Int) -> Word8
 fun2Code m (fun, l) = 0x80 .|. toWord8 (M.findIndex (fun, l) m)
-
-vec2Bytes :: V.Vector Word8 -> B.ByteString
-vec2Bytes = B.unfoldr V.uncons

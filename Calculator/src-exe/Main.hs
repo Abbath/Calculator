@@ -8,18 +8,20 @@ import Control.Monad ( when )
 import Data.Char ( toLower )
 
 data Options = Options {
-      input    :: !FilePath,
-      source   :: !FilePath,
-      frontend :: !String,
-      backend  :: !String,
-      test     :: !Bool,
-      port     :: !Int
+      input       :: !FilePath,
+      source      :: !FilePath,
+      compileMode :: !String,
+      frontend    :: !String,
+      backend     :: !String,
+      test        :: !Bool,
+      port        :: !Int
     }
 
 options :: Parser Options
 options = Options
           <$> strOption (long "input" <> short 'i' <> help "Input file" <> metavar "FILENAME" <> value "")
           <*> strOption (long "source" <> short 's' <> help "Source file" <> metavar "SOURCE" <> value "")
+          <*> strOption (long "compile-mode" <> short 'c' <> help "Compile mode (S, L, R)" <> metavar "COMPILE_MODE" <> value "R")
           <*> strOption (long "frontend" <> short 'f' <> help "Frontend (C, W, T)" <> metavar "FRONTEND" <> value "C")
           <*> strOption (long "backend" <> short 'b' <> help "Backend (I)" <> metavar "BACKEND" <> value "I")
           <*> switch (long "test" <> short 't' <> help "Run tests")
@@ -32,7 +34,11 @@ main = do
   when (test opts2) testLoop
   if
     | (not . null . input $ opts2) -> evalFile (input opts2)
-    | (not . null . source $ opts2) -> compileAndRunFile (source opts2)
+    | (not . null . source $ opts2) -> compileAndRunFile (source opts2) $ case compileMode opts2 of
+        "L" -> CompLoad
+        "S" -> CompStore
+        "R" -> CompRead
+        _ -> CompRead
     | otherwise -> do
       let f = selectBack $ backend opts2
       case map toLower $ frontend opts2 of

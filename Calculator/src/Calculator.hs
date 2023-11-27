@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings, OverloadedLists, CPP #-}
 module Calculator (
   Mode(..),
+  CompileMode(..),
   evalLoop,
   webLoop,
 #ifdef TELEGRAM
@@ -89,6 +90,7 @@ import System.Console.Haskeline
       withInterrupt,
       handleInterrupt, outputStrLn)
 import System.Directory ( findFile, getHomeDirectory, removeFile )
+import System.FilePath (replaceExtension)
 import System.Random ( randomIO, initStdGen, StdGen )
 import           Text.Read                     (readMaybe)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
@@ -252,32 +254,44 @@ interpret path mode mps = do
             liftIO . TSIO.putStrLn $ showComplex r
             loop' ls md (m & _1 %~ M.insert "_" r) ng
 
-compileAndRun :: FilePath -> Mode -> Maps -> IO ()
-compileAndRun path mode mps = do
-  source <- TS.lines <$> TSIO.readFile path
-  parsed <- flip S.execStateT [] $ loop' source mode mps
-  trace (show parsed) $ case C.compile mps (Seq parsed) of
-    Left err -> TSIO.putStrLn err
-    Right bc -> trace (show bc) $ case C.interpretBc mps bc of
-      Left err -> TSIO.putStrLn err
-      Right status -> case status of
-        C.IrOk -> putStrLn "Success"
-        C.IrCompileError -> putStrLn "Compilation error"
-        C.IrRuntimeError ir -> putStrLn "Runtime error"
-  return ()
+data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
+
+compileAndRun :: FilePath -> CompileMode -> Maps -> IO ()
+compileAndRun path mode mps = case mode of
+  CompRead -> do
+    parsed <- parseSource mps path
+    compileAst parsed $ \bc -> trace (show bc) $ execute mps bc
+  CompLoad -> do
+    bc <- fromMaybe C.emptyChunk <$> C.loadBc path
+    execute mps bc
+  CompStore -> do
+    parsed <- parseSource mps path
+    compileAst parsed $ C.storeBc (replaceExtension path ".bin")
   where
-    loop' :: [TS.Text] -> Mode -> Maps -> StateT [Expr] IO ()
-    loop' [] _ _  = S.modify reverse
-    loop' (l:ls) md ms = case parseString md l ms of
+    loop' :: [TS.Text] -> Maps -> StateT [Expr] IO ()
+    loop' [] _  = S.modify reverse
+    loop' (l:ls) ms = case parseString Internal l ms of
       Left err -> do
         liftIO $ TSIO.putStrLn err
         return ()
       Right res -> do
         S.modify (res:)
-        loop' ls mode mps
+        loop' ls mps
+    compileAst ast act = case C.compile mps (Seq ast) of
+      Left err -> TSIO.putStrLn err
+      Right bc -> act bc
+    parseSource ms fp = do
+      source <- TS.lines <$> TSIO.readFile fp
+      flip S.execStateT [] $ loop' source ms
+    execute ms bc = case C.interpretBc ms bc of
+      Left err -> TSIO.putStrLn err
+      Right status -> case status of
+        C.IrOk -> putStrLn "Success"
+        C.IrCompileError -> putStrLn "Compilation error"
+        C.IrRuntimeError ir -> putStrLn "Runtime error"
 
-compileAndRunFile :: FilePath -> IO ()
-compileAndRunFile f = compileAndRun f Internal (defVar, funMap, opMap)
+compileAndRunFile :: FilePath -> CompileMode -> IO ()
+compileAndRunFile f cm = compileAndRun f cm (defVar, funMap, opMap)
 
 parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (MessageType, EvalState) (Complex Rational, EvalState)
 parseEval md ms g x = evalExprS (parseString md x ms) ms g
