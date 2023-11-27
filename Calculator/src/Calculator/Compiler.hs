@@ -72,11 +72,11 @@ data VM = VM {_chunk :: Chunk, _ip :: Int, _stack :: [Val], _vars :: Map Text Va
 
 makeLenses ''VM
 
-data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int deriving (Show)
+data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int | IrGiveMeData deriving (Show)
 
 data OpInternal = OpReal | OpImag | OpConj deriving (Show, Bounded, Enum, Eq)
 
-data OpCode = OpReturn | OpConstant | OpCall | OpJmp | OpSet | OpGet | OpInternal deriving (Show, Bounded, Enum, Eq)
+data OpCode = OpReturn | OpConstant | OpCall | OpJmp | OpSet | OpGet | OpInternal | OpEject deriving (Show, Bounded, Enum, Eq)
 
 instance AE.ToJSON UserVar
 
@@ -126,7 +126,7 @@ disassembleChunk :: V.Vector Word8 -> String
 disassembleChunk v = case V.uncons v of
   Nothing -> ""
   Just (n, ns) ->
-    if | n > 5 -> "err (too much)"
+    if | n > 7 -> "err (too much)"
        | fromWord8 n == OpSet -> case V.uncons ns of
             Nothing -> "err (no constant)"
             Just (n1, ns1) -> "set (" <> show n1 <> ")\n" <> disassembleChunk ns1
@@ -147,8 +147,13 @@ disassembleChunk v = case V.uncons v of
             Nothing -> "err (no offset 1)"
             Just (n1, ns1) ->
               case V.uncons ns1 of
-                Nothing -> "err (no offset 1)"
+                Nothing -> "err (no offset 2)"
                 Just (n2, ns2) -> "jmp (" <> show n1 <> ", " <> show n2 <> ")\n" <> disassembleChunk ns2
+       | fromWord8 n == OpInternal ->
+          case V.uncons ns of
+            Nothing -> "err (no op number)"
+            Just (n1, ns1) -> "internal (" <> show n1 <> ")\n" <> disassembleChunk ns1
+       | fromWord8 n == OpEject -> "eject\n" <> disassembleChunk ns
        | otherwise -> "err (unknown)"
 
 writeValueArray :: ValueArray -> Value -> ValueArray
@@ -250,9 +255,9 @@ addFun ms name args expr = do
   modify $ (umaps . ufuns) %~ M.insert (name, length args) (UF (map (T.cons '@') args) new_expr)
 
 addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
-addOp ms name prec assoc expr = do
+addOp ms name opprec assoc expr = do
   new_expr <- liftEither $ localize ["x", "y"] expr >>= catchVar S.empty ms
-  modify $ (umaps . uops) %~ M.insert name (UO prec assoc new_expr)
+  modify $ (umaps . uops) %~ M.insert name (UO opprec assoc new_expr)
 
 toWord8 :: (Enum a) => a -> Word8
 toWord8 = fromIntegral . fromEnum
@@ -263,8 +268,14 @@ fromWord8 = toEnum . fromIntegral
 extendWord8 :: Word8 -> Int
 extendWord8 = fromIntegral
 
-interpretBc :: Maps -> Chunk -> Either Text InterpretResult
-interpretBc m c = evalState (runExceptT $ run m) $ VM c 0 [] M.empty
+emptyVM :: Chunk -> VM
+emptyVM c = VM c 0 [] M.empty
+
+interpretBc :: Maps -> Chunk -> (Either Text InterpretResult, VM)
+interpretBc m c = runState (runExceptT $ run m) $ emptyVM c
+
+interpretBcVM :: Maps -> VM -> (Either Text InterpretResult, VM)
+interpretBcVM m = runState (runExceptT $ run m)
 
 vec2Bytes :: V.Vector Word8 -> B.ByteString
 vec2Bytes = B.unfoldr V.uncons
@@ -288,6 +299,7 @@ run m = do
     else do
       opcode <- readOpcode
       case fromWord8 opcode of
+        OpEject -> return IrGiveMeData
         OpInternal -> do
           n <- readWord
           handleInternal (fromWord8 n)
@@ -461,11 +473,12 @@ compile' m = go
   where
     go (Asgn name expr) = go expr >> setVar (StrVal name)
     go (UDF name args body) = addFun m name args body
-    go (UDO name prec assoc body) = addOp m name prec assoc body
+    go (UDO name opprec assoc body) = addOp m name opprec assoc body
     go (Par e) = go e
     go (Call ":=" [Id name, expr]) = trace (show name <> " " <> show expr) $ go expr >> setVar (StrVal name)
     go (Call ":" [a, b]) = go a >> go b
     go (Call "|>" [x, Id f]) = go $ Call f [x]
+    go (Call "input" []) = writeChunk OpEject
     go (Call "atan" [Call "/" [x, y]]) = go $ Call "atan2" [x, y]
     go (Call "log" [x, y]) = go $ Call "log2" [x, y]
     go (Call "if" [cond, t, f]) = do
@@ -527,3 +540,6 @@ op2Code m op = toWord8 $ M.findIndex op m
 
 fun2Code :: FunMap -> (Text, Int) -> Word8
 fun2Code m (fun, l) = 0x80 .|. toWord8 (M.findIndex (fun, l) m)
+
+injectValue :: Val -> VM -> VM
+injectValue i = stack %~ (i:)

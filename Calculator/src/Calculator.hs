@@ -92,11 +92,11 @@ import System.Console.Haskeline
 import System.Directory ( findFile, getHomeDirectory, removeFile )
 import System.FilePath (replaceExtension)
 import System.Random ( randomIO, initStdGen, StdGen )
-import           Text.Read                     (readMaybe)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import qualified Control.Exception as CE
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Complex ( imagPart, realPart, Complex(..) )
+import Text.Read
 
 #ifdef TELEGRAM
 import Control.Arrow (first, second)
@@ -256,14 +256,20 @@ interpret path mode mps = do
 
 data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
+parseNumber :: TS.Text -> Complex Rational
+parseNumber t = case TS.split (=='j') t of
+  [r, i] -> (toRational . read @Double . TS.unpack $ r) :+ (toRational . read @Double . TS.unpack $ i)
+  [r] -> (:+0) . toRational . read @Double . TS.unpack $ r
+  _ -> 0 :+ 0
+
 compileAndRun :: FilePath -> CompileMode -> Maps -> IO ()
 compileAndRun path mode mps = case mode of
   CompRead -> do
     parsed <- parseSource mps path
-    compileAst parsed $ \bc -> trace (show bc) $ execute mps bc
+    compileAst parsed $ \bc -> trace (show bc) $ execute mps $ C.emptyVM bc
   CompLoad -> do
     bc <- fromMaybe C.emptyChunk <$> C.loadBc path
-    execute mps bc
+    execute mps $ C.emptyVM bc
   CompStore -> do
     parsed <- parseSource mps path
     compileAst parsed $ C.storeBc (replaceExtension path ".bin")
@@ -283,12 +289,15 @@ compileAndRun path mode mps = case mode of
     parseSource ms fp = do
       source <- TS.lines <$> TSIO.readFile fp
       flip S.execStateT [] $ loop' source ms
-    execute ms bc = case C.interpretBc ms bc of
-      Left err -> TSIO.putStrLn err
-      Right status -> case status of
+    execute ms vm = case C.interpretBcVM ms vm of
+      (Left err, _) -> TSIO.putStrLn err
+      (Right status, new_vm) -> case status of
         C.IrOk -> putStrLn "Success"
         C.IrCompileError -> putStrLn "Compilation error"
         C.IrRuntimeError ir -> putStrLn "Runtime error"
+        C.IrGiveMeData -> do
+          line <- TSIO.getLine
+          execute ms $ C.injectValue (parseNumber line) new_vm
 
 compileAndRunFile :: FilePath -> CompileMode -> IO ()
 compileAndRunFile f cm = compileAndRun f cm (defVar, funMap, opMap)

@@ -68,23 +68,6 @@ charP x = Parser f
 
 ws :: Parser Text
 ws = spanP "whitespace character" isSpace
--- textP :: Text -> Parser Text
--- textP str = Parser f
---     where
---         f input@(inputStr -> input_txt)
---             | T.null input_txt =
---                 Left $
---                 ParserError
---                     (inputLoc input)
---                     ("Expected '" <> str <> "', but reached end of string")
---             | T.isPrefixOf str input_txt =
---                 Right
---                 (Input (inputLoc input + T.length str) $ fromJust $ T.stripPrefix str input_txt, str)
---             | otherwise =
---                 Left $
---                 ParserError
---                     (inputLoc input)
---                     ("Expected '" <> str <> "', but found '" <>  input_txt <> "'")
 
 spanP :: Text -> (Char -> Bool) -> Parser Text
 spanP desc = (\f g -> T.pack <$> f g) $ many . parseIf desc
