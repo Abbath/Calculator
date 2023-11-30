@@ -1,56 +1,60 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Calculator.Compiler where
 
-import Calculator.Types
-    ( numToText,
-      showT,
-      Assoc,
-      ExecFn(FnFn),
-      ExecOp(FnOp),
-      Expr(..),
-      Fun(fexec),
-      FunFun(BitFn, CmpFn, MathFn1, MathFn2, IntFn1, IntFn2),
-      FunMap,
-      FunOp(BitOp, CmpOp, MathOp),
-      Maps,
-      Op(oexec),
-      OpMap )
 import Calculator.Builtins
-import Control.Lens ((%~), (^.), _1, _2, _3, makeLenses)
+import Calculator.Types
+  ( Assoc,
+    ExecFn (FnFn),
+    ExecOp (FnOp),
+    Expr (..),
+    Fun (fexec),
+    FunFun (BitFn, CmpFn, IntFn1, IntFn2, MathFn1, MathFn2),
+    FunMap,
+    FunOp (BitOp, CmpOp, MathOp),
+    Maps,
+    Op (oexec),
+    OpMap,
+    numToText,
+    showT,
+  )
+import Control.Lens (makeLenses, (%~), (^.), _1, _2, _3)
 import Control.Monad.Except
 import Control.Monad.State
-import qualified Data.Aeson as AE
+import Data.Aeson qualified as AE
 import Data.Bits
 import Data.ByteString.Lazy qualified as B
 import Data.Complex
 import Data.Map (Map)
 import Data.Map qualified as M
+import Data.Maybe (fromMaybe)
 import Data.Ratio
+import Data.Set (Set)
+import Data.Set qualified as S
 import Data.Text (Text)
-import qualified Data.Text as T
+import Data.Text qualified as T
 import Data.Vector qualified as V
 import Data.Word
-import Data.Set (Set)
-import qualified Data.Set as S
-import Data.Maybe (fromMaybe)
 import GHC.Generics
-import System.Random (StdGen, Random (randomR))
+import System.Random (Random (randomR), StdGen)
+
 -- import Debug.Trace
 
-newtype UserVar = UV {
-  _uval :: Expr
-} deriving (Show, Generic)
+newtype UserVar = UV
+  { _uval :: Expr
+  }
+  deriving (Show, Generic)
 
 makeLenses ''UserVar
 
 data UserFun = UF
   { _params :: [Text],
     _ufexec :: Expr
-  } deriving (Show, Generic)
+  }
+  deriving (Show, Generic)
 
 makeLenses ''UserFun
 
@@ -58,7 +62,8 @@ data UserOp = UO
   { _precedence :: Int,
     _associativity :: Assoc,
     _uoexec :: Expr
-  } deriving (Show, Generic)
+  }
+  deriving (Show, Generic)
 
 makeLenses ''UserOp
 
@@ -66,7 +71,8 @@ data UserMaps = UM
   { _ufuns :: Map (Text, Int) UserFun,
     _uops :: Map Text UserOp,
     _uvars :: Map Text UserVar
-  } deriving (Show, Generic)
+  }
+  deriving (Show, Generic)
 
 makeLenses ''UserMaps
 
@@ -88,7 +94,7 @@ makeLenses ''VM
 
 data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int | IrIO OpEject (Maybe Text) deriving (Show)
 
-data OpInternal = OpReal | OpImag | OpConj | OpRandom deriving (Show, Bounded, Enum, Eq)
+data OpInternal = OpReal | OpImag | OpConj | OpRandom | OpUnder deriving (Show, Bounded, Enum, Eq)
 
 data OpEject = OpInput | OpOutput | OpFmt deriving (Show, Bounded, Enum, Eq)
 
@@ -107,6 +113,7 @@ instance AE.ToJSON Value where
 instance AE.ToJSON ValueArray
 
 instance AE.ToJSON UserMaps
+
 instance AE.ToJSON Chunk where
   toEncoding = AE.genericToEncoding AE.defaultOptions
 
@@ -119,12 +126,13 @@ instance AE.FromJSON UserFun
 instance AE.FromJSON UserMaps
 
 parseComplex :: Text -> Complex Rational
-parseComplex t = case T.split (=='j') t of
+parseComplex t = case T.split (== 'j') t of
   [r, i] -> read (T.unpack r) :+ read (T.unpack i)
   _ -> error "AAAA"
+
 instance AE.FromJSON Value where
   parseJSON = AE.withObject "Value" $ \v -> do
-    tag ::String <- v AE..: "tag"
+    tag :: String <- v AE..: "tag"
     value <- v AE..: "value"
     return $ case tag of
       "num" -> NumVal $ parseComplex value
@@ -142,34 +150,35 @@ disassembleChunk :: V.Vector Word8 -> String
 disassembleChunk v = case V.uncons v of
   Nothing -> ""
   Just (n, ns) ->
-    if | n > 7 -> "err (too much)"
-       | fromWord8 n == OpSet -> case V.uncons ns of
-            Nothing -> "err (no constant)"
-            Just (n1, ns1) -> "set (" <> show n1 <> ")\n" <> disassembleChunk ns1
-       | fromWord8 n == OpGet -> case V.uncons ns of
-            Nothing -> "err (no constant)"
-            Just (n1, ns1) -> "get (" <> show n1 <> ")\n" <> disassembleChunk ns1
-       | fromWord8 n == OpReturn -> "ret"
-       | fromWord8 n == OpConstant ->
+    if
+      | n > 7 -> "err (too much)"
+      | fromWord8 n == OpSet -> case V.uncons ns of
+          Nothing -> "err (no constant)"
+          Just (n1, ns1) -> "set (" <> show n1 <> ")\n" <> disassembleChunk ns1
+      | fromWord8 n == OpGet -> case V.uncons ns of
+          Nothing -> "err (no constant)"
+          Just (n1, ns1) -> "get (" <> show n1 <> ")\n" <> disassembleChunk ns1
+      | fromWord8 n == OpReturn -> "ret"
+      | fromWord8 n == OpConstant ->
           case V.uncons ns of
             Nothing -> "err (no constant)"
             Just (n1, ns1) -> "const (" <> show n1 <> ")\n" <> disassembleChunk ns1
-       | fromWord8 n == OpCall ->
+      | fromWord8 n == OpCall ->
           case V.uncons ns of
             Nothing -> "err (no callee number)"
             Just (n1, ns1) -> "call (" <> show n1 <> ")\n" <> disassembleChunk ns1
-       | fromWord8 n == OpJmp ->
+      | fromWord8 n == OpJmp ->
           case V.uncons ns of
             Nothing -> "err (no offset 1)"
             Just (n1, ns1) ->
               case V.uncons ns1 of
                 Nothing -> "err (no offset 2)"
                 Just (n2, ns2) -> "jmp (" <> show n1 <> ", " <> show n2 <> ")\n" <> disassembleChunk ns2
-       | fromWord8 n == OpInternal ->
+      | fromWord8 n == OpInternal ->
           case V.uncons ns of
             Nothing -> "err (no op number)"
             Just (n1, ns1) -> "internal (" <> show n1 <> ")\n" <> disassembleChunk ns1
-       | fromWord8 n == OpEject ->
+      | fromWord8 n == OpEject ->
           case V.uncons ns of
             Nothing -> "err (no eject opcode)"
             Just (n1, ns1) -> case fromWord8 n1 of
@@ -180,7 +189,7 @@ disassembleChunk v = case V.uncons v of
                 Just (_, ns2) -> case V.uncons ns2 of
                   Nothing -> "err (no format string)"
                   Just (n3, ns3) -> "fmt (" <> show n3 <> ")\n" <> disassembleChunk ns3
-       | otherwise -> "err (unknown)"
+      | otherwise -> "err (unknown)"
 
 writeValueArray :: ValueArray -> Value -> ValueArray
 writeValueArray (ValueArray v) w = ValueArray (V.snoc v w)
@@ -190,9 +199,9 @@ indexValueArray (ValueArray v) val = V.elemIndex val v
 
 goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
-  (Par e)    -> Par <$> f e
+  (Par e) -> Par <$> f e
   (Call n e) -> Call n <$> mapM f e
-  e          -> return e
+  e -> return e
 
 substitute :: [(Text, Expr)] -> Expr -> Either Text Expr
 substitute [] e = return e
@@ -220,12 +229,13 @@ substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
 localize [] e = return e
-localize (x:xs) (Id i) = if i == x then return $ Id (T.cons '@' i) else localize xs (Id i)
-localize s@(x:xs) (Call nm e) = if nm == x
-  then Call (T.cons '@' nm) <$> mapM (localize s) e
-  else do
-    t <- mapM (localize s) e
-    localize xs (Call nm t)
+localize (x : xs) (Id i) = if i == x then return $ Id (T.cons '@' i) else localize xs (Id i)
+localize s@(x : xs) (Call nm e) =
+  if nm == x
+    then Call (T.cons '@' nm) <$> mapM (localize s) e
+    else do
+      t <- mapM (localize s) e
+      localize xs (Call nm t)
 localize s ex = goInside (localize s) ex
 
 catchVar :: Set Text -> Maps -> Expr -> Either Text Expr
@@ -239,13 +249,14 @@ catchVar locals ms@(vm, fm, _) ex = case ex of
         getNames = map (\(f, _) -> (f, f)) . M.keys
         b = lookup i (getNames fm ++ getNames functions) :: Maybe Text
         c = S.member i locals
-    in case a of
-         Just n -> return $ randomCheck n i
-         Nothing -> case b of
-           Just s -> return $ Id s
-           Nothing -> if c
-              then return $ Id i
-              else Left $ "No such variable: " <> i
+     in case a of
+          Just n -> return $ randomCheck n i
+          Nothing -> case b of
+            Just s -> return $ Id s
+            Nothing ->
+              if c
+                then return $ Id i
+                else Left $ "No such variable: " <> i
     where
       randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number (realPart n) (imagPart n)
   e -> goInside st e
@@ -373,63 +384,63 @@ run m = do
           if n > 127
             then
               let (k, fun) = M.elemAt (fromWord8 n .&. 0x7f) (m ^. _2)
-                in do
-                  case fexec fun of
-                    FnFn (CmpFn f) -> do
-                      v1 <- pop
-                      v2 <- pop
-                      push (if f (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
-                    FnFn (MathFn1 f) -> do
-                      v1 <- pop
-                      push (fmap toRational . f . fmap fromRational $ v1)
-                    FnFn (MathFn2 f) -> do
-                      v1 <- pop
-                      v2 <- pop
-                      push (f v2 v1)
-                    FnFn (IntFn1 f) -> do
-                      v1 <- pop
-                      push (toRational . f . fromRational <$> v1)
-                    FnFn (IntFn2 f) -> do
-                      v1 <- pop
-                      v2 <- pop
-                      push (f (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
-                    FnFn (BitFn f) -> do
-                      v1 <- pop
-                      push (toRational . f . numerator . fromRational <$> v1)
-                    _ -> throwError $ "Function is not computable yet: " <> showT k <> " " <> showT fun
-                  runNext
+               in do
+                    case fexec fun of
+                      FnFn (CmpFn f) -> do
+                        v1 <- pop
+                        v2 <- pop
+                        push (if f (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
+                      FnFn (MathFn1 f) -> do
+                        v1 <- pop
+                        push (fmap toRational . f . fmap fromRational $ v1)
+                      FnFn (MathFn2 f) -> do
+                        v1 <- pop
+                        v2 <- pop
+                        push (f v2 v1)
+                      FnFn (IntFn1 f) -> do
+                        v1 <- pop
+                        push (toRational . f . fromRational <$> v1)
+                      FnFn (IntFn2 f) -> do
+                        v1 <- pop
+                        v2 <- pop
+                        push (f (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
+                      FnFn (BitFn f) -> do
+                        v1 <- pop
+                        push (toRational . f . numerator . fromRational <$> v1)
+                      _ -> throwError $ "Function is not computable yet: " <> showT k <> " " <> showT fun
+                    runNext
             else
               let (k, op) = M.elemAt (fromWord8 n) (m ^. _3)
-                in do
-                  if
-                    |k == "/" -> do
-                      v1 <- pop
-                      v2 <- pop
-                      push . (:+ 0) $ (realPart v2 / realPart v1)
-                    |k == "%" -> do
-                      v1 <- pop
-                      v2 <- pop
-                      push . (:+ 0) $ toRational $ mod (floor . realPart $ v2 :: Integer) (floor . realPart $ v1 :: Integer)
-                    |otherwise ->
-                      case oexec op of
-                        FnOp (CmpOp o) -> do
+               in do
+                    if
+                      | k == "/" -> do
                           v1 <- pop
                           v2 <- pop
-                          push (if o (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
-                        FnOp (MathOp o) -> do
+                          push . (:+ 0) $ (realPart v2 / realPart v1)
+                      | k == "%" -> do
                           v1 <- pop
                           v2 <- pop
-                          push (o v2 v1)
-                        FnOp (BitOp o) -> do
-                          v1 <- pop
-                          v2 <- pop
-                          push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
-                        _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
-                  runNext
+                          push . (:+ 0) $ toRational $ mod (floor . realPart $ v2 :: Integer) (floor . realPart $ v1 :: Integer)
+                      | otherwise ->
+                          case oexec op of
+                            FnOp (CmpOp o) -> do
+                              v1 <- pop
+                              v2 <- pop
+                              push (if o (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
+                            FnOp (MathOp o) -> do
+                              v1 <- pop
+                              v2 <- pop
+                              push (o v2 v1)
+                            FnOp (BitOp o) -> do
+                              v1 <- pop
+                              v2 <- pop
+                              push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
+                            _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
+                    runNext
   where
-    jump offset = modify $ ip %~ (+offset)
+    jump offset = modify $ ip %~ (+ offset)
     runNext = run m
-    push v = modify $ stack %~ (v:)
+    push v = modify $ stack %~ (v :)
     readWord = do
       oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
       step
@@ -439,35 +450,41 @@ run m = do
       lsb <- extendWord8 <$> readWord
       return $ (shiftL (msb .&. 0x7f) 8 .|. lsb) * if msb .&. 0x80 == 0x80 then -1 else 1
     pop = do
-      s <- gets (^.stack)
+      s <- gets (^. stack)
       if null s
         then throwError "Stack underflow!"
         else do
           modify $ stack %~ const (tail s)
           return . head $ s
     peek = do
-      s <- gets (^.stack)
+      s <- gets (^. stack)
       if null s
         then throwError "Stack underflow!"
         else return . head $ s
+    peekSafe = do
+      s <- gets (^. stack)
+      return $ if null s
+        then 0 :+ 0
+        else head s
     readOpcode = readWord
     step = modify $ ip %~ (+ 1)
     sanityCheck = do
       i <- gets (^. ip)
       l <- gets (\vm -> V.length $ vm ^. chunk . code)
       return $ i < l
-    readConstant n = gets $ (V.! fromWord8 n) . unarray . (^.chunk . constants)
+    readConstant n = gets $ (V.! fromWord8 n) . unarray . (^. chunk . constants)
     getvar name = do
-      mv <- gets $ M.lookup name . (^.vars)
+      mv <- gets $ M.lookup name . (^. vars)
       case mv of
         Nothing -> throwError $ "No such variable: " <> name
         Just v -> return v
     setvar name val = modify $ vars %~ M.insert name val
     handleInternal op = do
       case op of
-        OpReal -> pop >>= push .  (:+0) . realPart
-        OpImag -> pop >>= push . (:+0) . imagPart
+        OpReal -> pop >>= push . (:+ 0) . realPart
+        OpImag -> pop >>= push . (:+ 0) . imagPart
         OpConj -> pop >>= push . conjugate
+        OpUnder -> peekSafe >>= setvar "_"
         OpRandom -> do
           rgen <- gets (^. gen)
           let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
@@ -475,24 +492,24 @@ run m = do
           push $ (:+ 0) . toRational $ randomNumber
 
 emptyChunk :: Chunk
-emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty M.empty)
+emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty [("_", UV $ Number 0 0)])
 
 compile :: Maps -> Expr -> Either Text Chunk
 compile m e =
   let (a, s) = runState (runExceptT (compile' m e >> writeChunk OpReturn)) emptyChunk
-    in case a of
-      Left err -> Left err
-      Right () -> Right s
+   in case a of
+        Left err -> Left err
+        Right () -> Right s
 
 getOffset :: StateChunk Int
-getOffset = gets $ V.length . (^.code)
+getOffset = gets $ V.length . (^. code)
 
 writeOffset :: Int -> Int -> StateChunk ()
 writeOffset addr value = do
   let val = abs value
   let msb = toWord8 (val `shiftR` 8) .|. if value < 0 then 0x80 else 0x0
   let lsb = toWord8 (val .&. 0xff)
-  modify (code %~ (V.// [(addr, msb), (addr+1, lsb)]))
+  modify (code %~ (V.// [(addr, msb), (addr + 1, lsb)]))
 
 unfinishedJump :: StateChunk (Int, Int)
 unfinishedJump = do
@@ -514,7 +531,10 @@ compile' m = go
     go (UDF name args body) = addFun m name args body
     go (UDO name opprec assoc body) = addOp m name opprec assoc body
     go (Par e) = go e
-    go (Call ":=" [Id name, expr]) = go expr >> setVar (StrVal name)
+    go (Call ":=" [Id name, expr]) =
+      if "c." `T.isPrefixOf` name
+        then throwError "Can't change constant"
+        else go expr >> setVar (StrVal name)
     go (Call ":" [a, b]) = go a >> go b
     go (Call "|>" [x, Id f]) = go $ Call f [x]
     go (Call "input" []) = do
@@ -524,8 +544,8 @@ compile' m = go
       go x
       writeChunk OpEject
       writeChunk OpOutput
-    go (Call "print" (Number n ni:values)) = do
-      let format = numToText (n:+ni)
+    go (Call "print" (Number n ni : values)) = do
+      let format = numToText (n :+ ni)
       forM_ values go
       writeChunk OpEject
       writeChunk OpFmt
@@ -562,32 +582,34 @@ compile' m = go
       go y
       writeChunk OpCall
       writeChunk (op2Code (m ^. _3) op)
-    go (Call fun args) | M.member (fun, length args) ( m ^. _2) = do
+    go (Call fun args) | M.member (fun, length args) (m ^. _2) = do
       forM_ args go
       writeChunk OpCall
       writeChunk (fun2Code (m ^. _2) (fun, length args))
     go (Call callee args) = do
-      UM fm om _ <- gets (^.umaps)
+      UM fm om _ <- gets (^. umaps)
       if
         | (M.member (callee, length args) fm) -> do
-          let UF ps e = fm M.! (callee, length args)
-          ne <- liftEither $ substitute (zip ps args) e
-          go ne
+            let UF ps e = fm M.! (callee, length args)
+            ne <- liftEither $ substitute (zip ps args) e
+            go ne
         | (M.member callee om) -> do
-          let UO _ _ e = om M.! callee
-          ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
-          go ne
+            let UO _ _ e = om M.! callee
+            ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
+            go ne
         | (callee == "-" && length args == 1) -> do
-          go (Call "-" [Number 0 0, head args])
+            go (Call "-" [Number 0 0, head args])
         | otherwise -> throwError $ "Callee does not exist: " <> callee
     go (Number a b) = do
       addConstant (NumVal $ a :+ b)
     go (Id a) = do
       if
         | a == "m.r" -> writeChunk OpInternal >> writeChunk OpRandom
-        | M.member a (m ^. _1) -> addConstant (NumVal $ (m ^. _1) M.! a)
+        | M.member a (m ^. _1) && a /= "_" -> addConstant (NumVal $ (m ^. _1) M.! a)
         | otherwise -> getVar (StrVal a)
-    go (Seq es) = forM_ es go
+    go (Seq es) = forM_ es $ \e -> do
+      go e
+      writeChunk OpInternal >> writeChunk OpUnder
 
 op2Code :: OpMap -> Text -> Word8
 op2Code m op = toWord8 $ M.findIndex op m
@@ -596,15 +618,17 @@ fun2Code :: FunMap -> (Text, Int) -> Word8
 fun2Code m (fun, l) = 0x80 .|. toWord8 (M.findIndex (fun, l) m)
 
 injectValue :: Val -> VM -> VM
-injectValue i = stack %~ (i:)
+injectValue i = stack %~ (i :)
 
 ejectValue :: VM -> (Maybe Val, VM)
-ejectValue vm = let st = vm^.stack
-                in case st of
-                  [] -> (Nothing, vm)
-                  (x:xs) -> (Just x, vm{_stack = xs})
+ejectValue vm =
+  let st = vm ^. stack
+   in case st of
+        [] -> (Nothing, vm)
+        (x : xs) -> (Just x, vm {_stack = xs})
 
 ejectValues :: Int -> VM -> ([Val], VM)
-ejectValues n vm = let st = vm^.stack
-                       (s, f) = splitAt n st
-                   in (reverse s, vm{_stack=f})
+ejectValues n vm =
+  let st = vm ^. stack
+      (s, f) = splitAt n st
+   in (reverse s, vm {_stack = f})
