@@ -22,7 +22,7 @@ import Calculator.Types
     numToText,
     showT,
   )
-import Control.Lens (makeLenses, (%=), (%~), (.=), (^.), _1, _2, _3)
+import Control.Lens (makeLenses, use, uses, (%=), (%~), (+=), (.=), (^.), _1, _2, _3)
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Aeson qualified as AE
@@ -41,6 +41,7 @@ import Data.Vector qualified as V
 import Data.Word
 import GHC.Generics
 import System.Random (Random (randomR), StdGen)
+import Data.Text.Lens (unpacked)
 
 -- import Debug.Trace
 
@@ -132,7 +133,7 @@ instance AE.FromJSON UserMaps
 
 parseComplex :: Text -> Complex Rational
 parseComplex t = case T.split (== 'j') t of
-  [r, i] -> read (T.unpack r) :+ read (T.unpack i)
+  [r, i] -> read (r^.unpacked) :+ read (i^.unpacked)
   _ -> error "AAAA"
 
 instance AE.FromJSON Value where
@@ -283,7 +284,7 @@ doVar oc name = do
 
 findPlace :: Value -> StateChunk Int
 findPlace name = do
-  (Chunk c s) <- gets (^. chunkc)
+  (Chunk c s) <- use chunkc
   case indexValueArray s name of
     Nothing -> do
       let i = V.length (unarray s)
@@ -340,7 +341,7 @@ run :: Maps -> StateVM InterpretResult
 run m = do
   ok <- sanityCheck
   if not ok
-    then gets (IrRuntimeError . (^. ip))
+    then uses ip IrRuntimeError
     else do
       opcode <- readOpcode
       case fromWord8 opcode of
@@ -445,7 +446,7 @@ run m = do
                             _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
                     runNext
   where
-    jump offset = ip %= (+ offset)
+    jump offset = ip += offset
     runNext = run m
     push v = stack %= (v :)
     readWord = do
@@ -455,34 +456,34 @@ run m = do
     readOffset = do
       msb <- extendWord8 <$> readWord
       lsb <- extendWord8 <$> readWord
-      return $ (shiftL (msb .&. 0x7f) 8 .|. lsb) * if msb .&. 0x80 == 0x80 then -1 else 1
+      return $ (shiftL (msb .&. 0x7f) 8 .|. lsb) * if testBit msb 7 then -1 else 1
     pop = do
-      s <- gets (^. stack)
+      s <- use stack
       if null s
         then throwError "Stack underflow!"
         else do
           stack .= tail s
           return . head $ s
     peek = do
-      s <- gets (^. stack)
+      s <- use stack
       if null s
         then throwError "Stack underflow!"
         else return . head $ s
     peekSafe = do
-      s <- gets (^. stack)
+      s <- use stack
       return $
         if null s
           then 0 :+ 0
           else head s
     readOpcode = readWord
-    step = ip %= (+ 1)
+    step = ip += 1
     sanityCheck = do
-      i <- gets (^. ip)
-      l <- gets (\vm -> V.length $ vm ^. chunke . code)
+      i <- use ip
+      l <- uses (chunke . code) V.length
       return $ i < l
     readConstant n = gets $ (V.! fromWord8 n) . unarray . (^. chunke . constants)
     getvar name = do
-      mv <- gets $ M.lookup name . (^. vars)
+      mv <- uses vars $ M.lookup name
       case mv of
         Nothing -> throwError $ "No such variable: " <> name
         Just v -> return v
@@ -494,7 +495,7 @@ run m = do
         OpConj -> pop >>= push . conjugate
         OpUnder -> peekSafe >>= setvar "_"
         OpRandom -> do
-          rgen <- gets (^. gen)
+          rgen <- use gen
           let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
           gen .= newGen
           push $ (:+ 0) . toRational $ randomNumber
@@ -521,7 +522,7 @@ writeOffset addr value =
     then throwError "Jump is too long"
     else do
       let val = abs value
-      let msb = toWord8 (val `shiftR` 8) .|. if value < 0 then 0x80 else 0x0
+      let msb = toWord8 (val `shiftR` 8) .|. if value < 0 then bit 7 else 0x0
       let lsb = toWord8 (val .&. 0xff)
       chunkc . code %= (V.// [(addr, msb), (addr + 1, lsb)])
 
@@ -577,8 +578,7 @@ compile' m = go
         off5 <- getOffset
         writeOffset off1 (off4 - off2)
         writeOffset off3 (off5 - off4)
-      Call "loop" [s, c, a] -> do
-        go s
+      Call "loop" [c, a] -> do
         off1 <- getOffset
         go c
         (off2, off3) <- unfinishedJump
@@ -587,6 +587,9 @@ compile' m = go
         (off4, off5) <- unfinishedJump
         writeOffset off2 (off5 - off3)
         writeOffset off4 (off1 - off5)
+      Call "loop" [s, c, a] -> do
+        go s
+        go $ Call "loop" [c, a]
       Call f [x] | f `V.elem` ["real", "imag", "conj"] -> do
         go x
         emitByte OpInternal
@@ -602,7 +605,7 @@ compile' m = go
         emitByte OpCall
         emitByte (fun2Code (m ^. _2) (fun, length args))
       Call callee args -> do
-        UM fm om _ <- gets (^. umaps)
+        UM fm om _ <- use umaps
         if
           | (M.member (callee, length args) fm) -> do
               let UF ps e = fm M.! (callee, length args)
@@ -615,8 +618,7 @@ compile' m = go
           | (callee == "-" && length args == 1) -> do
               go (Call "-" [Number 0 0, head args])
           | otherwise -> throwError $ "Callee does not exist: " <> callee
-      Number a b -> do
-        addConstant (NumVal $ a :+ b)
+      Number a b -> addConstant (NumVal $ a :+ b)
       Id a -> do
         if
           | a == "m.r" -> emitByte OpInternal >> emitByte OpRandom
