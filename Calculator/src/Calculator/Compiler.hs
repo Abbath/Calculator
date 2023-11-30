@@ -6,6 +6,19 @@
 module Calculator.Compiler where
 
 import Calculator.Types
+    ( numToText,
+      showT,
+      Assoc,
+      ExecFn(FnFn),
+      ExecOp(FnOp),
+      Expr(..),
+      Fun(fexec),
+      FunFun(BitFn, CmpFn, MathFn1, MathFn2, IntFn1, IntFn2),
+      FunMap,
+      FunOp(BitOp, CmpOp, MathOp),
+      Maps,
+      Op(oexec),
+      OpMap )
 import Calculator.Builtins
 import Control.Lens ((%~), (^.), _1, _2, _3, makeLenses)
 import Control.Monad.Except
@@ -25,6 +38,7 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Maybe (fromMaybe)
 import GHC.Generics
+import System.Random (StdGen, Random (randomR))
 -- import Debug.Trace
 
 newtype UserVar = UV {
@@ -68,13 +82,13 @@ makeLenses ''Chunk
 
 type StateChunk = ExceptT Text (State Chunk)
 
-data VM = VM {_chunk :: Chunk, _ip :: Int, _stack :: [Val], _vars :: Map Text Val} deriving (Show)
+data VM = VM {_chunk :: Chunk, _ip :: Int, _stack :: [Val], _vars :: Map Text Val, _gen :: StdGen} deriving (Show)
 
 makeLenses ''VM
 
 data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int | IrIO OpEject (Maybe Text) deriving (Show)
 
-data OpInternal = OpReal | OpImag | OpConj deriving (Show, Bounded, Enum, Eq)
+data OpInternal = OpReal | OpImag | OpConj | OpRandom deriving (Show, Bounded, Enum, Eq)
 
 data OpEject = OpInput | OpOutput | OpFmt deriving (Show, Bounded, Enum, Eq)
 
@@ -280,11 +294,11 @@ fromWord8 = toEnum . fromIntegral
 extendWord8 :: Word8 -> Int
 extendWord8 = fromIntegral
 
-emptyVM :: Chunk -> VM
+emptyVM :: Chunk -> StdGen -> VM
 emptyVM c = VM c 0 [] M.empty
 
-interpretBc :: Maps -> Chunk -> (Either Text InterpretResult, VM)
-interpretBc m c = runState (runExceptT $ run m) $ emptyVM c
+interpretBc :: Maps -> Chunk -> StdGen -> (Either Text InterpretResult, VM)
+interpretBc m c g = runState (runExceptT $ run m) $ emptyVM c g
 
 interpretBcVM :: Maps -> VM -> (Either Text InterpretResult, VM)
 interpretBcVM m = runState (runExceptT $ run m)
@@ -450,11 +464,15 @@ run m = do
         Just v -> return v
     setvar name val = modify $ vars %~ M.insert name val
     handleInternal op = do
-      v <- pop
-      push $ case op of
-        OpReal -> realPart v :+ 0
-        OpImag -> imagPart v :+ 0
-        OpConj -> conjugate v
+      case op of
+        OpReal -> pop >>= push .  (:+0) . realPart
+        OpImag -> pop >>= push . (:+0) . imagPart
+        OpConj -> pop >>= push . conjugate
+        OpRandom -> do
+          rgen <- gets (^. gen)
+          let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
+          modify (gen %~ const newGen)
+          push $ (:+ 0) . toRational $ randomNumber
 
 emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty M.empty)
@@ -550,22 +568,25 @@ compile' m = go
       writeChunk (fun2Code (m ^. _2) (fun, length args))
     go (Call callee args) = do
       UM fm om _ <- gets (^.umaps)
-      when (M.member (callee, length args) fm) $ do
-        let UF ps e = fm M.! (callee, length args)
-        ne <- liftEither $ substitute (zip ps args) e
-        go ne
-      when (M.member callee om) $ do
-        let UO _ _ e = om M.! callee
-        ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
-        go ne
-      when (callee == "-" && length args == 1) $ do
-        go (Call "-" [Number 0 0, head args])
+      if
+        | (M.member (callee, length args) fm) -> do
+          let UF ps e = fm M.! (callee, length args)
+          ne <- liftEither $ substitute (zip ps args) e
+          go ne
+        | (M.member callee om) -> do
+          let UO _ _ e = om M.! callee
+          ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
+          go ne
+        | (callee == "-" && length args == 1) -> do
+          go (Call "-" [Number 0 0, head args])
+        | otherwise -> throwError $ "Callee does not exist: " <> callee
     go (Number a b) = do
       addConstant (NumVal $ a :+ b)
     go (Id a) = do
-      if M.member a (m ^. _1)
-        then addConstant (NumVal $ (m ^. _1) M.! a)
-        else getVar (StrVal a)
+      if
+        | a == "m.r" -> writeChunk OpInternal >> writeChunk OpRandom
+        | M.member a (m ^. _1) -> addConstant (NumVal $ (m ^. _1) M.! a)
+        | otherwise -> getVar (StrVal a)
     go (Seq es) = forM_ es go
 
 op2Code :: OpMap -> Text -> Word8

@@ -269,10 +269,12 @@ compileAndRun :: FilePath -> CompileMode -> Maps -> IO ()
 compileAndRun path mode mps = case mode of
   CompRead -> do
     parsed <- parseSource mps path
-    compileAst parsed $ \bc -> execute mps $ C.emptyVM bc
+    gen <- initStdGen
+    compileAst parsed $ \bc -> execute mps $ C.emptyVM bc gen
   CompLoad -> do
     bc <- fromMaybe C.emptyChunk <$> C.loadBc path
-    execute mps $ C.emptyVM bc
+    gen <- initStdGen
+    execute mps $ C.emptyVM bc gen
   CompStore -> do
     parsed <- parseSource mps path
     compileAst parsed $ C.storeBc (replaceExtension path ".bin")
