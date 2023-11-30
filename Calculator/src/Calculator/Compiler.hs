@@ -1,3 +1,4 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -21,7 +22,7 @@ import Calculator.Types
     numToText,
     showT,
   )
-import Control.Lens (makeLenses, (%~), (^.), _1, _2, _3)
+import Control.Lens (makeLenses, (%=), (%~), (.=), (^.), _1, _2, _3)
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Aeson qualified as AE
@@ -82,13 +83,17 @@ type Val = Complex Rational
 
 newtype ValueArray = ValueArray {unarray :: V.Vector Value} deriving (Show, Generic)
 
-data Chunk = Chunk {_code :: V.Vector Word8, _constants :: ValueArray, _umaps :: UserMaps} deriving (Show, Generic)
+data Chunk = Chunk {_code :: V.Vector Word8, _constants :: ValueArray} deriving (Show, Generic)
 
 makeLenses ''Chunk
 
-type StateChunk = ExceptT Text (State Chunk)
+data CompileState = CS {_chunkc :: Chunk, _umaps :: UserMaps} deriving (Show)
 
-data VM = VM {_chunk :: Chunk, _ip :: Int, _stack :: [Val], _vars :: Map Text Val, _gen :: StdGen} deriving (Show)
+makeLenses ''CompileState
+
+type StateChunk = ExceptT Text (State CompileState)
+
+data VM = VM {_chunke :: Chunk, _ip :: Int, _stack :: [Val], _vars :: Map Text Val, _gen :: StdGen} deriving (Show)
 
 makeLenses ''VM
 
@@ -143,8 +148,8 @@ instance AE.FromJSON ValueArray
 
 instance AE.FromJSON Chunk
 
-writeChunk :: (Enum a) => a -> StateChunk ()
-writeChunk v = modify $ code %~ flip V.snoc (toWord8 v)
+emitByte :: (Enum a) => a -> StateChunk ()
+emitByte v = chunkc . code %= flip V.snoc (toWord8 v)
 
 disassembleChunk :: V.Vector Word8 -> String
 disassembleChunk v = case V.uncons v of
@@ -272,32 +277,32 @@ setVar = doVar OpSet
 
 doVar :: OpCode -> Value -> StateChunk ()
 doVar oc name = do
-  writeChunk oc
+  emitByte oc
   i <- findPlace name
-  writeChunk i
+  emitByte i
 
 findPlace :: Value -> StateChunk Int
 findPlace name = do
-  (Chunk c s m) <- get
+  (Chunk c s) <- gets (^. chunkc)
   case indexValueArray s name of
     Nothing -> do
       let i = V.length (unarray s)
-      put (Chunk c (writeValueArray s name) m)
+      chunkc .= Chunk c (writeValueArray s name)
       return i
     Just idx -> return idx
 
 addVar :: Text -> Expr -> StateChunk ()
-addVar name expr = modify $ (umaps . uvars) %~ M.insert name (UV expr)
+addVar name expr = umaps . uvars %= M.insert name (UV expr)
 
 addFun :: Maps -> Text -> [Text] -> Expr -> StateChunk ()
 addFun ms name args expr = do
   new_expr <- liftEither $ localize args expr >>= catchVar S.empty ms
-  modify $ (umaps . ufuns) %~ M.insert (name, length args) (UF (map (T.cons '@') args) new_expr)
+  umaps . ufuns %= M.insert (name, length args) (UF (map (T.cons '@') args) new_expr)
 
 addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
 addOp ms name opprec assoc expr = do
   new_expr <- liftEither $ localize ["x", "y"] expr >>= catchVar S.empty ms
-  modify $ (umaps . uops) %~ M.insert name (UO opprec assoc new_expr)
+  umaps . uops %= M.insert name (UO opprec assoc new_expr)
 
 toWord8 :: (Enum a) => a -> Word8
 toWord8 = fromIntegral . fromEnum
@@ -440,11 +445,11 @@ run m = do
                             _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
                     runNext
   where
-    jump offset = modify $ ip %~ (+ offset)
+    jump offset = ip %= (+ offset)
     runNext = run m
-    push v = modify $ stack %~ (v :)
+    push v = stack %= (v :)
     readWord = do
-      oc <- gets (\vm -> (vm ^. chunk . code) V.! (vm ^. ip))
+      oc <- gets (\vm -> (vm ^. chunke . code) V.! (vm ^. ip))
       step
       return oc
     readOffset = do
@@ -456,7 +461,7 @@ run m = do
       if null s
         then throwError "Stack underflow!"
         else do
-          modify $ stack %~ const (tail s)
+          stack .= tail s
           return . head $ s
     peek = do
       s <- gets (^. stack)
@@ -465,22 +470,23 @@ run m = do
         else return . head $ s
     peekSafe = do
       s <- gets (^. stack)
-      return $ if null s
-        then 0 :+ 0
-        else head s
+      return $
+        if null s
+          then 0 :+ 0
+          else head s
     readOpcode = readWord
-    step = modify $ ip %~ (+ 1)
+    step = ip %= (+ 1)
     sanityCheck = do
       i <- gets (^. ip)
-      l <- gets (\vm -> V.length $ vm ^. chunk . code)
+      l <- gets (\vm -> V.length $ vm ^. chunke . code)
       return $ i < l
-    readConstant n = gets $ (V.! fromWord8 n) . unarray . (^. chunk . constants)
+    readConstant n = gets $ (V.! fromWord8 n) . unarray . (^. chunke . constants)
     getvar name = do
       mv <- gets $ M.lookup name . (^. vars)
       case mv of
         Nothing -> throwError $ "No such variable: " <> name
         Just v -> return v
-    setvar name val = modify $ vars %~ M.insert name val
+    setvar name val = vars %= M.insert name val
     handleInternal op = do
       case op of
         OpReal -> pop >>= push . (:+ 0) . realPart
@@ -490,128 +496,135 @@ run m = do
         OpRandom -> do
           rgen <- gets (^. gen)
           let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
-          modify (gen %~ const newGen)
+          gen .= newGen
           push $ (:+ 0) . toRational $ randomNumber
 
 emptyChunk :: Chunk
-emptyChunk = Chunk V.empty (ValueArray V.empty) (UM M.empty M.empty [("_", UV $ Number 0 0)])
+emptyChunk = Chunk V.empty (ValueArray V.empty)
+
+emptyCompileState :: CompileState
+emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV $ Number 0 0)])
 
 compile :: Maps -> Expr -> Either Text Chunk
 compile m e =
-  let (a, s) = runState (runExceptT (compile' m e >> writeChunk OpReturn)) emptyChunk
+  let (a, s) = runState (runExceptT (compile' m e >> emitByte OpReturn)) emptyCompileState
    in case a of
         Left err -> Left err
-        Right () -> Right s
+        Right () -> Right (s ^. chunkc)
 
 getOffset :: StateChunk Int
-getOffset = gets $ V.length . (^. code)
+getOffset = gets $ V.length . (^. chunkc . code)
 
 writeOffset :: Int -> Int -> StateChunk ()
-writeOffset addr value = do
-  let val = abs value
-  let msb = toWord8 (val `shiftR` 8) .|. if value < 0 then 0x80 else 0x0
-  let lsb = toWord8 (val .&. 0xff)
-  modify (code %~ (V.// [(addr, msb), (addr + 1, lsb)]))
+writeOffset addr value =
+  if value < -2 ^ (15 :: Int) || value > 2 ^ (15 :: Int) - 1
+    then throwError "Jump is too long"
+    else do
+      let val = abs value
+      let msb = toWord8 (val `shiftR` 8) .|. if value < 0 then 0x80 else 0x0
+      let lsb = toWord8 (val .&. 0xff)
+      chunkc . code %= (V.// [(addr, msb), (addr + 1, lsb)])
 
 unfinishedJump :: StateChunk (Int, Int)
 unfinishedJump = do
-  writeChunk OpJmp
+  emitByte OpJmp
   off1 <- getOffset
-  writeChunk (0 :: Word8)
-  writeChunk (0 :: Word8)
+  emitByte (0 :: Word8)
+  emitByte (0 :: Word8)
   off2 <- getOffset
   return (off1, off2)
 
 compile' :: Maps -> Expr -> StateChunk ()
 compile' m = go
   where
-    go (Imprt filename) = return ()
-    go (Asgn name expr) = go expr >> setVar (StrVal name)
-    go (UDF name args (Call "df" [body, var])) = case derivative body var of
-      Left err -> throwError err
-      Right der -> addFun m name args der
-    go (UDF name args body) = addFun m name args body
-    go (UDO name opprec assoc body) = addOp m name opprec assoc body
-    go (Par e) = go e
-    go (Call ":=" [Id name, expr]) =
-      if "c." `T.isPrefixOf` name
-        then throwError "Can't change constant"
-        else go expr >> setVar (StrVal name)
-    go (Call ":" [a, b]) = go a >> go b
-    go (Call "|>" [x, Id f]) = go $ Call f [x]
-    go (Call "input" []) = do
-      writeChunk OpEject
-      writeChunk OpInput
-    go (Call "print" [x]) = do
-      go x
-      writeChunk OpEject
-      writeChunk OpOutput
-    go (Call "print" (Number n ni : values)) = do
-      let format = numToText (n :+ ni)
-      forM_ values go
-      writeChunk OpEject
-      writeChunk OpFmt
-      findPlace (StrVal $ either id id format) >>= writeChunk
-    go (Call "atan" [Call "/" [x, y]]) = go $ Call "atan2" [x, y]
-    go (Call "log" [x, y]) = go $ Call "log2" [x, y]
-    go (Call "if" [cond, t, f]) = do
-      go cond
-      (off1, off2) <- unfinishedJump
-      go t
-      addConstant (NumVal $ 0 :+ 0)
-      (off3, off4) <- unfinishedJump
-      go f
-      off5 <- getOffset
-      writeOffset off1 (off4 - off2)
-      writeOffset off3 (off5 - off4)
-    go (Call "loop" [s, c, a]) = do
-      go s
-      off1 <- getOffset
-      go c
-      (off2, off3) <- unfinishedJump
-      go a
-      addConstant (NumVal $ 0 :+ 0)
-      (off4, off5) <- unfinishedJump
-      writeOffset off2 (off5 - off3)
-      writeOffset off4 (off1 - off5)
-    go (Call f [x]) | f `V.elem` ["real", "imag", "conj"] = do
-      go x
-      writeChunk OpInternal
-      let idx = fromMaybe 0 $ V.elemIndex f ["real", "imag", "conj"]
-      writeChunk (toEnum idx :: OpInternal)
-    go (Call op [x, y]) | M.member op (m ^. _3) = do
-      go x
-      go y
-      writeChunk OpCall
-      writeChunk (op2Code (m ^. _3) op)
-    go (Call fun args) | M.member (fun, length args) (m ^. _2) = do
-      forM_ args go
-      writeChunk OpCall
-      writeChunk (fun2Code (m ^. _2) (fun, length args))
-    go (Call callee args) = do
-      UM fm om _ <- gets (^. umaps)
-      if
-        | (M.member (callee, length args) fm) -> do
-            let UF ps e = fm M.! (callee, length args)
-            ne <- liftEither $ substitute (zip ps args) e
-            go ne
-        | (M.member callee om) -> do
-            let UO _ _ e = om M.! callee
-            ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
-            go ne
-        | (callee == "-" && length args == 1) -> do
-            go (Call "-" [Number 0 0, head args])
-        | otherwise -> throwError $ "Callee does not exist: " <> callee
-    go (Number a b) = do
-      addConstant (NumVal $ a :+ b)
-    go (Id a) = do
-      if
-        | a == "m.r" -> writeChunk OpInternal >> writeChunk OpRandom
-        | M.member a (m ^. _1) && a /= "_" -> addConstant (NumVal $ (m ^. _1) M.! a)
-        | otherwise -> getVar (StrVal a)
-    go (Seq es) = forM_ es $ \e -> do
-      go e
-      writeChunk OpInternal >> writeChunk OpUnder
+    go ex = case ex of
+      Imprt filename -> return ()
+      Asgn name expr -> go expr >> setVar (StrVal name)
+      UDF name args (Call "df" [body, var]) -> case derivative body var of
+        Left err -> throwError err
+        Right der -> addFun m name args der
+      UDF name args body -> addFun m name args body
+      UDO name opprec assoc body -> addOp m name opprec assoc body
+      Par e -> go e
+      Call ":=" [Id name, expr] ->
+        if "c." `T.isPrefixOf` name
+          then throwError "Can't change constant"
+          else go expr >> setVar (StrVal name)
+      Call ":" [a, b] -> go a >> go b
+      Call "|>" [x, Id f] -> go $ Call f [x]
+      Call "input" [] -> do
+        emitByte OpEject
+        emitByte OpInput
+      Call "print" [x] -> do
+        go x
+        emitByte OpEject
+        emitByte OpOutput
+      Call "print" (Number n ni : values) -> do
+        let format = numToText (n :+ ni)
+        forM_ values go
+        emitByte OpEject
+        emitByte OpFmt
+        findPlace (StrVal $ either id id format) >>= emitByte
+      Call "atan" [Call "/" [x, y]] -> go $ Call "atan2" [x, y]
+      Call "log" [x, y] -> go $ Call "log2" [x, y]
+      Call "if" [cond, t, f] -> do
+        go cond
+        (off1, off2) <- unfinishedJump
+        go t
+        addConstant (NumVal $ 0 :+ 0)
+        (off3, off4) <- unfinishedJump
+        go f
+        off5 <- getOffset
+        writeOffset off1 (off4 - off2)
+        writeOffset off3 (off5 - off4)
+      Call "loop" [s, c, a] -> do
+        go s
+        off1 <- getOffset
+        go c
+        (off2, off3) <- unfinishedJump
+        go a
+        addConstant (NumVal $ 0 :+ 0)
+        (off4, off5) <- unfinishedJump
+        writeOffset off2 (off5 - off3)
+        writeOffset off4 (off1 - off5)
+      Call f [x] | f `V.elem` ["real", "imag", "conj"] -> do
+        go x
+        emitByte OpInternal
+        let idx = fromMaybe 0 $ V.elemIndex f ["real", "imag", "conj"]
+        emitByte (toEnum idx :: OpInternal)
+      Call op [x, y] | M.member op (m ^. _3) -> do
+        go x
+        go y
+        emitByte OpCall
+        emitByte (op2Code (m ^. _3) op)
+      Call fun args | M.member (fun, length args) (m ^. _2) -> do
+        forM_ args go
+        emitByte OpCall
+        emitByte (fun2Code (m ^. _2) (fun, length args))
+      Call callee args -> do
+        UM fm om _ <- gets (^. umaps)
+        if
+          | (M.member (callee, length args) fm) -> do
+              let UF ps e = fm M.! (callee, length args)
+              ne <- liftEither $ substitute (zip ps args) e
+              go ne
+          | (M.member callee om) -> do
+              let UO _ _ e = om M.! callee
+              ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
+              go ne
+          | (callee == "-" && length args == 1) -> do
+              go (Call "-" [Number 0 0, head args])
+          | otherwise -> throwError $ "Callee does not exist: " <> callee
+      Number a b -> do
+        addConstant (NumVal $ a :+ b)
+      Id a -> do
+        if
+          | a == "m.r" -> emitByte OpInternal >> emitByte OpRandom
+          | M.member a (m ^. _1) && a /= "_" -> addConstant (NumVal $ (m ^. _1) M.! a)
+          | otherwise -> getVar (StrVal a)
+      Seq es -> forM_ es $ \e -> do
+        go e
+        emitByte OpInternal >> emitByte OpUnder
 
 op2Code :: OpMap -> Text -> Word8
 op2Code m op = toWord8 $ M.findIndex op m
