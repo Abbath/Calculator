@@ -39,7 +39,8 @@ module Calculator.Types
     numToText,
     extractFormat,
     zipFormat,
-    isFormat
+    isFormat,
+    showComplexBase
   )
 where
 
@@ -58,6 +59,7 @@ import Control.Lens.TH
 import System.Random (StdGen)
 import Data.Char (chr)
 import Data.Bits (shiftR, (.&.))
+import Numeric (showHex, showOct, showBin)
 
 data Token = TNumber Rational Rational
            | TLPar
@@ -255,6 +257,18 @@ showRational r = if denominator r == 1
 showFraction :: Rational -> Text
 showFraction t = showT (numerator t) <> " / " <> showT (denominator t)
 
+showComplexBase :: Int -> Complex Rational -> Either Text Text
+showComplexBase base cr | base `elem` [2, 8, 16] = if (denominator . realPart $ cr) == 1 && (denominator . imagPart $ cr) == 1
+  then
+    let function = case base of
+          2 -> showBin
+          8 -> showOct
+          16 -> showHex
+          _ -> error "Unreachable"
+    in Right (T.pack . (`function` ""). numerator . realPart $ cr)
+  else Left "Can't show fractions yet"
+showComplexBase _ cr = Right $ showComplex cr
+
 showComplex :: Complex Rational -> Text
 showComplex c =
   let cr = realPart c
@@ -283,7 +297,7 @@ extractFormat = go T.empty []
            '%' -> let (c1, cs1) = fromMaybe ('%', "") $ T.uncons cs
                   in case c1 of
                        '%' -> go (T.snoc chunk '%') acc cs1
-                       _ | c1 `T.elem` "sfr" -> go T.empty (FormatFmt (T.singleton c1):FormatTxt chunk:acc) cs1
+                       _ | c1 `T.elem` "sfrhbo" -> go T.empty (FormatFmt (T.singleton c1):FormatTxt chunk:acc) cs1
                        _ -> Left "Wrong format string!"
            _ -> go (T.snoc chunk c) acc cs
 
@@ -299,8 +313,15 @@ zipFormat = go T.empty
         txt <- numToText r
         go (acc <> txt) fs rs
       | t == "f" = go (acc <> showComplex r) fs rs
+      | t == "h" = showBase 16 r
+      | t == "b" = showBase 2 r
+      | t == "o" = showBase 8 r
       | t == "r" = go (acc <> showFraction (realPart r)) fs rs
       | otherwise = Left $ "Wrong format: " <> t
+      where
+        showBase b cr = do
+          formatted <- showComplexBase b cr
+          go (acc <> formatted) fs rs
 
 data EvalState = EvalState {_maps :: Maps, _gen :: StdGen, _mem :: Map (Text, Int) (Map (Complex Rational) (Complex Rational))} deriving (Show)
 
