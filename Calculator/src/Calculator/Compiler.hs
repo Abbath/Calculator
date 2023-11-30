@@ -186,9 +186,7 @@ disassembleChunk v = case V.uncons v of
               OpOutput -> "output\n" <> disassembleChunk ns1
               OpFmt -> case V.uncons ns1 of
                 Nothing -> "err (no format string)"
-                Just (_, ns2) -> case V.uncons ns2 of
-                  Nothing -> "err (no format string)"
-                  Just (n3, ns3) -> "fmt (" <> show n3 <> ")\n" <> disassembleChunk ns3
+                Just (n2, ns2) -> "fmt (" <> show n2 <> ")\n" <> disassembleChunk ns2
       | otherwise -> "err (unknown)"
 
 writeValueArray :: ValueArray -> Value -> ValueArray
@@ -275,13 +273,18 @@ setVar = doVar OpSet
 doVar :: OpCode -> Value -> StateChunk ()
 doVar oc name = do
   writeChunk oc
+  i <- findPlace name
+  writeChunk i
+
+findPlace :: Value -> StateChunk Int
+findPlace name = do
   (Chunk c s m) <- get
   case indexValueArray s name of
     Nothing -> do
       let i = V.length (unarray s)
       put (Chunk c (writeValueArray s name) m)
-      writeChunk i
-    Just idx -> writeChunk idx
+      return i
+    Just idx -> return idx
 
 addVar :: Text -> Expr -> StateChunk ()
 addVar name expr = modify $ (umaps . uvars) %~ M.insert name (UV expr)
@@ -340,7 +343,6 @@ run m = do
           n <- fromWord8 <$> readWord
           case n of
             OpFmt -> do
-              _ <- readOpcode
               n1 <- readWord
               n2 <- readConstant n1
               return . IrIO OpFmt . Just $ case n2 of
@@ -549,7 +551,7 @@ compile' m = go
       forM_ values go
       writeChunk OpEject
       writeChunk OpFmt
-      addConstant (StrVal $ either id id format)
+      findPlace (StrVal $ either id id format) >>= writeChunk
     go (Call "atan" [Call "/" [x, y]]) = go $ Call "atan2" [x, y]
     go (Call "log" [x, y]) = go $ Call "log2" [x, y]
     go (Call "if" [cond, t, f]) = do
