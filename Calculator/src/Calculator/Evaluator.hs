@@ -334,6 +334,7 @@ evalS ex = case ex of
   Par e            -> evm e
   Seq _ -> throwError . ErrMsg $ "Sequences are not supported in this mode!"
   Imprt _ -> throwError . ErrMsg $ "Imports are not supported in this mode!"
+  Label _ -> throwError . ErrMsg $ "Label are not supported in this mode!"
   where
     evalBuiltinOp bop x y = do
       let builtin_op = operators M.! bop

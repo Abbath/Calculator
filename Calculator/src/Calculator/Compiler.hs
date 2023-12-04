@@ -69,10 +69,19 @@ data UserOp = UO
 
 makeLenses ''UserOp
 
+data UserLabel = UL
+  { _uoffset :: Int,
+    _locations :: [Int]
+  }
+  deriving (Show)
+
+makeLenses ''UserLabel
+
 data UserMaps = UM
   { _ufuns :: Map (Text, Int) UserFun,
     _uops :: Map Text UserOp,
-    _uvars :: Map Text UserVar
+    _uvars :: Map Text UserVar,
+    _ulbs :: Map Text UserLabel
   }
   deriving (Show, Generic)
 
@@ -118,18 +127,8 @@ instance AE.ToJSON Value where
 
 instance AE.ToJSON ValueArray
 
-instance AE.ToJSON UserMaps
-
 instance AE.ToJSON Chunk where
   toEncoding = AE.genericToEncoding AE.defaultOptions
-
-instance AE.FromJSON UserVar
-
-instance AE.FromJSON UserOp
-
-instance AE.FromJSON UserFun
-
-instance AE.FromJSON UserMaps
 
 parseComplex :: Text -> Complex Rational
 parseComplex t = case T.split (== 'j') t of
@@ -304,6 +303,12 @@ addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
 addOp ms name opprec assoc expr = do
   new_expr <- liftEither $ localize ["x", "y"] expr >>= catchVar S.empty ms
   umaps . uops %= M.insert name (UO opprec assoc new_expr)
+
+addLabel :: Text -> Int -> StateChunk ()
+addLabel label off = umaps . ulbs %= M.insertWith (\(UL o _) (UL _ a) -> UL o a) label (UL off [])
+
+useLabel :: Text -> Int -> StateChunk ()
+useLabel label loc = umaps . ulbs %= M.insertWith (\(UL _ a) (UL o b) -> UL o (a <> b)) label (UL 0 [loc])
 
 toWord8 :: (Enum a) => a -> Word8
 toWord8 = fromIntegral . fromEnum
@@ -504,11 +509,11 @@ emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty)
 
 emptyCompileState :: CompileState
-emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV $ Number 0 0)])
+emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV $ Number 0 0)] M.empty)
 
 compile :: Maps -> Expr -> Either Text Chunk
 compile m e =
-  let (a, s) = runState (runExceptT (compile' m e >> emitByte OpReturn)) emptyCompileState
+  let (a, s) = runState (runExceptT (compile' m e >> processLabels >> emitByte OpReturn)) emptyCompileState
    in case a of
         Left err -> Left err
         Right () -> Right (s ^. chunkc)
@@ -524,16 +529,21 @@ writeOffset addr value =
       let val = abs value
       let msb = toWord8 (val `shiftR` 8) .|. if value < 0 then bit 7 else 0x0
       let lsb = toWord8 (val .&. 0xff)
-      chunkc . code %= (V.// [(addr, msb), (addr + 1, lsb)])
+      chunkc . code %= (V.// [(addr-2, msb), (addr -1, lsb)])
 
-unfinishedJump :: StateChunk (Int, Int)
+unfinishedJump :: StateChunk Int
 unfinishedJump = do
   emitByte OpJmp
-  off1 <- getOffset
   emitByte (0 :: Word8)
   emitByte (0 :: Word8)
-  off2 <- getOffset
-  return (off1, off2)
+  getOffset
+
+processLabels :: StateChunk ()
+processLabels = do
+  labels <- use (umaps . ulbs)
+  forM_ labels (\(UL o ls) -> do
+    forM_ ls (\loc -> do
+      writeOffset loc (o - loc)))
 
 compile' :: Maps -> Expr -> StateChunk ()
 compile' m = go
@@ -570,26 +580,30 @@ compile' m = go
       Call "log" [x, y] -> go $ Call "log2" [x, y]
       Call "if" [cond, t, f] -> do
         go cond
-        (off1, off2) <- unfinishedJump
+        off1 <- unfinishedJump
         go t
         addConstant (NumVal $ 0 :+ 0)
-        (off3, off4) <- unfinishedJump
+        off2 <- unfinishedJump
         go f
-        off5 <- getOffset
-        writeOffset off1 (off4 - off2)
-        writeOffset off3 (off5 - off4)
+        off3 <- getOffset
+        writeOffset off1 (off2 - off1)
+        writeOffset off2 (off3 - off2)
       Call "loop" [c, a] -> do
         off1 <- getOffset
         go c
-        (off2, off3) <- unfinishedJump
+        off2 <- unfinishedJump
         go a
         addConstant (NumVal $ 0 :+ 0)
-        (off4, off5) <- unfinishedJump
-        writeOffset off2 (off5 - off3)
-        writeOffset off4 (off1 - off5)
+        off3 <- unfinishedJump
+        writeOffset off2 (off3 - off2)
+        writeOffset off3 (off1 - off3)
       Call "loop" [s, c, a] -> do
         go s
         go $ Call "loop" [c, a]
+      Call "goto" [Id l] -> do
+        addConstant (NumVal $ 0 :+ 0)
+        off <- unfinishedJump
+        useLabel l off
       Call f [x] | f `V.elem` ["real", "imag", "conj"] -> do
         go x
         emitByte OpInternal
@@ -605,7 +619,7 @@ compile' m = go
         emitByte OpCall
         emitByte (fun2Code (m ^. _2) (fun, length args))
       Call callee args -> do
-        UM fm om _ <- use umaps
+        UM fm om _ _ <- use umaps
         if
           | (M.member (callee, length args) fm) -> do
               let UF ps e = fm M.! (callee, length args)
@@ -628,6 +642,9 @@ compile' m = go
       Seq es -> forM_ es $ \e -> do
         go e
         emitByte OpInternal >> emitByte OpUnder
+      Label l -> do
+        off <- getOffset
+        addLabel l off
 
 op2Code :: OpMap -> Text -> Word8
 op2Code m op = toWord8 $ M.findIndex op m

@@ -168,6 +168,9 @@ alfaNumDot = alfaNum <|> parseIf "dot" (== '.')
 ident :: Parser Token
 ident = TIdent <$> wsBracket (T.cons <$> alfa <*> (T.pack <$> many alfaNumDot))
 
+label :: Parser Token
+label = TLabel <$> wsBracket (T.pack <$> many alfaNum <* parseIf ":" (== ':'))
+
 opsym :: Parser Char
 opsym = parseIf "operator" (`elem` opSymbols)
 
@@ -178,7 +181,7 @@ comma :: Parser Token
 comma = TComma <$ wsBracket (charP ',')
 
 tokah :: Parser Token
-tokah = lpar <|> rpar <|> comma <|> operata <|> numba <|> ident
+tokah = lpar <|> rpar <|> comma <|> operata <|> numba <|> label <|> ident
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0

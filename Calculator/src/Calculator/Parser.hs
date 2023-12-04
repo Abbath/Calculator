@@ -8,13 +8,13 @@ module Calculator.Parser where
 
 import Calculator.Lexer (tloop)
 import Calculator.Types
-    ( Expr(UDF, UDO, Asgn, Par, Number, Call, Id, Imprt),
+    ( Expr(UDF, UDO, Asgn, Par, Number, Call, Id, Imprt, Label),
       Assoc(R, L),
       Maps,
       Op(Op),
       opSymbols,
       showT,
-      Token(TRPar, TComma, TOp, TNumber, TIdent, TLPar), numToText)
+      Token(TRPar, TComma, TOp, TNumber, TIdent, TLPar, TLabel), numToText)
 import Control.Applicative ( Applicative(liftA2), Alternative(..) )
 import Control.Monad.Reader ( void )
 import qualified Data.Map.Strict as M
@@ -83,10 +83,17 @@ parse :: Maps -> [Token] -> Either Text Expr
 parse m ts = runParser (stmt m) (Input 0 ts) >>= \(i, e) -> return e
 
 stmt :: Maps -> Parser Expr
-stmt m = udfStmt m <|> udoStmt m <|> assignStmt m <|> opAliasStmt <|> imprtStmt <|> (expr 0.0 m <* eof)
+stmt m = udfStmt m <|> udoStmt m <|> assignStmt m <|> labelStmt <|> opAliasStmt <|> imprtStmt <|> (expr 0.0 m <* eof)
 
 eq :: Parser Token
 eq = parseIf "=" (==TOp "=")
+
+labelStmt :: Parser Expr
+labelStmt = Label . extractLabel <$> parseIf "label" isLabel
+  where isLabel (TLabel _) = True
+        isLabel _ = False
+        extractLabel (TLabel l) = l
+        extractLabel _ = ""
 
 opAliasStmt :: Parser Expr
 opAliasStmt = do
@@ -96,11 +103,11 @@ opAliasStmt = do
   return $ UDO op1 (-1) L (Call op2 [Id "@x", Id "@y"])
 
 operator :: Parser Text
-operator = exctractOp <$> parseIf "operator" isTOp
+operator = extractOp <$> parseIf "operator" isTOp
   where isTOp (TOp _) = True
         isTOp _ = False
-        exctractOp (TOp op) = op
-        exctractOp _ = ""
+        extractOp (TOp op) = op
+        extractOp _ = ""
 
 parseIf :: Text -> (Token -> Bool) -> Parser Token
 parseIf desc f =
@@ -114,18 +121,18 @@ parseIf desc f =
         Left ("Expected " <> desc <> ", but reached end of token list")
 
 number :: Parser (Rational, Rational)
-number = exctractNum <$> parseIf "number" isTNumber
+number = extractNum <$> parseIf "number" isTNumber
   where isTNumber (TNumber _ _) = True
         isTNumber _ = False
-        exctractNum (TNumber n m) = (n, m)
-        exctractNum _ = (0, 0)
+        extractNum (TNumber n m) = (n, m)
+        extractNum _ = (0, 0)
 
 identifier :: Parser Text
-identifier = exctractId <$> parseIf "id" isTIdent
+identifier = extractId <$> parseIf "id" isTIdent
   where isTIdent (TIdent _) = True
         isTIdent _ = False
-        exctractId (TIdent _id) = _id
-        exctractId _ = ""
+        extractId (TIdent _id) = _id
+        extractId _ = ""
 
 parLeft :: Parser ()
 parLeft = do

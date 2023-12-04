@@ -68,6 +68,7 @@ data Token = TNumber Rational Rational
            | TOp Text
            | TComma
            | TEqual
+           | TLabel Text
            deriving (Show, Eq)
 
 data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
@@ -81,6 +82,7 @@ data Expr = Number Rational Rational
           | Par Expr
           | Id Text
           | Seq [Expr]
+          | Label Text
           deriving (Eq, Show, Read, Generic)
 
 isNumber :: Expr -> Bool
@@ -206,6 +208,7 @@ exprToString ex = case ex of
   Id s -> s
   Seq es -> T.intercalate "\n" (map exprToString es)
   Imprt t -> "import " <> t
+  Label l -> l <> ":"
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><:"
