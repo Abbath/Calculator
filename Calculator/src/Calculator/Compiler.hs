@@ -578,6 +578,7 @@ compile' m = go
         findPlace (StrVal $ either id id format) >>= emitByte
       Call "atan" [Call "/" [x, y]] -> go $ Call "atan2" [x, y]
       Call "log" [x, y] -> go $ Call "log2" [x, y]
+      Call "if" [cond, t] -> go (Call "if" [cond, t, Number 0 0])
       Call "if" [cond, t, f] -> do
         go cond
         off1 <- unfinishedJump
