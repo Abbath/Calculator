@@ -37,11 +37,11 @@ import Data.Set (Set)
 import Data.Set qualified as S
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Lens (unpacked)
 import Data.Vector qualified as V
 import Data.Word
 import GHC.Generics
 import System.Random (Random (randomR), StdGen)
-import Data.Text.Lens (unpacked)
 
 -- import Debug.Trace
 
@@ -133,7 +133,7 @@ instance AE.FromJSON UserMaps
 
 parseComplex :: Text -> Complex Rational
 parseComplex t = case T.split (== 'j') t of
-  [r, i] -> read (r^.unpacked) :+ read (i^.unpacked)
+  [r, i] -> read (r ^. unpacked) :+ read (i ^. unpacked)
   _ -> error "AAAA"
 
 instance AE.FromJSON Value where
@@ -414,7 +414,7 @@ run m = do
                         push (f (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
                       FnFn (BitFn f) -> do
                         v1 <- pop
-                        push (toRational . f . numerator . fromRational <$> v1)
+                        push ((:+ 0) . toRational . f . numerator . fromRational . realPart $ v1)
                       _ -> throwError $ "Function is not computable yet: " <> showT k <> " " <> showT fun
                     runNext
             else
@@ -615,8 +615,9 @@ compile' m = go
               let UO _ _ e = om M.! callee
               ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
               go ne
-          | (callee == "-" && length args == 1) -> do
-              go (Call "-" [Number 0 0, head args])
+          | (callee == "-" && length args == 1) -> go (Call "-" [Number 0 0, head args])
+          | (callee == "~" && length args == 1) -> go (Call "comp" args)
+          | (callee == "!" && length args == 1) -> go (Call "fact" args)
           | otherwise -> throwError $ "Callee does not exist: " <> callee
       Number a b -> addConstant (NumVal $ a :+ b)
       Id a -> do
