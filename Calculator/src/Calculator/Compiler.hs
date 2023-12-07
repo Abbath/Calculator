@@ -43,8 +43,17 @@ import Data.Word
 import GHC.Generics
 import System.Random (Random (randomR), StdGen)
 
--- import Debug.Trace
+import Debug.Trace
 
+data Value = NumVal (Complex Rational) | StrVal Text deriving (Show, Eq, Generic)
+
+type Val = Complex Rational
+
+newtype ValueArray = ValueArray {unarray :: V.Vector Value} deriving (Show, Generic)
+
+data Chunk = Chunk {_code :: V.Vector Word8, _constants :: ValueArray} deriving (Show, Generic)
+
+makeLenses ''Chunk
 newtype UserVar = UV
   { _uval :: Expr
   }
@@ -54,7 +63,8 @@ makeLenses ''UserVar
 
 data UserFun = UF
   { _params :: [Text],
-    _ufexec :: Expr
+    _ufexpr :: Expr,
+    _ufchunk :: Chunk
   }
   deriving (Show, Generic)
 
@@ -87,23 +97,15 @@ data UserMaps = UM
 
 makeLenses ''UserMaps
 
-data Value = NumVal (Complex Rational) | StrVal Text deriving (Show, Eq, Generic)
-
-type Val = Complex Rational
-
-newtype ValueArray = ValueArray {unarray :: V.Vector Value} deriving (Show, Generic)
-
-data Chunk = Chunk {_code :: V.Vector Word8, _constants :: ValueArray} deriving (Show, Generic)
-
-makeLenses ''Chunk
-
 data CompileState = CS {_chunkc :: Chunk, _umaps :: UserMaps} deriving (Show)
 
 makeLenses ''CompileState
 
 type StateChunk = ExceptT Text (State CompileState)
 
-data VM = VM {_chunke :: Chunk, _ip :: Int, _stack :: [Val], _vars :: Map Text Val, _gen :: StdGen} deriving (Show)
+type Addr = Int
+
+data VM = VM {_chunke :: Chunk, _ip :: Int, _stack :: [Val], _cstack :: [Addr], _vars :: Map Text Val, _gen :: StdGen} deriving (Show)
 
 makeLenses ''VM
 
@@ -297,7 +299,7 @@ addVar name expr = umaps . uvars %= M.insert name (UV expr)
 addFun :: Maps -> Text -> [Text] -> Expr -> StateChunk ()
 addFun ms name args expr = do
   new_expr <- liftEither $ localize args expr >>= catchVar S.empty ms
-  umaps . ufuns %= M.insert (name, length args) (UF (map (T.cons '@') args) new_expr)
+  umaps . ufuns %= M.insert (name, length args) (UF (map (T.cons '@') args) new_expr emptyChunk)
 
 addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
 addOp ms name opprec assoc expr = do
@@ -320,7 +322,7 @@ extendWord8 :: Word8 -> Int
 extendWord8 = fromIntegral
 
 emptyVM :: Chunk -> StdGen -> VM
-emptyVM c = VM c 0 [] M.empty
+emptyVM c = VM c 0 [] [] M.empty
 
 interpretBc :: Maps -> Chunk -> StdGen -> (Either Text InterpretResult, VM)
 interpretBc m c g = runState (runExceptT $ run m) $ emptyVM c g
@@ -623,7 +625,7 @@ compile' m = go
         UM fm om _ _ <- use umaps
         if
           | (M.member (callee, length args) fm) -> do
-              let UF ps e = fm M.! (callee, length args)
+              let UF ps e _ = fm M.! (callee, length args)
               ne <- liftEither $ substitute (zip ps args) e
               go ne
           | (M.member callee om) -> do
