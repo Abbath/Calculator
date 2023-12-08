@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Calculator.Builtins where
 
@@ -8,6 +9,7 @@ import Data.Bits ((.|.), (.&.), xor, shift, popCount, complement, Bits (compleme
 import Data.Ratio (denominator, numerator, (%))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
+import qualified Data.Vector as V
 import Data.Text (Text)
 import qualified Data.Text as T
 import Control.Arrow (second)
@@ -48,6 +50,9 @@ operators =
        ("|>", Op { precedence = 11, associativity = L, oexec = NOp }),
        ("::=", Op { precedence = 12, associativity = R, oexec = NOp })
     ]
+
+linearOperators :: V.Vector (Text, Op)
+linearOperators = V.fromList $ M.assocs operators
 
 functions :: Map (Text, Int) Fun
 functions =

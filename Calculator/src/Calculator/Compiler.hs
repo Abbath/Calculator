@@ -115,7 +115,7 @@ data OpInternal = OpReal | OpImag | OpConj | OpRandom | OpUnder deriving (Show, 
 
 data OpEject = OpInput | OpOutput | OpFmt deriving (Show, Bounded, Enum, Eq)
 
-data OpCode = OpReturn | OpConstant | OpCall | OpJmp | OpSet | OpGet | OpInternal | OpEject deriving (Show, Bounded, Enum, Eq)
+data OpCode = OpReturn | OpConstant | OpBuiltin | OpJmp | OpSet | OpGet | OpInternal | OpEject | OpCall deriving (Show, Bounded, Enum, Eq)
 
 instance AE.ToJSON UserVar
 
@@ -170,7 +170,7 @@ disassembleChunk v = case V.uncons v of
           case V.uncons ns of
             Nothing -> "err (no constant)"
             Just (n1, ns1) -> "const (" <> show n1 <> ")\n" <> disassembleChunk ns1
-      | fromWord8 n == OpCall ->
+      | fromWord8 n == OpBuiltin ->
           case V.uncons ns of
             Nothing -> "err (no callee number)"
             Just (n1, ns1) -> "call (" <> show n1 <> ")\n" <> disassembleChunk ns1
@@ -299,7 +299,10 @@ addVar name expr = umaps . uvars %= M.insert name (UV expr)
 addFun :: Maps -> Text -> [Text] -> Expr -> StateChunk ()
 addFun ms name args expr = do
   new_expr <- liftEither $ localize args expr >>= catchVar S.empty ms
-  umaps . ufuns %= M.insert (name, length args) (UF (map (T.cons '@') args) new_expr emptyChunk)
+  let chunk = compile ms expr
+  case chunk of
+    Left err -> throwError err
+    Right c -> umaps . ufuns %= M.insert (name, length args) (UF (map (T.cons '@') args) new_expr c)
 
 addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
 addOp ms name opprec assoc expr = do
@@ -352,6 +355,7 @@ run m = do
     else do
       opcode <- readOpcode
       case fromWord8 opcode of
+        OpCall -> return IrOk
         OpEject -> do
           n <- fromWord8 <$> readWord
           case n of
@@ -394,38 +398,33 @@ run m = do
           offset <- readOffset
           when (cond == 0 :+ 0) $ jump offset
           runNext
-        OpCall -> do
+        OpBuiltin -> do
           n <- readWord
           if n > 127
             then
               let (k, fun) = M.elemAt (fromWord8 n .&. 0x7f) (m ^. _2)
                in do
+                    v1 <- pop
                     case fexec fun of
                       FnFn (CmpFn f) -> do
-                        v1 <- pop
                         v2 <- pop
                         push (if f (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
                       FnFn (MathFn1 f) -> do
-                        v1 <- pop
                         push (fmap toRational . f . fmap fromRational $ v1)
                       FnFn (MathFn2 f) -> do
-                        v1 <- pop
                         v2 <- pop
                         push (f v2 v1)
                       FnFn (IntFn1 f) -> do
-                        v1 <- pop
                         push (toRational . f . fromRational <$> v1)
                       FnFn (IntFn2 f) -> do
-                        v1 <- pop
                         v2 <- pop
                         push (f (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
                       FnFn (BitFn f) -> do
-                        v1 <- pop
                         push ((:+ 0) . toRational . f . numerator . fromRational . realPart $ v1)
                       _ -> throwError $ "Function is not computable yet: " <> showT k <> " " <> showT fun
                     runNext
             else
-              let (k, op) = M.elemAt (fromWord8 n) (m ^. _3)
+              let (k, op) = linearOperators V.! fromWord8 n
                in do
                     if
                       | k == "/" -> do
@@ -615,11 +614,11 @@ compile' m = go
       Call op [x, y] | M.member op (m ^. _3) -> do
         go x
         go y
-        emitByte OpCall
+        emitByte OpBuiltin
         emitByte (op2Code (m ^. _3) op)
       Call fun args | M.member (fun, length args) (m ^. _2) -> do
         forM_ args go
-        emitByte OpCall
+        emitByte OpBuiltin
         emitByte (fun2Code (m ^. _2) (fun, length args))
       Call callee args -> do
         UM fm om _ _ <- use umaps
