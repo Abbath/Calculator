@@ -119,6 +119,7 @@ functions =
        (("round", 1), Fun { params = [], fexec = FnFn (IntFn1 round) }),
        (("floor", 1), Fun { params = [], fexec = FnFn (IntFn1 floor) }),
        (("ceil", 1), Fun { params = [], fexec = FnFn (IntFn1 ceiling) }),
+       (("frac", 1), Fun { params = [], fexec = FnFn (FracFn1 frac) }),
        (("gcd", 2), Fun { params = [], fexec = FnFn (IntFn2 gcd) }),
        (("lcm", 2), Fun { params = [], fexec = FnFn (IntFn2 lcm) }),
        (("div", 2), Fun { params = [], fexec = FnFn (IntFn2 div) }),
@@ -152,6 +153,9 @@ fcmp x y =
     GT -> 1:+0
     EQ -> 0:+0
     LT -> (-1):+0
+
+frac :: Complex Rational -> Complex Rational
+frac x = let rp = realPart x in (rp - toRational (floor rp)) :+ 0
 
 fmath :: (Rational -> Rational -> Rational) -> Complex Rational -> Complex Rational -> Complex Rational
 fmath op x y = op <$> x <*> y

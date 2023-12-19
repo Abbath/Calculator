@@ -292,6 +292,7 @@ evalS ex = case ex of
       FnFn (IntFn1 fun) -> evalInt1 fun (head ps)
       FnFn (IntFn2 fun) -> evalInt fun (head ps) (ps !! 1)
       FnFn (BitFn fun) -> evalBit fun (head ps)
+      FnFn (FracFn1 fun) -> evm (head ps) >>= \x -> return $ fun x
       FnFn (MathFn1 fun) -> do
         n <- evm (head ps)
         let r = (\x -> if abs (realPart x) <= sin pi && imagPart x == 0 then 0 else x) . fun . fmap fromRational $ n

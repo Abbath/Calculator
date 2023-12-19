@@ -139,6 +139,7 @@ getPrA om = let lst = M.toList om
             in ps
 
 data FunFun = CmpFn (Rational -> Rational -> Bool) |
+              FracFn1 (Complex Rational -> Complex Rational) |
               MathFn1 (Complex Double -> Complex Double) |
               MathFn2 (Complex Rational -> Complex Rational -> Complex Rational) |
               IntFn1 (Double -> Integer) |
@@ -147,6 +148,7 @@ data FunFun = CmpFn (Rational -> Rational -> Bool) |
 
 instance Show FunFun where
   show (CmpFn _) = "CmpFn"
+  show (FracFn1 _) = "FracFn1"
   show (MathFn1 _) = "MathFn1"
   show (MathFn2 _) = "MathFn2"
   show (IntFn1 _) = "IntFn1"

@@ -13,7 +13,7 @@ import Calculator.Types
     ExecOp (FnOp),
     Expr (..),
     Fun (fexec),
-    FunFun (BitFn, CmpFn, IntFn1, IntFn2, MathFn1, MathFn2),
+    FunFun (..),
     FunMap,
     FunOp (BitOp, CmpOp, MathOp),
     Maps,
@@ -409,6 +409,8 @@ run m = do
                       FnFn (CmpFn f) -> do
                         v2 <- pop
                         push (if f (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
+                      FnFn (FracFn1 f) -> do
+                        push (f v1)
                       FnFn (MathFn1 f) -> do
                         push (fmap toRational . f . fmap fromRational $ v1)
                       FnFn (MathFn2 f) -> do
