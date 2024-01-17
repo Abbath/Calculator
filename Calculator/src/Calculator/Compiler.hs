@@ -109,7 +109,7 @@ data VM = VM {_chunke :: Chunk, _ip :: Int, _stack :: [Val], _cstack :: [Addr], 
 
 makeLenses ''VM
 
-data InterpretResult = IrOk | IrCompileError | IrRuntimeError Int | IrIO OpEject (Maybe Text) deriving (Show)
+data InterpretResult = IrOk | IrIO OpEject (Maybe Text) deriving (Show)
 
 data OpInternal = OpReal | OpImag | OpConj | OpRandom | OpUnder deriving (Show, Bounded, Enum, Eq)
 
@@ -351,7 +351,7 @@ run :: Maps -> StateVM InterpretResult
 run m = do
   ok <- sanityCheck
   if not ok
-    then uses ip IrRuntimeError
+    then throwError "The program is insane"
     else do
       opcode <- readOpcode
       case fromWord8 opcode of

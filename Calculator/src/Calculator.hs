@@ -301,8 +301,6 @@ compileAndRun path mode mps = case mode of
       (Left err, _) -> TSIO.putStrLn err
       (Right status, new_vm) -> case status of
         C.IrOk -> putStrLn "Success"
-        C.IrCompileError -> putStrLn "Compilation error"
-        C.IrRuntimeError ir -> putStrLn $ "Runtime error " <> show ir
         C.IrIO operation fmt -> case operation of
           C.OpInput -> do
             line <- TSIO.getLine
