@@ -159,33 +159,34 @@ disassembleChunk v = case V.uncons v of
   Just (n, ns) ->
     if
       | n > 7 -> "err (too much)"
-      | fromWord8 n == OpSet -> case V.uncons ns of
+      | n >= 0 && n <= 7 -> case fromWord8 n of
+        OpSet -> case V.uncons ns of
           Nothing -> "err (no constant)"
           Just (n1, ns1) -> "set (" <> show n1 <> ")\n" <> disassembleChunk ns1
-      | fromWord8 n == OpGet -> case V.uncons ns of
+        OpGet -> case V.uncons ns of
           Nothing -> "err (no constant)"
           Just (n1, ns1) -> "get (" <> show n1 <> ")\n" <> disassembleChunk ns1
-      | fromWord8 n == OpReturn -> "ret"
-      | fromWord8 n == OpConstant ->
+        OpReturn -> "ret"
+        OpConstant ->
           case V.uncons ns of
             Nothing -> "err (no constant)"
             Just (n1, ns1) -> "const (" <> show n1 <> ")\n" <> disassembleChunk ns1
-      | fromWord8 n == OpBuiltin ->
+        OpBuiltin ->
           case V.uncons ns of
             Nothing -> "err (no callee number)"
             Just (n1, ns1) -> "call (" <> show n1 <> ")\n" <> disassembleChunk ns1
-      | fromWord8 n == OpJmp ->
+        OpJmp ->
           case V.uncons ns of
             Nothing -> "err (no offset 1)"
             Just (n1, ns1) ->
               case V.uncons ns1 of
                 Nothing -> "err (no offset 2)"
                 Just (n2, ns2) -> "jmp (" <> show n1 <> ", " <> show n2 <> ")\n" <> disassembleChunk ns2
-      | fromWord8 n == OpInternal ->
+        OpInternal ->
           case V.uncons ns of
             Nothing -> "err (no op number)"
             Just (n1, ns1) -> "internal (" <> show n1 <> ")\n" <> disassembleChunk ns1
-      | fromWord8 n == OpEject ->
+        OpEject ->
           case V.uncons ns of
             Nothing -> "err (no eject opcode)"
             Just (n1, ns1) -> case fromWord8 n1 of
@@ -194,6 +195,7 @@ disassembleChunk v = case V.uncons v of
               OpFmt -> case V.uncons ns1 of
                 Nothing -> "err (no format string)"
                 Just (n2, ns2) -> "fmt (" <> show n2 <> ")\n" <> disassembleChunk ns2
+        OpCall -> disassembleChunk ns
       | otherwise -> "err (unknown)"
 
 writeValueArray :: ValueArray -> Value -> ValueArray
@@ -428,28 +430,20 @@ run m = do
             else
               let (k, op) = linearOperators V.! fromWord8 n
                in do
+                    v1 <- pop
+                    v2 <- pop
                     if
                       | k == "/" -> do
-                          v1 <- pop
-                          v2 <- pop
                           push . (:+ 0) $ (realPart v2 / realPart v1)
                       | k == "%" -> do
-                          v1 <- pop
-                          v2 <- pop
                           push . (:+ 0) $ toRational $ mod (floor . realPart $ v2 :: Integer) (floor . realPart $ v1 :: Integer)
                       | otherwise ->
                           case oexec op of
                             FnOp (CmpOp o) -> do
-                              v1 <- pop
-                              v2 <- pop
                               push (if o (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
                             FnOp (MathOp o) -> do
-                              v1 <- pop
-                              v2 <- pop
                               push (o v2 v1)
                             FnOp (BitOp o) -> do
-                              v1 <- pop
-                              v2 <- pop
                               push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
                             _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
                     runNext
