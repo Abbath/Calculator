@@ -8,20 +8,20 @@ module Calculator.Parser where
 
 import Calculator.Lexer (tloop)
 import Calculator.Types
-    ( Expr(UDF, UDO, Asgn, Par, Number, Call, Id, Imprt, Label),
+    ( Expr(..),
       Assoc(R, L),
       Maps,
       Op(Op),
       opSymbols,
       showT,
-      Token(TRPar, TComma, TOp, TNumber, TIdent, TLPar, TLabel), numToText)
+      Token(..), numToText, opmap)
 import Control.Applicative ( Applicative(liftA2), Alternative(..) )
 import Control.Monad.Reader ( void )
 import qualified Data.Map.Strict as M
 import Data.Ratio ( numerator )
 import Data.Text (Text)
 import qualified Data.Text as T
-import Control.Lens ((^.), _3)
+import Control.Lens ((^.))
 import Data.Complex
 
 data Input = Input
@@ -86,7 +86,10 @@ stmt :: Maps -> Parser Expr
 stmt m = udfStmt m <|> udoStmt m <|> assignStmt m <|> labelStmt <|> opAliasStmt <|> imprtStmt <|> (expr 0.0 m <* eof)
 
 eq :: Parser Token
-eq = parseIf "=" (==TOp "=")
+eq = parseIf "=" (==TOp "=") <|> parseIf "<-" (==TOp "<-")
+
+eq2 :: Parser Token
+eq2 = parseIf "=" (==TOp "=") <|> parseIf "->" (==TOp "->")
 
 labelStmt :: Parser Expr
 labelStmt = Label . extractLabel <$> parseIf "label" isLabel
@@ -148,8 +151,25 @@ parRight = do
   where isParRight TRPar = True
         isParRight _ = False
 
+braLeft :: Parser ()
+braLeft = do
+    _ <- parseIf "[" isBraLeft
+    return ()
+  where isBraLeft TLBracket = True
+        isBraLeft _ = False
+
+braRight :: Parser ()
+braRight = do
+    _ <- parseIf "]" isBraRight
+    return ()
+  where isBraRight TRBracket = True
+        isBraRight _ = False
+
 parens :: Parser a -> Parser a
 parens x = parLeft *> x <* parRight
+
+brackets :: Parser a -> Parser a
+brackets x = braLeft *> x <* braRight
 
 comma :: Parser Token
 comma = parseIf "," (==TComma)
@@ -162,7 +182,7 @@ udfStmt :: Maps -> Parser Expr
 udfStmt m = do
   name <- identifier
   args <- parens $ sepBy identifier comma
-  void eq
+  void eq2
   UDF name args <$> expr 0.0 m
 
 udoStmt :: Maps -> Parser Expr
@@ -173,7 +193,7 @@ udoStmt m = do
   void comma
   (a, _) <- number
   void parRight
-  void eq
+  void eq2
   UDO name (fromInteger . numerator $ p) (if a == 0 then L else R) <$> expr 0.0 m
 
 assignStmt :: Maps -> Parser Expr
@@ -205,12 +225,21 @@ expr min_bp m = Parser $
         Just TLPar -> do
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts
           inner_loop (Call a e) min_bp m i
+        Just TLBracket -> do
+          (i, e) <- runParser (brackets identifier) ts
+          inner_loop (ChairSit a e) min_bp m i
         _ -> inner_loop (Id a) min_bp m ts
       TLPar -> do
         (i, e) <- runParser (expr 0.0 m) ts
         case i of
           (inputUncons -> Just (TRPar, i1)) -> inner_loop (Par e) min_bp m i1
-          _ -> Left "No closing bracket"
+          _ -> Left "No closing parenthesis"
+      TLBrace -> case inputPeek ts of
+        Just TRBrace -> inner_loop ChairLit min_bp m ts
+        _ -> Left "No closing brace"
+      TRBrace -> Left "No opening brace"
+      TRBracket -> Left "No opening bracket"
+      TRPar -> Left "No opening parenthesis"
       tok -> Left ("Only numbers in the building " <> showT tok)
     _ -> Left "Expected token, but the list is empty"
   where
@@ -218,6 +247,8 @@ expr min_bp m = Parser $
     inner_loop lhs bp om ts = case ts of
       (inputUncons -> Just (t, ts1)) -> case t of
         TRPar -> Right (ts, lhs)
+        TRBrace -> Right (ts1, lhs)
+        TRBracket -> Right (ts1, lhs)
         TComma -> Right (ts, lhs)
         TOp op -> case infix_binding_power op om of
           Nothing -> Left $ "Operator does not exist: " <> showT op
@@ -233,14 +264,14 @@ expr min_bp m = Parser $
     infix_binding_power op ms =
       if T.all (`elem` opSymbols) op
         then do
-          (Op pr asoc _) <- op `M.lookup` (ms^._3)
+          (Op pr asoc _) <- op `M.lookup` (ms^.opmap)
           let p = fromIntegral pr
           return $ case asoc of
             L -> (p, p + 0.25)
             R -> (p + 0.25, p)
         else return (13, 13.25)
     prefix_binding_power :: Text -> Maps -> Double
-    prefix_binding_power op ms = let (Op pr _ _) = (ms^._3) M.! op
+    prefix_binding_power op ms = let (Op pr _ _) = (ms^.opmap) M.! op
                                  in fromIntegral pr
     selectOp :: Text -> Either Text Text
     selectOp op = let ops = [("~", "comp"), ("!", "fact"), ("-", "-")]

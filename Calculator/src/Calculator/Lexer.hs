@@ -3,12 +3,11 @@
 module Calculator.Lexer (tloop) where
 
 import Control.Applicative ( Alternative(..) )
-import Data.Bits (shiftL)
 import Data.Char
     ( isDigit, isSpace, isAlpha, isHexDigit, isOctDigit, ord )
 import           Data.Text (Text)
 import qualified Data.Text as T
-import           Calculator.Types    (Token (..), opSymbols)
+import           Calculator.Types    (Token (..), opSymbols, textToNum)
 import qualified Data.Scientific as S
 
 data Input = Input
@@ -129,12 +128,6 @@ binLiteral = (\_ _ n -> toRational (n :: Integer))
 
 stringLiteral :: Parser Rational
 stringLiteral = charP '"' *> (fromInteger . textToNum 0 <$> many (parseIf "anything except \"" (/='"'))) <* charP '"'
-  where
-    textToNum n [] = n
-    textToNum n (c:cs) =
-      let o = ord c
-          b = if o > 255 || o < 0 then ord ' ' else o
-      in textToNum (n `shiftL` 8 + toInteger b) cs
 
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
@@ -155,6 +148,18 @@ lpar = TLPar <$ wsBracket (charP '(')
 
 rpar :: Parser Token
 rpar = TRPar <$ wsBracket (charP ')')
+
+lbrace :: Parser Token
+lbrace = TLBrace <$ wsBracket (charP '{')
+
+rbrace :: Parser Token
+rbrace = TRBrace <$ wsBracket (charP '}')
+
+lbracket :: Parser Token
+lbracket = TLBracket <$ wsBracket (charP '[')
+
+rbracket :: Parser Token
+rbracket = TRBracket <$ wsBracket (charP ']')
 
 alfa :: Parser Char
 alfa = parseIf "letters and _" ((||) <$> isAlpha <*> (== '_'))
@@ -181,7 +186,7 @@ comma :: Parser Token
 comma = TComma <$ wsBracket (charP ',')
 
 tokah :: Parser Token
-tokah = lpar <|> rpar <|> comma <|> operata <|> numba <|> label <|> ident
+tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> operata <|> numba <|> label <|> ident
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0

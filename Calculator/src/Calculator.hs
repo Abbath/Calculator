@@ -19,7 +19,7 @@ import qualified Calculator.Compiler as C
 import Calculator.Types
     ( Expr(Seq, Imprt),
       ListTuple,
-      Maps,
+      Maps(..),
       opsToList,
       opsFromList,
       funsToList,
@@ -29,9 +29,9 @@ import Calculator.Types
       maps,
       extractFormat,
       zipFormat,
-      isFormat)
+      isFormat, varmap, opmap, funmap)
 import Clay (render)
-import Control.Lens ((%~), (&), _1)
+import Control.Lens ((%~), (&), (^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
   ( MonadIO (liftIO),
@@ -191,7 +191,7 @@ replSettings = Settings
   }
 
 extractNames :: Maps -> [String]
-extractNames (v, f, o) = map TS.unpack $ M.keys o <> M.keys v <> map fst (M.keys f)
+extractNames ms = map TS.unpack $ M.keys (ms^.opmap) <> M.keys (ms^.varmap) <> map fst (M.keys (ms^.funmap))
 
 loop :: Mode -> Maps -> IO ()
 loop mode mps = do
@@ -206,7 +206,7 @@ loop mode mps = do
         Calculator.loop mode mps
       Right _ -> return ()
   where
-  removeLocals = _1 %~ M.filterWithKey (\k v -> not $ "_." `TS.isInfixOf` k)
+  removeLocals = varmap %~ M.filterWithKey (\k v -> not $ "_." `TS.isInfixOf` k)
   loop' :: Mode -> Maps -> StdGen -> InputT (StateT StateData IO) ()
   loop' md ms g = do
     S.lift $ S.modify (\s -> s `union` extractNames ms)
@@ -226,7 +226,7 @@ loop mode mps = do
             Right (r, EvalState m ng _) -> do
               let m' = removeLocals m
               liftIO . TSIO.putStrLn . showComplex $ r
-              loop' md (m' & _1 %~ M.insert "_" r) ng
+              loop' md (m' & varmap %~ M.insert "_" r) ng
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
 interpret path mode mps = do
@@ -255,7 +255,7 @@ interpret path mode mps = do
             loop' ls md m ng
           Right (r, EvalState m ng _) -> do
             liftIO . TSIO.putStrLn $ showComplex r
-            loop' ls md (m & _1 %~ M.insert "_" r) ng
+            loop' ls md (m & varmap %~ M.insert "_" r) ng
 
 data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
@@ -319,17 +319,20 @@ compileAndRun path mode mps = case mode of
                                 Left err -> TSIO.putStrLn err
                                 Right res -> TSIO.putStrLn res >> execute ms newer_vm
 
+defaultMaps :: Maps
+defaultMaps = Maps defVar funMap opMap M.empty
+
 compileAndRunFile :: FilePath -> CompileMode -> IO ()
-compileAndRunFile f cm = compileAndRun f cm (defVar, funMap, opMap)
+compileAndRunFile f cm = compileAndRun f cm defaultMaps
 
 parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (MessageType, EvalState) (Complex Rational, EvalState)
 parseEval md ms g x = evalExprS (parseString md x ms) ms g
 
 evalLoop :: Mode -> IO ()
-evalLoop m = Calculator.loop m (defVar, funMap, opMap)
+evalLoop m = Calculator.loop m defaultMaps
 
 evalFile :: FilePath -> IO ()
-evalFile f =  Calculator.interpret f Internal (defVar, funMap, opMap)
+evalFile f =  Calculator.interpret f Internal defaultMaps
 
 updateIDS :: Integer -> IO ()
 updateIDS i = do
@@ -404,7 +407,7 @@ webLoop port mode = do
           let res = evalExprS t ms gen
           let txt = let (ress, EvalState mps ng _) = either
                           Prelude.id
-                          (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . _1 %~ M.insert "_" r) mg))
+                          (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . varmap %~ M.insert "_" r) mg))
                           res
                     in do
                         storeMaps storagename mps
@@ -424,7 +427,7 @@ webLoop port mode = do
                     H.style $ H.toHtml . render $ postCss
   where
     storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
-    mapsToLists (a, b, c) = (map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ a, funsToList b, opsToList c)
-    listsToMaps (a, b, c) = (M.fromList . map (\(k, (vr, vi)) -> (k, vr:+vi)) $ a, M.union funMap $ funsFromList b, M.union opMap $ opsFromList c)
+    mapsToLists ms = (map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ (ms^.varmap), funsToList (ms^.funmap), opsToList (ms^.opmap))
+    listsToMaps (a, b, c) = Maps (M.fromList . map (\(k, (vr, vi)) -> (k, vr:+vi)) $ a) (M.union funMap $ funsFromList b) (M.union opMap $ opsFromList c) M.empty
     unpackMsg (MsgMsg m) = m
     unpackMsg (ErrMsg e) = e

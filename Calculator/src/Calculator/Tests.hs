@@ -5,8 +5,8 @@ import Calculator.Builtins (opMap)
 import Calculator.Evaluator (evalS, MessageType(ErrMsg, MsgMsg))
 import Calculator.Lexer (tloop)
 import qualified Calculator.Parser as P
-import Calculator.Types (showT, Maps, VarMap, EvalState(..))
-import Control.Lens ((%~), (&), _1)
+import Calculator.Types (showT, Maps, VarMap, EvalState(..), Maps(..), varmap)
+import Control.Lens ((%~), (&))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State (runState)
 import qualified Data.Map.Strict as M
@@ -43,7 +43,7 @@ loop (x:xs) mps rgen bk n = do
             TIO.putStrLn $ "Failed: " <> sample <> " expected: " <> showT x <> " received: " <> showT t
             return 1
         let (m, g) = case t of
-                      (Right r, EvalState m_ g_ _)  -> (m_ & _1 %~ M.insert "_" r, g_)
+                      (Right r, EvalState m_ g_ _)  -> (m_ & varmap %~ M.insert "_" r, g_)
                       (Left _, EvalState m_ g_ _) -> (m_, g_)
         loop xs m g bk (n + new_n)
 
@@ -96,7 +96,7 @@ testLoop :: IO ()
 testLoop = do
   g <- initStdGen
   TIO.putStrLn "Internal parser:"
-  n <- loop tests (defVar, M.empty, opMap) g Internal 0
+  n <- loop tests (Maps defVar M.empty opMap M.empty) g Internal 0
   if n == 0
     then exitSuccess
     else exitWith $ ExitFailure n

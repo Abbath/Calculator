@@ -20,7 +20,7 @@ module Calculator.Types
     showRational,
     showT,
     opSymbols,
-    Maps,
+    Maps (..),
     OpMap,
     VarMap,
     FunMap,
@@ -37,10 +37,18 @@ module Calculator.Types
     isNumber,
     isId,
     numToText,
+    textToNum,
     extractFormat,
     zipFormat,
     isFormat,
-    showComplexBase
+    showComplexBase,
+    varmap,
+    opmap,
+    funmap,
+    chairmap,
+    ChairVal (..),
+    Chair,
+    showChair
   )
 where
 
@@ -57,13 +65,17 @@ import qualified Data.Scientific as S
 import Data.Maybe (fromMaybe)
 import Control.Lens.TH
 import System.Random (StdGen)
-import Data.Char (chr)
-import Data.Bits (shiftR, (.&.))
+import Data.Char (chr, ord)
+import Data.Bits (shiftR, (.&.), shiftL)
 import Numeric (showHex, showOct, showBin)
 
 data Token = TNumber Rational Rational
            | TLPar
            | TRPar
+           | TLBrace
+           | TRBrace
+           | TLBracket
+           | TRBracket
            | TIdent Text
            | TOp Text
            | TComma
@@ -74,6 +86,8 @@ data Token = TNumber Rational Rational
 data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
 
 data Expr = Number Rational Rational
+          | ChairLit
+          | ChairSit Text Text
           | Imprt Text
           | Asgn Text Expr
           | UDF Text [Text] Expr
@@ -99,45 +113,6 @@ instance FromJSON Expr
 
 type ListTuple =  ([(Text, (Rational, Rational))], [((Text, Int), ([Text], Expr))], [(Text, ((Int, Assoc), Expr))])
 
-type FunMap = Map (Text, Int) Fun
-type VarMap = Map Text (Complex Rational)
-type OpMap = Map Text Op
-type Maps = (VarMap, FunMap, OpMap)
-
-data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer)
-
-instance Show FunOp where
-  show (CmpOp _) = "CmpOp"
-  show (MathOp _) = "MathOp"
-  show (BitOp _) = "BitOp"
-
-data ExecOp = NOp | ExOp Expr | FnOp FunOp | AOp Text deriving Show
-
-isExOp :: ExecOp -> Bool
-isExOp (ExOp _) = True
-isExOp _ = False
-
-unpackExOp :: ExecOp -> Expr
-unpackExOp (ExOp e) = e
-unpackExOp _ = error "Not an expression"
-
-data Op = Op {
-  precedence :: Int,
-  associativity :: Assoc,
-  oexec :: ExecOp
-} deriving Show
-
-opsToList :: OpMap -> [(Text, ((Int, Assoc), Expr))]
-opsToList = map (\(k, v) -> (k, ((precedence v, associativity v), unpackExOp . oexec $ v))) . filter (\(_, v) -> isExOp . oexec $ v) . M.toList
-
-opsFromList :: [(Text, ((Int, Assoc), Expr))] -> OpMap
-opsFromList = M.fromList . map (\(k, ((p, a), e)) -> (k, Op p a (ExOp e)))
-
-getPrA :: OpMap -> Map Text (Int, Assoc)
-getPrA om = let lst = M.toList om
-                ps = M.fromList $ map (second (\o -> (precedence o, associativity o))) lst
-            in ps
-
 data FunFun = CmpFn (Rational -> Rational -> Bool) |
               FracFn1 (Complex Rational -> Complex Rational) |
               MathFn1 (Complex Double -> Complex Double) |
@@ -155,7 +130,58 @@ instance Show FunFun where
   show (IntFn2 _) = "IntFn2"
   show (BitFn _) = "BitFn"
 
+instance Show FunOp where
+  show (CmpOp _) = "CmpOp"
+  show (MathOp _) = "MathOp"
+  show (BitOp _) = "BitOp"
+
 data ExecFn = NFn | ExFn Expr | FnFn FunFun deriving Show
+
+data ExecOp = NOp | ExOp Expr | FnOp FunOp | AOp Text deriving Show
+
+data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer)
+
+data Fun = Fun {
+  params :: [Text],
+  fexec :: ExecFn
+} deriving Show
+
+data Op = Op {
+  precedence :: Int,
+  associativity :: Assoc,
+  oexec :: ExecOp
+} deriving Show
+
+type Chair = Map Text ChairVal
+data ChairVal = DickVal (Complex Rational) | PikeVal Chair deriving Show
+
+type FunMap = Map (Text, Int) Fun
+type VarMap = Map Text (Complex Rational)
+type OpMap = Map Text Op
+type ChairMap = Map Text Chair
+
+data Maps = Maps { _varmap :: VarMap, _funmap :: FunMap, _opmap :: OpMap, _chairmap :: ChairMap } deriving Show
+
+makeLenses ''Maps
+
+isExOp :: ExecOp -> Bool
+isExOp (ExOp _) = True
+isExOp _ = False
+
+unpackExOp :: ExecOp -> Expr
+unpackExOp (ExOp e) = e
+unpackExOp _ = error "Not an expression"
+
+opsToList :: OpMap -> [(Text, ((Int, Assoc), Expr))]
+opsToList = map (\(k, v) -> (k, ((precedence v, associativity v), unpackExOp . oexec $ v))) . filter (\(_, v) -> isExOp . oexec $ v) . M.toList
+
+opsFromList :: [(Text, ((Int, Assoc), Expr))] -> OpMap
+opsFromList = M.fromList . map (\(k, ((p, a), e)) -> (k, Op p a (ExOp e)))
+
+getPrA :: OpMap -> Map Text (Int, Assoc)
+getPrA om = let lst = M.toList om
+                ps = M.fromList $ map (second (\o -> (precedence o, associativity o))) lst
+            in ps
 
 isExFn :: ExecFn -> Bool
 isExFn (ExFn _) = True
@@ -164,11 +190,6 @@ isExFn _ = False
 unpackExFn :: ExecFn -> Expr
 unpackExFn (ExFn e) = e
 unpackExFn _ = error "Not an expression"
-
-data Fun = Fun {
-  params :: [Text],
-  fexec :: ExecFn
-} deriving Show
 
 funsToList :: FunMap -> [((Text, Int), ([Text], Expr))]
 funsToList = map (\(k, v) -> (k, (params v, unpackExFn . fexec $ v))) . filter (\(_, v) -> isExFn . fexec $ v) . M.toList
@@ -211,6 +232,8 @@ exprToString ex = case ex of
   Seq es -> T.intercalate "\n" (map exprToString es)
   Imprt t -> "import " <> t
   Label l -> l <> ":"
+  ChairLit -> "{}"
+  ChairSit a x -> a <> "[" <> x <> "]"
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><:"
@@ -280,11 +303,24 @@ showComplex c =
       ci = imagPart c
   in showRational cr <> if ci /= 0 then "j" <> showRational ci else ""
 
+showChair :: Chair -> Text
+showChair ch = "{" <> T.intercalate ", " (map (\(k, v) -> k <> " => " <> showElem v) . M.toList $ ch) <> "}"
+  where
+    showElem (DickVal v) = showComplex v
+    showElem (PikeVal v) = showChair v
+
 numToText :: Complex Rational -> Either Text Text
 numToText n | denominator (realPart n) /= 1 = Left "Can't convert rational to string!"
 numToText n = Right $ go T.empty (abs . numerator . realPart $ n)
   where go t 0 = t
         go t m = go (T.cons (chr . fromInteger $ (m .&. 0xff)) t) (m `shiftR` 8)
+
+textToNum :: Integer -> [Char] -> Integer
+textToNum n [] = n
+textToNum n (c:cs) =
+  let o = ord c
+      b = if o > 255 || o < 0 then ord ' ' else o
+  in textToNum (n `shiftL` 8 + toInteger b) cs
 
 data FormatChunk = FormatTxt Text | FormatFmt Text deriving Show
 
@@ -330,4 +366,4 @@ zipFormat = go T.empty
 
 data EvalState = EvalState {_maps :: Maps, _gen :: StdGen, _mem :: Map (Text, Int) (Map (Complex Rational) (Complex Rational))} deriving (Show)
 
-$(makeLenses ''EvalState)
+makeLenses ''EvalState

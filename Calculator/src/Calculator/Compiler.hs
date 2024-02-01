@@ -16,13 +16,16 @@ import Calculator.Types
     FunFun (..),
     FunMap,
     FunOp (BitOp, CmpOp, MathOp),
-    Maps,
+    Maps(..),
     Op (oexec),
     OpMap,
     numToText,
     showT,
+    varmap,
+    opmap,
+    funmap
   )
-import Control.Lens (makeLenses, use, uses, (%=), (%~), (+=), (.=), (^.), _1, _2, _3)
+import Control.Lens (makeLenses, use, uses, (%=), (%~), (+=), (.=), (^.))
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Aeson qualified as AE
@@ -43,7 +46,7 @@ import Data.Word
 import GHC.Generics
 import System.Random (Random (randomR), StdGen)
 
-import Debug.Trace
+-- import Debug.Trace
 
 data Value = NumVal (Complex Rational) | StrVal Text deriving (Show, Eq, Generic)
 
@@ -246,15 +249,15 @@ localize s@(x : xs) (Call nm e) =
 localize s ex = goInside (localize s) ex
 
 catchVar :: Set Text -> Maps -> Expr -> Either Text Expr
-catchVar locals ms@(vm, fm, _) ex = case ex of
+catchVar locals ms ex = case ex of
   (Call ":=" [Id nm, e]) -> do
     ne <- goInside (catchVar (S.insert nm locals) ms) e
     return $ Call ":=" [Id nm, ne]
   (Id i) | T.head i == '@' -> return $ Id i
   (Id i) ->
-    let a = M.lookup i vm :: Maybe (Complex Rational)
+    let a = M.lookup i (ms^.varmap) :: Maybe (Complex Rational)
         getNames = map (\(f, _) -> (f, f)) . M.keys
-        b = lookup i (getNames fm ++ getNames functions) :: Maybe Text
+        b = lookup i (getNames (ms^.funmap) ++ getNames functions) :: Maybe Text
         c = S.member i locals
      in case a of
           Just n -> return $ randomCheck n i
@@ -404,7 +407,7 @@ run m = do
           n <- readWord
           if n > 127
             then
-              let (k, fun) = M.elemAt (fromWord8 n .&. 0x7f) (m ^. _2)
+              let (k, fun) = M.elemAt (fromWord8 n .&. 0x7f) (m ^. funmap)
                in do
                     v1 <- pop
                     case fexec fun of
@@ -607,15 +610,15 @@ compile' m = go
         emitByte OpInternal
         let idx = fromMaybe 0 $ V.elemIndex f ["real", "imag", "conj"]
         emitByte (toEnum idx :: OpInternal)
-      Call op [x, y] | M.member op (m ^. _3) -> do
+      Call op [x, y] | M.member op (m ^. opmap) -> do
         go x
         go y
         emitByte OpBuiltin
-        emitByte (op2Code (m ^. _3) op)
-      Call fun args | M.member (fun, length args) (m ^. _2) -> do
+        emitByte (op2Code (m ^. opmap) op)
+      Call fun args | M.member (fun, length args) (m ^. funmap) -> do
         forM_ args go
         emitByte OpBuiltin
-        emitByte (fun2Code (m ^. _2) (fun, length args))
+        emitByte (fun2Code (m ^. funmap) (fun, length args))
       Call callee args -> do
         UM fm om _ _ <- use umaps
         if
@@ -635,7 +638,7 @@ compile' m = go
       Id a -> do
         if
           | a == "m.r" -> emitByte OpInternal >> emitByte OpRandom
-          | M.member a (m ^. _1) && a /= "_" -> addConstant (NumVal $ (m ^. _1) M.! a)
+          | M.member a (m ^. varmap) && a /= "_" -> addConstant (NumVal $ (m ^. varmap) M.! a)
           | otherwise -> getVar (StrVal a)
       Seq es -> forM_ es $ \e -> do
         go e

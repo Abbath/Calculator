@@ -20,6 +20,7 @@ operators :: Map Text Op
 operators =
     [
        ("=", Op { precedence = 0, associativity = R, oexec = NOp }),
+       ("<-", Op { precedence = 0, associativity = R, oexec = NOp }),
        ("+=", Op { precedence = 0, associativity = R, oexec = NOp }),
        ("-=", Op { precedence = 0, associativity = R, oexec = NOp }),
        ("*=", Op { precedence = 0, associativity = R, oexec = NOp }),
@@ -155,7 +156,7 @@ fcmp x y =
     LT -> (-1):+0
 
 frac :: Complex Rational -> Complex Rational
-frac x = let rp = realPart x in (rp - toRational (floor rp)) :+ 0
+frac x = let rp = realPart x in (rp - toRational @Integer (floor rp)) :+ 0
 
 fmath :: (Rational -> Rational -> Rational) -> Complex Rational -> Complex Rational -> Complex Rational
 fmath op x y = op <$> x <*> y
