@@ -87,7 +87,7 @@ data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
 
 data Expr = Number Rational Rational
           | ChairLit
-          | ChairSit Text Text
+          | ChairSit Text [Text]
           | Imprt Text
           | Asgn Text Expr
           | UDF Text [Text] Expr
@@ -233,7 +233,7 @@ exprToString ex = case ex of
   Imprt t -> "import " <> t
   Label l -> l <> ":"
   ChairLit -> "{}"
-  ChairSit a x -> a <> "[" <> x <> "]"
+  ChairSit a x -> a <> "[" <> T.intercalate "," x <> "]"
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><:"

@@ -39,6 +39,7 @@ import Calculator.Types
     opmap,
     chairmap,
     ChairVal(..),
+    Chair,
     showChair
   )
 import Control.Lens ((%~), (.~), (^.), at)
@@ -64,6 +65,7 @@ import Numeric (showBin, showHex, showInt, showOct)
 import System.Random (Random (randomR))
 import Control.Applicative (asum)
 import Data.Complex ( conjugate, imagPart, realPart, Complex(..) )
+import Data.Maybe (fromMaybe)
 
 -- import Debug.Trace
 
@@ -260,6 +262,32 @@ evalS ex = case ex of
       then throwError . ErrMsg $ "Division by zero: " <> exprToString oc
       else return ((:+0) . toRational $ mod (floor . realPart $ n1 :: Integer) (floor . realPart $ n :: Integer))
   Call "|>" [x, Id y] -> evm $ Call y [x]
+  Call ":=" [Id x, ChairSit a xs] -> do
+    chair <- gets (^. maps . chairmap . at a)
+    case chair of
+      Nothing -> throwError . MsgMsg $ "No such chair"
+      Just ch -> case extractChair xs ch of
+        Nothing -> throwError . MsgMsg $ "No such key"
+        Just (DickVal v) -> evm $ Call ":=" [Id x, Number (realPart v) (imagPart v)]
+        Just (PikeVal v) -> do
+          modify (maps . chairmap %~ M.insert x v)
+          throwError . MsgMsg $ "Sitting chair"
+  Call ":=" [ChairSit a xs, y] -> do
+    val <- case y of
+      ChairLit -> return $ PikeVal M.empty
+      ChairSit b ys -> do
+        chair <- gets (^. maps . chairmap . at b)
+        case chair of
+          Nothing -> throwError . MsgMsg $ "No such chair"
+          Just ch -> do
+            return $ fromMaybe (PikeVal M.empty) (extractChair ys ch)
+      _ -> DickVal <$> evm y
+    chair <- gets (^. maps . chairmap . at a)
+    case chair of
+      Nothing -> throwError . MsgMsg $ "No such chair"
+      Just ch -> do
+        modify (maps . chairmap %~ M.insert a (sitChair xs val ch))
+        throwError . MsgMsg $ "Sitting chair"
   Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
       then throwError (ErrMsg "I'm afraid you can't do that.")
@@ -270,14 +298,6 @@ evalS ex = case ex of
           then modify (maps . varmap %~ M.insert x n)
           else modify (maps . varmap %~ M.insert ("_." <> x) n)
         return n
-  Call ":=" [ChairSit a x, y] -> do
-    val <- DickVal <$> evm y
-    oldMap <- gets (^. maps . chairmap . at a)
-    case oldMap of
-      Nothing -> throwError . ErrMsg $ "No such chair"
-      Just om -> do
-        modify (maps . chairmap %~ M.insert a (M.insert x val om))
-        throwError . MsgMsg $ "Chair sitting"
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwError . ErrMsg $ "Cannot assign to an expression with: " <> op
   Call op [x, y] | M.member op operators -> evalBuiltinOp op x y
@@ -360,11 +380,11 @@ evalS ex = case ex of
         let val = asum ([M.lookup ("_." <> s) (mps^.varmap), M.lookup s (mps^.varmap)] :: [Maybe (Complex Rational)])
         maybe (throwError (ErrMsg $ "No such variable: " <> s)) return val
   ChairLit -> return $ 0 :+ 0
-  ChairSit a x -> do
+  ChairSit a xs -> do
     val <- gets (^. maps . chairmap . at a)
     case val of
       Nothing -> throwError . ErrMsg $ "No such chair!"
-      Just ch -> case M.lookup x ch of
+      Just ch -> case extractChair xs ch of
         Nothing -> throwError . ErrMsg $ "No such key!"
         Just (DickVal d) -> return d
         Just (PikeVal d) -> throwError . MsgMsg $ showChair d
@@ -431,6 +451,26 @@ evalS ex = case ex of
     fromComplex = fromRational . realPart
     toComplex :: (Real a) => a -> Complex Rational
     toComplex = (:+0.0) . toRational
+    extractChair :: [Text] -> Chair -> Maybe ChairVal
+    extractChair [] _ = Nothing
+    extractChair (x:xs) ch = case M.lookup x ch of
+      Nothing -> Nothing
+      Just val@(DickVal v) -> Just val
+      Just val@(PikeVal v) -> case xs of
+        [] -> Just val
+        _ -> extractChair xs v
+    sitChair :: [Text] -> ChairVal -> Chair -> Chair
+    sitChair [] _ ch = ch
+    sitChair (x:xs) value ch = if M.member x ch
+      then case xs of
+        [] -> M.insert x value ch
+        _ -> case M.lookup x ch of
+          Nothing -> ch
+          Just (DickVal _) -> ch
+          Just (PikeVal ch1) -> M.insert x (PikeVal (sitChair xs value ch1)) ch
+      else case xs of
+        [] -> M.insert x value ch
+        _ -> M.insert x (PikeVal (sitChair xs value M.empty)) ch
 
 s1_ :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational -> (Rational, Rational, Rational)
 s1_ f a b fa fb =

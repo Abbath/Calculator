@@ -226,7 +226,7 @@ expr min_bp m = Parser $
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts
           inner_loop (Call a e) min_bp m i
         Just TLBracket -> do
-          (i, e) <- runParser (brackets identifier) ts
+          (i, e) <- runParser (brackets (sepBy identifier comma)) ts
           inner_loop (ChairSit a e) min_bp m i
         _ -> inner_loop (Id a) min_bp m ts
       TLPar -> do
