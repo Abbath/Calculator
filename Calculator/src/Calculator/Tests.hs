@@ -87,10 +87,30 @@ tests = map (Data.Bifunctor.second ((:+ 0) <$>)) [
   ,("0xff", Right 255)
   ,("0o45", Right 37)
   ,("0b1010", Right 10)
+  ,("int(f, 0, 1, 1e-9)", Right 0.5)
+  ,("(m.r > 0) & (m.r < 1)", Right 1)
+  ,("1_000_000", Right 1000000)
+  ,("x := 1 : x == 1", Right 1)
+  ,("b.false != b.true", Right 1)
+  ,("1 << 10", Right 1024)
+  ,("1024 >> 10", Right 1)
+  ,("pop(1023)", Right 10)
+  ,("fmt(\"%s %f %r\", \"test\", 2, 3)", Left . MsgMsg $ "test 2 3 / 1")
+  ,("sin `f` m.pi", Right 0)
+  ,("0 |> sin |> cos", Right 1)
+  ,("!6", Right 720)
   ]
 
 defVar :: VarMap
-defVar = [("m.pi", (:+0) $ toRational (pi :: Double)), ("m.e", (:+0) $ toRational . exp $ (1.0 :: Double)), ("_",0.0:+0.0)]
+defVar =
+  [ ("m.pi", (:+ 0) $ toRational (pi :: Double)),
+    ("m.e", (:+ 0) $ toRational . exp $ (1.0 :: Double)),
+    ("_", 0.0 :+ 0.0),
+    ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double) :+ 0),
+    ("m.r", 0.0 :+ 0),
+    ("b.true", 1.0 :+ 0),
+    ("b.false", 0.0 :+ 0)
+  ]
 
 testLoop :: IO ()
 testLoop = do
