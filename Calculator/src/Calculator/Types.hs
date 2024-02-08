@@ -86,7 +86,7 @@ data Token = TNumber Rational Rational
 data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
 
 data Expr = Number Rational Rational
-          | ChairLit
+          | ChairLit [(Text, Expr)]
           | ChairSit Text [Text]
           | Imprt Text
           | Asgn Text Expr
@@ -232,7 +232,7 @@ exprToString ex = case ex of
   Seq es -> T.intercalate "\n" (map exprToString es)
   Imprt t -> "import " <> t
   Label l -> l <> ":"
-  ChairLit -> "{}"
+  ChairLit _ -> "{}"
   ChairSit a x -> a <> "[" <> T.intercalate "," x <> "]"
 
 opSymbols :: String

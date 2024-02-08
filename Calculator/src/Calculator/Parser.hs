@@ -208,6 +208,16 @@ imprtStmt = do
   (n1, n2) <- number
   return $ Imprt . either id id . numToText $ (n1:+n2)
 
+keyValuePair :: Maps -> Parser (Text, Expr)
+keyValuePair m = do
+  i <- identifier
+  void $ parseIf "=>" (==TOp "=>")
+  e <- expr 0.0 m
+  return (i, e)
+
+keyValuePairs :: Maps -> Parser [(Text, Expr)]
+keyValuePairs m = sepBy (keyValuePair m) comma
+
 expr :: Double -> Maps -> Parser Expr
 expr min_bp m = Parser $
   \case
@@ -234,9 +244,11 @@ expr min_bp m = Parser $
         case i of
           (inputUncons -> Just (TRPar, i1)) -> inner_loop (Par e) min_bp m i1
           _ -> Left "No closing parenthesis"
-      TLBrace -> case inputPeek ts of
-        Just TRBrace -> inner_loop ChairLit min_bp m ts
-        _ -> Left "No closing brace"
+      TLBrace -> do
+        (i, e) <- runParser (keyValuePairs m) ts
+        case i of
+          (inputUncons -> Just (TRBrace, i1)) -> inner_loop (ChairLit e) min_bp m i1
+          _ -> Left "No closing brace"
       TRBrace -> Left "No opening brace"
       TRBracket -> Left "No opening bracket"
       TRPar -> Left "No opening parenthesis"
@@ -247,7 +259,7 @@ expr min_bp m = Parser $
     inner_loop lhs bp om ts = case ts of
       (inputUncons -> Just (t, ts1)) -> case t of
         TRPar -> Right (ts, lhs)
-        TRBrace -> Right (ts1, lhs)
+        TRBrace -> Right (ts, lhs)
         TRBracket -> Right (ts1, lhs)
         TComma -> Right (ts, lhs)
         TOp op -> case infix_binding_power op om of

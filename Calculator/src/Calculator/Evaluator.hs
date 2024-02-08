@@ -147,7 +147,7 @@ throwMsg = throwError . MsgMsg
 
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
-  Asgn s ChairLit -> do
+  Asgn s (ChairLit _) -> do
     modify (maps . chairmap %~ M.insert s M.empty)
     throwMsg "New chair"
   Asgn s _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
@@ -195,9 +195,11 @@ evalS ex = case ex of
           Left err -> err
           Right txt -> txt
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generate $ e
+  Call "id" [x] -> evm x
   Call "df" [a,x] -> do
       let e = derivative a x
       either throwErr (throwMsg . exprToString . preprocess) e
+  Call "int" [Id fun, a, b] -> evm $ Call "int" [Id fun, a, b, Number 1e-10 0]
   Call "int" [Id fun, a, b, eps] -> do
       mps <- get
       a1 <- evm a
@@ -290,7 +292,7 @@ evalS ex = case ex of
           throwMsg "Sitting chair"
   Call ":=" [ChairSit a xs, y] -> do
     val <- case y of
-      ChairLit -> return $ PikeVal M.empty
+      ChairLit _ -> return $ PikeVal M.empty
       ChairSit b ys -> do
         chair <- gets (^. maps . chairmap . at b)
         case chair of
@@ -395,7 +397,7 @@ evalS ex = case ex of
       else do
         let val = asum ([M.lookup ("_." <> s) (mps^.varmap), M.lookup s (mps^.varmap)] :: [Maybe (Complex Rational)])
         maybe (throwError (ErrMsg $ "No such variable: " <> s)) return val
-  ChairLit -> return $ 0 :+ 0
+  ChairLit _ -> return $ 0 :+ 0
   ChairSit a xs -> do
     val <- gets (^. maps . chairmap . at a)
     case val of

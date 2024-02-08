@@ -62,6 +62,7 @@ functions =
        (("str", 1), Fun { params = [], fexec = NFn }),
        (("fmt", 1), Fun { params = [], fexec = NFn }),
        (("quit", 0), Fun { params = [], fexec = NFn }),
+       (("id", 1), Fun { params = [], fexec = NFn }),
        (("if", 3), Fun { params = [], fexec = NFn }),
        (("loop", 2), Fun { params = [], fexec = NFn }),
        (("df", 2), Fun { params = [], fexec = NFn }),

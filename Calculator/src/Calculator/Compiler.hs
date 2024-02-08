@@ -550,7 +550,7 @@ compile' m = go
   where
     go ex = case ex of
       Imprt filename -> return ()
-      ChairLit -> return ()
+      ChairLit _ -> return ()
       ChairSit _ _ -> return ()
       Asgn name expr -> go expr >> setVar (StrVal name)
       UDF name args (Call "df" [body, var]) -> case derivative body var of
