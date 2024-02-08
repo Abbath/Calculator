@@ -65,7 +65,7 @@ import Numeric (showBin, showHex, showInt, showOct)
 import System.Random (Random (randomR))
 import Control.Applicative (asum)
 import Data.Complex ( conjugate, imagPart, realPart, Complex(..) )
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 
 -- import Debug.Trace
 
@@ -139,59 +139,65 @@ data MessageType = ErrMsg Text | MsgMsg Text deriving (Show, Eq)
 
 type Result = ExceptT MessageType (State EvalState)
 
+throwErr :: MonadError MessageType m => Text -> m a
+throwErr = throwError . ErrMsg
+
+throwMsg :: MonadError MessageType m => Text -> m a
+throwMsg = throwError . MsgMsg
+
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
   Asgn s ChairLit -> do
     modify (maps . chairmap %~ M.insert s M.empty)
-    throwError . MsgMsg $ "New chair"
-  Asgn s _ | M.member s defVar -> throwError . ErrMsg $ "Cannot change a constant value: " <> s
+    throwMsg "New chair"
+  Asgn s _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
   Asgn s e -> do
     r <- evm e
     modify (maps . varmap %~ M.insert s r)
-    throwError . MsgMsg $ ((if "c." `T.isPrefixOf` s then "Constant " else "Variable ") <> s <> "=" <> showComplex r)
+    throwMsg ((if "c." `T.isPrefixOf` s then "Constant " else "Variable ") <> s <> "=" <> showComplex r)
   UDF n [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
-    either (throwError . ErrMsg) (evm . UDF n [s]) de
+    either throwErr (evm . UDF n [s]) de
   UDF n s e -> do
     mps <- gets (^. maps)
     let newe = localize s e >>= catchVar (mps^.varmap, mps ^.funmap)
-    either (throwError . ErrMsg)  (\r -> do
+    either throwErr (\r -> do
       let newmap = M.insert (n, length s) (Fun (map (T.cons '@') s) (ExFn r)) $ mps^.funmap
       modify (maps . funmap .~ newmap)
-      throwError . MsgMsg $ ("Function " <> n <> "/" <> showT (length s))) newe
+      throwMsg ("Function " <> n <> "/" <> showT (length s))) newe
   UDO n (-1) _ e@(Call op _) -> do
     mps <- gets (^. maps)
     case M.lookup op (mps^.opmap) of
       Just o@Op{} -> do
         let newmap = M.insert n (o { oexec = AOp op }) (mps^.opmap)
         modify (maps . opmap .~ newmap)
-        throwError . MsgMsg $ "Operator alias " <> n <> " = " <> op
-      Nothing -> throwError . ErrMsg $ "No such operator: " <> op
+        throwMsg $ "Operator alias " <> n <> " = " <> op
+      Nothing -> throwErr $ "No such operator: " <> op
   UDO n p a e
-    | M.member n operators -> throwError . ErrMsg $ "Can not redefine the built-in operator: " <> n
-    | p < 1 || p > 14 ->  throwError . ErrMsg $ "Bad precedence: " <> showT p
+    | M.member n operators -> throwErr $ "Can not redefine the built-in operator: " <> n
+    | p < 1 || p > 14 ->  throwErr $ "Bad precedence: " <> showT p
     | otherwise -> do
         mps <- gets (^. maps)
         let t = localize ["x","y"] e >>= catchVar (mps^.varmap, mps^.funmap)
-        either (throwError . ErrMsg) (\r -> do
+        either throwErr (\r -> do
           let newmap = M.insert n Op {precedence = p, associativity = a, oexec = ExOp r} (mps^.opmap)
           modify (maps . opmap .~ newmap)
-          throwError . MsgMsg $ ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
-  Call "debug" [e] -> throwError . MsgMsg . showT . preprocess $ e
-  Call "str" [e] -> evm e >>= (either (throwError . ErrMsg) (throwError . MsgMsg . (\s -> "\"" <> s <> "\"")) . numToText)
+          throwMsg $ ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
+  Call "debug" [e] -> throwMsg . showT . preprocess $ e
+  Call "str" [e] -> evm e >>= (either throwErr (throwMsg . (\s -> "\"" <> s <> "\"")) . numToText)
   Call "fmt" (Number n ni:es) -> do
     let format = numToText (n:+ni) >>= extractFormat
     case format of
       Left err -> throwError (ErrMsg err)
       Right fs -> do
         rs <- traverse evm es
-        throwError . MsgMsg $ case zipFormat fs rs of
+        throwMsg $ case zipFormat fs rs of
           Left err -> err
           Right txt -> txt
-  Call "generate" [e] -> throwError . MsgMsg . T.init . T.concat . map ((<> "\n") . showT) . generate $ e
+  Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generate $ e
   Call "df" [a,x] -> do
       let e = derivative a x
-      either (throwError . ErrMsg) (throwError . MsgMsg . exprToString . preprocess) e
+      either throwErr (throwMsg . exprToString . preprocess) e
   Call "int" [Id fun, a, b, eps] -> do
       mps <- get
       a1 <- evm a
@@ -208,14 +214,14 @@ evalS ex = case ex of
     return $ toRational <$> logBase (fromRational <$> t1 :: Complex Double) (fromRational <$> t2 :: Complex Double)
   Call "prat" [e] -> do
     t1 <- evm e
-    throwError . MsgMsg $ showFraction (realPart t1)
+    throwMsg $ showFraction (realPart t1)
   Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text])-> do
     t1 <- evm e
     case f of
       "real" -> return $ realPart t1 :+ 0
       "imag" -> return $ imagPart t1 :+ 0
       "conj" -> return $ conjugate t1
-      _ -> throwError . ErrMsg $ "No such complex function: " <> f
+      _ -> throwErr $ "No such complex function: " <> f
   Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
     t1 <- evm e
     if denominator (realPart t1) == 1
@@ -225,7 +231,7 @@ evalS ex = case ex of
                  "bin" -> (showBin, 'b')
                  _ -> (showInt, ' ')
                sign = signum . numerator . realPart $ t1
-           in throwError . MsgMsg
+           in throwMsg
                          . T.pack
                          . ((if sign == 1 then "" else "-") <>)
                          . (['0', p] <>)
@@ -240,54 +246,64 @@ evalS ex = case ex of
     let b = M.lookup op2 pr
     if a == b
       then case a of
-        Nothing -> throwError . ErrMsg $ "No such operators: " <> op1 <> " " <> op2
+        Nothing -> throwErr $ "No such operators: " <> op1 <> " " <> op2
         Just _ -> do
           let Op {associativity = asc1 } = (mps^.opmap) M.! op1
           let Op {associativity = asc2 } = (mps^.opmap) M.! op2
           case (asc1, asc2) of
             (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
             (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
-            _ -> throwError . ErrMsg $ "Operators with a different associativity: " <> op1 <> " and " <> op2
+            _ -> throwErr $ "Operators with a different associativity: " <> op1 <> " and " <> op2
       else evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
   oc@(Call "/" [x, y]) -> do
     n <- evm y
     n1 <- evm x
     if n == 0:+0
-      then throwError . ErrMsg $ "Division by zero: " <> exprToString oc
+      then throwErr $ "Division by zero: " <> exprToString oc
       else return . toComplex $ (realPart n1 / realPart n)
   oc@(Call "%" [x, y]) -> do
     n <- evm y
     n1 <- evm x
     if n == 0:+0
-      then throwError . ErrMsg $ "Division by zero: " <> exprToString oc
+      then throwErr $ "Division by zero: " <> exprToString oc
       else return ((:+0) . toRational $ mod (floor . realPart $ n1 :: Integer) (floor . realPart $ n :: Integer))
   Call "|>" [x, Id y] -> evm $ Call y [x]
+  Call ":=" [ChairSit a xs, ChairSit b ys] -> do
+    chair1 <- gets (^. maps . chairmap . at a)
+    chair2 <- gets (^. maps . chairmap . at b)
+    if isNothing chair1 || isNothing chair2
+      then throwErr "No such chair"
+      else case extractChair ys (fromMaybe M.empty chair2) of
+        Nothing -> throwErr "No such key"
+        Just v -> do
+          modify (maps . chairmap %~ M.insert a (sitChair xs v (fromMaybe M.empty chair1)))
+          throwMsg "Sitting chair"
   Call ":=" [Id x, ChairSit a xs] -> do
     chair <- gets (^. maps . chairmap . at a)
     case chair of
-      Nothing -> throwError . MsgMsg $ "No such chair"
+      Nothing -> throwErr "No such chair"
       Just ch -> case extractChair xs ch of
-        Nothing -> throwError . MsgMsg $ "No such key"
+        Nothing -> throwErr "No such key"
         Just (DickVal v) -> evm $ Call ":=" [Id x, Number (realPart v) (imagPart v)]
         Just (PikeVal v) -> do
           modify (maps . chairmap %~ M.insert x v)
-          throwError . MsgMsg $ "Sitting chair"
+          throwMsg "Sitting chair"
   Call ":=" [ChairSit a xs, y] -> do
     val <- case y of
       ChairLit -> return $ PikeVal M.empty
       ChairSit b ys -> do
         chair <- gets (^. maps . chairmap . at b)
         case chair of
-          Nothing -> throwError . MsgMsg $ "No such chair"
+          Nothing -> throwMsg "No such chair"
           Just ch -> do
             return $ fromMaybe (PikeVal M.empty) (extractChair ys ch)
       _ -> DickVal <$> evm y
     chair <- gets (^. maps . chairmap . at a)
     case chair of
-      Nothing -> throwError . MsgMsg $ "No such chair"
+      Nothing -> throwMsg "No such chair"
       Just ch -> do
         modify (maps . chairmap %~ M.insert a (sitChair xs val ch))
-        throwError . MsgMsg $ "Sitting chair"
+        throwMsg "Sitting chair"
   Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
       then throwError (ErrMsg "I'm afraid you can't do that.")
@@ -299,19 +315,19 @@ evalS ex = case ex of
           else modify (maps . varmap %~ M.insert ("_." <> x) n)
         return n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
-  Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwError . ErrMsg $ "Cannot assign to an expression with: " <> op
+  Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwErr $ "Cannot assign to an expression with: " <> op
   Call op [x, y] | M.member op operators -> evalBuiltinOp op x y
   Call op [x, y] | isOp op -> do
     mps <- gets (^. maps)
     case (M.lookup op (mps^.opmap) :: Maybe Op) of
       Just Op{ oexec = ExOp expr } -> do
         let expr1 = substitute (["@x", "@y"], [x,y]) expr
-        either (throwError . ErrMsg) evm expr1
+        either throwErr evm expr1
       Just Op {oexec = AOp aop } -> evm (Call aop [x, y])
       Nothing -> case op of
-        opn | T.head opn == '@' -> throwError . ErrMsg $ "Expression instead of a function name: " <> T.tail opn <> "/2"
-        _ -> throwError . ErrMsg $ "No such operator: " <> op <> "/2"
-      _ -> throwError . ErrMsg $ "Suspicious operator: " <> op
+        opn | T.head opn == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail opn <> "/2"
+        _ -> throwErr $ "No such operator: " <> op <> "/2"
+      _ -> throwErr $ "Suspicious operator: " <> op
   Call "if" [a, b, c] -> do
     cond <- evm a
     if cond /= 0:+0
@@ -346,16 +362,16 @@ evalS ex = case ex of
         return . fun n $ m
       ExFn expr -> do
         let expr1 = substitute (params builtin_fun, ps) expr
-        either (throwError . ErrMsg) evm expr1
+        either throwErr evm expr1
       _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do
     mps <- gets (^. maps)
     case (M.lookup (name, length e) (mps^.funmap) :: Maybe Fun) of
       Just (Fun al (ExFn expr)) -> do
         let expr1 = substitute (al, e) expr
-        either (throwError . ErrMsg) evm expr1
+        either throwErr evm expr1
       Nothing -> case name of
-        x | T.head x == '@' -> throwError . ErrMsg $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
+        x | T.head x == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ -> let
                (wa, wn) = findSimilar (name, length e) (M.keys (mps^.funmap))
                cvt_nls txt nls = if not (null nls)
@@ -363,8 +379,8 @@ evalS ex = case ex of
                   else ""
                wat = cvt_nls "\nFunctions with the same name:\n" wa
                wnt = cvt_nls "\nFunctions with similar names:\n" wn
-             in throwError . ErrMsg $ "No such function: " <> name <> "/" <> showT (length e) <> wat <> wnt
-      _ -> throwError . ErrMsg $ "Suspicious function: " <> name
+             in throwErr $ "No such function: " <> name <> "/" <> showT (length e) <> wat <> wnt
+      _ -> throwErr $ "Suspicious function: " <> name
   Id "m.r" -> do
     rgen <- gets (^. gen)
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
@@ -375,7 +391,7 @@ evalS ex = case ex of
     chairs <- gets (^. maps . chairmap)
     if M.member s chairs
       then
-        throwError . MsgMsg $ showChair (chairs M.! s)
+        throwMsg $ showChair (chairs M.! s)
       else do
         let val = asum ([M.lookup ("_." <> s) (mps^.varmap), M.lookup s (mps^.varmap)] :: [Maybe (Complex Rational)])
         maybe (throwError (ErrMsg $ "No such variable: " <> s)) return val
@@ -383,16 +399,16 @@ evalS ex = case ex of
   ChairSit a xs -> do
     val <- gets (^. maps . chairmap . at a)
     case val of
-      Nothing -> throwError . ErrMsg $ "No such chair!"
+      Nothing -> throwErr "No such chair!"
       Just ch -> case extractChair xs ch of
-        Nothing -> throwError . ErrMsg $ "No such key!"
+        Nothing -> throwErr "No such key!"
         Just (DickVal d) -> return d
-        Just (PikeVal d) -> throwError . MsgMsg $ showChair d
+        Just (PikeVal d) -> throwMsg $ showChair d
   Number x xi -> return $ x :+ xi
   Par e            -> evm e
-  Seq _ -> throwError . ErrMsg $ "Sequences are not supported in this mode!"
-  Imprt _ -> throwError . ErrMsg $ "Imports are not supported in this mode!"
-  Label _ -> throwError . ErrMsg $ "Label are not supported in this mode!"
+  Seq _ -> throwErr "Sequences are not supported in this mode!"
+  Imprt _ -> throwErr "Imports are not supported in this mode!"
+  Label _ -> throwErr "Label are not supported in this mode!"
   where
     evalBuiltinOp bop x y = do
       let builtin_op = operators M.! bop
