@@ -194,7 +194,7 @@ evalS ex = case ex of
         throwMsg $ case zipFormat fs rs of
           Left err -> err
           Right txt -> txt
-  Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generate $ e
+  Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
   Call "df" [a,x] -> do
       let e = derivative a x

@@ -3,7 +3,7 @@
 module Calculator.Generator where
 
 import Calculator.Types
-    ( Expr(Par, Number, Id, Asgn, Call), showT )
+    ( Expr(Par, Number, Id, Asgn, Call), showT, showComplex )
 import Data.Text (Text)
 import qualified Data.Text as T
 import Control.Monad.State
@@ -11,6 +11,7 @@ import Control.Monad.State
 import Control.Monad.Except
     ( ExceptT, MonadError(throwError), runExceptT )
 import Control.Lens ((^.), (%~), _3, _1, _2)
+import Data.Complex
 
 data Tac = TacOp Text Text Text Text
          | TacFun Text Text Text
@@ -94,5 +95,16 @@ generate' expr = do
           modify (_1 %~ (+ 1))
           modify (_2 %~ const n)
 
-generate :: Expr -> [Tac]
-generate e = let a = runExceptT (generate' e) in reverse $ execState a (0, 0, []) ^. _3
+generateTac :: Expr -> [Tac]
+generateTac e = let a = runExceptT (generate' e) in reverse $ execState a (0, 0, []) ^. _3
+
+type QbeState = ExceptT Text (State Text)
+
+generateQbe :: Expr -> QbeState ()
+generateQbe expr = case expr of
+  (Number a b) -> modify (<> ("d_" <> showComplex (a :+ b)))
+  (Call "+" [a, b]) -> do
+    modify (<> "add ")
+    generateQbe a
+    generateQbe b
+  _ -> throwError "Not supported"
