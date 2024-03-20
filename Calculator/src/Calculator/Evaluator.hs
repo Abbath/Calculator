@@ -42,7 +42,7 @@ import Calculator.Types
     Chair,
     showChair
   )
-import Control.Lens ((^.), at, use, (%=), (.=))
+import Control.Lens ((^.), at, use, (.=), (?=))
 import Control.Monad.Except
   ( ExceptT,
     MonadError (throwError),
@@ -52,7 +52,6 @@ import Control.Monad.State
   ( MonadState (get),
     State,
     evalState,
-    modify,
   )
 import Data.Either (fromRight)
 import qualified Data.Map.Strict as M
@@ -147,12 +146,12 @@ throwMsg = throwError . MsgMsg
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
   Asgn s (ChairLit _) -> do
-    maps . chairmap %= M.insert s M.empty
+    maps . chairmap . at s ?= M.empty
     throwMsg "New chair"
   Asgn s _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
   Asgn s e -> do
     r <- evm e
-    maps . varmap %= M.insert s r
+    maps . varmap . at s ?= r
     throwMsg ((if "c." `T.isPrefixOf` s then "Constant " else "Variable ") <> s <> "=" <> showComplex r)
   UDF n [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
@@ -161,15 +160,13 @@ evalS ex = case ex of
     mps <- use maps
     let newe = localize s e >>= catchVar (mps ^. varmap, mps ^.funmap)
     either throwErr (\r -> do
-      let newmap = M.insert (n, length s) (Fun (map (T.cons '@') s) (ExFn r)) $ mps ^. funmap
-      maps . funmap .= newmap
+      maps . funmap . at (n, length s) ?= Fun (map (T.cons '@') s) (ExFn r)
       throwMsg ("Function " <> n <> "/" <> showT (length s))) newe
   UDO n (-1) _ e@(Call op _) -> do
     mps <- use maps
     case M.lookup op (mps ^. opmap) of
       Just o@Op{} -> do
-        let newmap = M.insert n (o { oexec = AOp op }) (mps ^. opmap)
-        maps . opmap .= newmap
+        maps . opmap . at n ?= o { oexec = AOp op }
         throwMsg $ "Operator alias " <> n <> " = " <> op
       Nothing -> throwErr $ "No such operator: " <> op
   UDO n p a e
@@ -179,9 +176,8 @@ evalS ex = case ex of
         mps <-  use maps
         let t = localize ["x","y"] e >>= catchVar (mps ^. varmap, mps ^. funmap)
         either throwErr (\r -> do
-          let newmap = M.insert n Op {precedence = p, associativity = a, oexec = ExOp r} (mps ^. opmap)
-          maps . opmap .= newmap
-          throwMsg $ ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
+          maps . opmap . at n ?= Op {precedence = p, associativity = a, oexec = ExOp r}
+          throwMsg ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))) t
   Call "debug" [e] -> throwMsg . showT . preprocess $ e
   Call "str" [e] -> evm e >>= (either throwErr (throwMsg . (\s -> "\"" <> s <> "\"")) . numToText)
   Call "fmt" (Number n ni:es) -> do
@@ -277,7 +273,7 @@ evalS ex = case ex of
       else case extractChair ys (fromMaybe M.empty chair2) of
         Nothing -> throwErr "No such key"
         Just v -> do
-          maps . chairmap %= M.insert a (sitChair xs v (fromMaybe M.empty chair1))
+          maps . chairmap . at a ?= sitChair xs v (fromMaybe M.empty chair1)
           throwMsg "Sitting chair"
   Call ":=" [Id x, ChairSit a xs] -> do
     chair <- use $ maps . chairmap . at a
@@ -287,7 +283,7 @@ evalS ex = case ex of
         Nothing -> throwErr "No such key"
         Just (DickVal v) -> evm $ Call ":=" [Id x, Number (realPart v) (imagPart v)]
         Just (PikeVal v) -> do
-          maps . chairmap %= M.insert x v
+          maps . chairmap . at x ?= v
           throwMsg "Sitting chair"
   Call ":=" [ChairSit a xs, y] -> do
     val <- case y of
@@ -303,7 +299,7 @@ evalS ex = case ex of
     case chair of
       Nothing -> throwMsg "No such chair"
       Just ch -> do
-        maps . chairmap %= M.insert a (sitChair xs val ch)
+        maps . chairmap . at a ?= sitChair xs val ch
         throwMsg "Sitting chair"
   Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
@@ -311,9 +307,9 @@ evalS ex = case ex of
       else do
         n <- evm y
         mps <- use maps
-        if x `M.member` (mps ^. varmap)
-          then maps . varmap %= M.insert x n
-          else maps . varmap %= M.insert ("_." <> x) n
+        maps . varmap . at (if x `M.member` (mps ^. varmap)
+          then x
+          else "_." <> x) ?= n
         return n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwErr $ "Cannot assign to an expression with: " <> op
