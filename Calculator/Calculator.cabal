@@ -18,6 +18,11 @@ flag telegram
   default: False
   manual: True
 
+flag raylib
+  description: Enable raylib support
+  default: False
+  manual: True
+
 library
   exposed-modules:    Calculator
                     , Calculator.Tests
@@ -65,6 +70,9 @@ library
     build-depends:    telegram-bot-simple
                     , telegram-bot-api
     cpp-options:     -DTELEGRAM
+  if flag(raylib)
+    build-depends:    h-raylib
+    cpp-options:     -DRAYLIB
 
 executable Calculator
   main-is:              Main.hs
@@ -76,7 +84,9 @@ executable Calculator
                        -fwrite-ide-info -hiedir=.hie
   default-language:     GHC2021
   if flag(telegram)
-    cpp-options:  -DTELEGRAM
+    cpp-options:       -DTELEGRAM
+  if flag(raylib)
+    cpp-options:       -DRAYLIB
 
 test-suite Test
   type:                 exitcode-stdio-1.0

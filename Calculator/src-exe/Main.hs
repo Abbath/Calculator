@@ -4,7 +4,7 @@ module Main where
 import Calculator
 import Calculator.Tests ( testLoop )
 import Options.Applicative
-import Control.Monad ( when )
+import Control.Monad ( when, void )
 import Data.Char ( toLower )
 
 data Options = Options {
@@ -14,6 +14,7 @@ data Options = Options {
       frontend    :: !String,
       backend     :: !String,
       test        :: !Bool,
+      raylib      :: !Bool,
       port        :: !Int
     }
 
@@ -25,6 +26,7 @@ options = Options
           <*> strOption (long "frontend" <> short 'f' <> help "Frontend (C, W, T)" <> metavar "FRONTEND" <> value "C")
           <*> strOption (long "backend" <> short 'b' <> help "Backend (I)" <> metavar "BACKEND" <> value "I")
           <*> switch (long "test" <> short 't' <> help "Run tests")
+          <*> switch (long "raylib" <> short 'r' <> help "Raylib GUI")
           <*> option auto (long "port" <> short 'p' <> help "Port" <> metavar "PORT" <> value 3000)
 
 main :: IO ()
@@ -33,6 +35,9 @@ main = do
   opts2 <- execParser opts
   when (test opts2) testLoop
   if
+#ifdef RAYLIB
+    | raylib opts2 -> void raylibLoop
+#endif
     | (not . null . input $ opts2) -> evalFile (input opts2)
     | (not . null . source $ opts2) -> compileAndRunFile (source opts2) $ case compileMode opts2 of
         "L" -> CompLoad

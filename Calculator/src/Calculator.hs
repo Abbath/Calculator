@@ -7,6 +7,9 @@ module Calculator (
 #ifdef TELEGRAM
   telegramSimple,
 #endif
+#ifdef RAYLIB
+  raylibLoop,
+#endif
   evalFile,
   compileAndRunFile) where
 
@@ -92,14 +95,53 @@ import System.Console.Haskeline
       handleInterrupt, outputStrLn)
 import System.Directory ( findFile, getHomeDirectory, removeFile )
 import System.FilePath (replaceExtension)
-import System.Random ( randomIO, initStdGen, StdGen )
+import System.Random ( randomIO, initStdGen, StdGen, getStdGen )
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import qualified Control.Exception as CE
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Complex ( imagPart, realPart, Complex(..) )
 import Text.Read ( readMaybe )
 
+#ifdef RAYLIB
+import qualified Raylib.Core as RL
+import qualified Raylib.Util as RL
+import qualified Raylib.Util.Colors as RL
+import qualified Raylib.Core.Shapes as RL
+import qualified Raylib.Types as RL
+import qualified Raylib.Core.Text as RL
+import Data.Char (chr)
 -- import Debug.Trace
+
+data AppState = AS TS.Text TS.Text
+
+raylibLoop :: IO AppState
+raylibLoop = do
+  let width = 800
+  let height = 600
+  let fps = 60
+  RL.withWindow width height "Calculator" fps (\wr -> do
+    RL.whileWindowOpen (\(AS t rt) -> RL.drawing $ do
+      RL.clearBackground RL.darkGray
+      RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral width - 20) 20) 0.5 10 RL.gray
+      c <- RL.getCharPressed
+      let t0 = if c /= 0 then TS.snoc t (chr c) else t
+      bp <- RL.isKeyPressed RL.KeyBackspace
+      let t1 = if bp && not (TS.null t0) then TS.init t0 else t0
+      RL.drawText (TS.unpack t1) 10 10 20 RL.lightGray
+      RL.drawText (TS.unpack rt) 10 32 20 RL.lightGray
+      ep <- RL.isKeyPressed RL.KeyEnter
+      if ep
+        then do
+          g <- getStdGen
+          let y = parseEval Internal defaultMaps g t1
+          case y of
+            Right (r, _) -> do
+              let rt1 = showComplex $ r
+              return $ AS t1 rt1
+            _ -> return $ AS t1 rt
+        else return $ AS t1 rt) (AS "" ""))
+#endif
+
 
 #ifdef TELEGRAM
 import Control.Arrow (first, second)
