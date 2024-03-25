@@ -36,7 +36,7 @@ main = do
   when (test opts2) testLoop
   if
 #ifdef RAYLIB
-    | raylib opts2 -> void raylibLoop
+    | raylib opts2 -> raylibLoop
 #endif
     | (not . null . input $ opts2) -> evalFile (input opts2)
     | (not . null . source $ opts2) -> compileAndRunFile (source opts2) $ case compileMode opts2 of

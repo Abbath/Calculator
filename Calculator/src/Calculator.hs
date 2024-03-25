@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, OverloadedLists, CPP #-}
+{-# LANGUAGE OverloadedStrings, OverloadedLists, CPP, TemplateHaskell #-}
 module Calculator (
   Mode(..),
   CompileMode(..),
@@ -34,7 +34,7 @@ import Calculator.Types
       zipFormat,
       isFormat, varmap, opmap, funmap)
 import Clay (render)
-import Control.Lens ((%~), (&), (^.))
+import Control.Lens ((%~), (&), (^.), makeLenses)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
   ( MonadIO (liftIO),
@@ -112,6 +112,8 @@ import qualified Raylib.Core.Text as RL
 import Data.Char (chr)
 import Control.Monad (forM_)
 import Calculator.Types (gen)
+import Control.Monad.State (evalStateT)
+import Control.Lens ((%=), (.=), use)
 import Debug.Trace
 
 data Zipper a = Zip [a] [a] deriving Show
@@ -140,50 +142,76 @@ zipLeftEmpty :: Zipper a -> Bool
 zipLeftEmpty (Zip [] _) = True
 zipLeftEmpty (Zip _ _) = False
 
-data AppState = AS TS.Text [TS.Text] EvalState Integer (Zipper TS.Text)
+zipRightEmpty :: Zipper a -> Bool
+zipRightEmpty (Zip _ []) = True
+zipRightEmpty (Zip _ _) = False
 
-raylibLoop :: IO AppState
+data AppState = AS {
+  _prompt :: TS.Text,
+  _results :: [TS.Text],
+  _estate :: EvalState,
+  _fc :: Integer,
+  _phist :: Zipper TS.Text
+  } deriving Show
+
+makeLenses ''AppState
+
+raylibLoop :: IO ()
 raylibLoop = do
+  g <- getStdGen
+  let des = EvalState defaultMaps g
+  evalStateT raylibLoop' (AS "" [] des 0 (Zip [] []))
+
+raylibLoop' :: StateT AppState IO ()
+raylibLoop' = do
   let width = 800
   let height = 600
   let fps = 60
-  g <- getStdGen
-  let des = EvalState defaultMaps g
   RL.withWindow width height "Calculator" fps (\wr -> do
-    RL.whileWindowOpen (\(AS t rt es fc zt) -> do
-      w <- RL.getRenderWidth
-      h <- RL.getRenderHeight
-      c <- RL.getCharPressed
-      let t0 = if c /= 0 then TS.snoc t (chr c) else t
-      bp <- RL.isKeyPressed RL.KeyBackspace
-      let t1 = if bp && not (TS.null t0) then TS.init t0 else t0
-      tw <- RL.measureText (TS.unpack t1) 20
-      up <- RL.isKeyPressed RL.KeyUp
-      down <- RL.isKeyPressed RL.KeyDown
+    RL.whileWindowOpen0 (do
+      w <- liftIO RL.getRenderWidth
+      h <- liftIO RL.getRenderHeight
+      c <- liftIO RL.getCharPressed
+      prompt %= if c /= 0 then flip TS.snoc (chr c) else id
+      bp <- liftIO $ RL.isKeyPressed RL.KeyBackspace
+      prompt %= \pr -> if bp && not (TS.null pr) then TS.init pr else pr
+      pr <- use prompt
+      tw <- liftIO $ RL.measureText (TS.unpack pr) 20
+      up <- liftIO $ RL.isKeyPressed RL.KeyUp
+      down <- liftIO $ RL.isKeyPressed RL.KeyDown
+      zt <- use phist
       let (t2, zt1) = if down && not (zipEmpty zt)
-          then (zipTop zt, zipLeft zt)
+          then let ztl = zipLeft zt in (zipTop zt, if not $ zipRightEmpty ztl then ztl else zt)
           else if up && not (zipEmpty zt)
             then if not $ zipLeftEmpty zt
               then let ztr = zipRight zt in (zipTop ztr, ztr)
               else ("", zt)
-            else (t1, zt)
-      trace (show zt1) return ()
-      RL.drawing $ do
+            else (pr, zt)
+      rt <- use results
+      frame_counter <- use fc
+      liftIO $ RL.drawing $ do
         RL.clearBackground RL.darkGray
         RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral w - 20) 20) 0.5 10 RL.gray
         RL.drawText (TS.unpack t2) 10 10 20 RL.lightGray
-        when (fc `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (12 + tw) 10 2 20 RL.lightGray
+        when (frame_counter `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (12 + tw) 10 2 20 RL.lightGray
         forM_ (zip rt [0..]) (\(r, i) -> RL.drawText (TS.unpack r) 10 (32 + i * 22) 20 RL.lightGray)
-      ep <- RL.isKeyPressed RL.KeyEnter
+      ep <- liftIO $ RL.isKeyPressed RL.KeyEnter
       if ep
         then do
+          es <- use estate
           let y = parseEval Internal (es ^. maps) (es ^. gen) t2
           let (rt1, es1) = case y of
                       Right (r, es0) -> (showComplex r : rt, es0)
                       Left (ErrMsg m, _) -> (m : rt, es)
                       Left (MsgMsg m, es0) -> (m : rt, es0)
-          return $ AS "" (take ((h - 32) `div` 22) rt1) es1 (fc + 1) (zipPut t2 zt1)
-        else return $ AS t2 rt es (fc + 1) zt1) (AS "" [] des 0 (Zip [] [])))
+          prompt .= ""
+          results .= take ((h - 32) `div` 22) rt1
+          estate .= es1
+          phist %= zipPut t2
+        else do
+          prompt .= t2
+          phist .= zt1
+      fc %= (+1)))
 #endif
 
 
