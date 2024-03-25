@@ -167,51 +167,52 @@ raylibLoop' = do
   let width = 800
   let height = 600
   let fps = 60
-  RL.withWindow width height "Calculator" fps (\wr -> do
-    RL.whileWindowOpen0 (do
+  RL.withWindow width height "Calculator" fps $ \wr -> do
+    RL.whileWindowOpen0 $ do
       w <- liftIO RL.getRenderWidth
       h <- liftIO RL.getRenderHeight
       c <- liftIO RL.getCharPressed
       prompt %= if c /= 0 then flip TS.snoc (chr c) else id
       bp <- liftIO $ RL.isKeyPressed RL.KeyBackspace
       prompt %= \pr -> if bp && not (TS.null pr) then TS.init pr else pr
-      pr <- use prompt
-      tw <- liftIO $ RL.measureText (TS.unpack pr) 20
+      tw <- use prompt >>= liftIO . flip RL.measureText 20 . TS.unpack
       up <- liftIO $ RL.isKeyPressed RL.KeyUp
       down <- liftIO $ RL.isKeyPressed RL.KeyDown
-      zt <- use phist
-      let (t2, zt1) = if down && not (zipEmpty zt)
-          then let ztl = zipLeft zt in (zipTop zt, if not $ zipRightEmpty ztl then ztl else zt)
-          else if up && not (zipEmpty zt)
-            then if not $ zipLeftEmpty zt
-              then let ztr = zipRight zt in (zipTop ztr, ztr)
-              else ("", zt)
-            else (pr, zt)
+      checkHistory up down
+      pr <- use prompt
       rt <- use results
       frame_counter <- use fc
       liftIO $ RL.drawing $ do
         RL.clearBackground RL.darkGray
         RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral w - 20) 20) 0.5 10 RL.gray
-        RL.drawText (TS.unpack t2) 10 10 20 RL.lightGray
-        when (frame_counter `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (12 + tw) 10 2 20 RL.lightGray
-        forM_ (zip rt [0..]) (\(r, i) -> RL.drawText (TS.unpack r) 10 (32 + i * 22) 20 RL.lightGray)
+        RL.drawText (TS.unpack pr) 15 10 20 RL.lightGray
+        when (frame_counter `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (17 + tw) 10 2 20 RL.lightGray
+        forM_ (zip rt [0..]) (\(r, i) -> RL.drawText (TS.unpack r) 15 (32 + i * 22) 20 RL.lightGray)
       ep <- liftIO $ RL.isKeyPressed RL.KeyEnter
-      if ep
-        then do
+      when ep $ do
           es <- use estate
-          let y = parseEval Internal (es ^. maps) (es ^. gen) t2
-          let (rt1, es1) = case y of
-                      Right (r, es0) -> (showComplex r : rt, es0)
-                      Left (ErrMsg m, _) -> (m : rt, es)
-                      Left (MsgMsg m, es0) -> (m : rt, es0)
+          let y = parseEval Internal (es ^. maps) (es ^. gen) pr
+          let (res, es1) = case y of
+                      Right (r, es0) -> (showComplex r, es0)
+                      Left (ErrMsg m, _) -> (m, es)
+                      Left (MsgMsg m, es0) -> (m, es0)
           prompt .= ""
-          results .= take ((h - 32) `div` 22) rt1
+          results .= take ((h - 32) `div` 22) (res:rt)
           estate .= es1
-          phist %= zipPut t2
-        else do
-          prompt .= t2
-          phist .= zt1
-      fc %= (+1)))
+          phist %= zipPut pr
+      fc %= (+1)
+  where
+    checkHistory up down = do
+      zt <- use phist
+      if down && not (zipEmpty zt)
+        then let ztl = zipLeft zt in do
+          prompt .= zipTop zt
+          when (not $ zipRightEmpty ztl) $ phist .= ztl
+        else when (up && not (zipEmpty zt)) $ if not $ zipLeftEmpty zt
+              then let ztr = zipRight zt in do
+                prompt .= zipTop ztr
+                phist .= ztr
+              else prompt .= ""
 #endif
 
 
