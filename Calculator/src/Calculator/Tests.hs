@@ -31,8 +31,8 @@ loop (x:xs) mps rgen bk n = do
       let e = case bk of
                 Internal -> tloop sample >>= P.parse mps
       let t = case e of
-                Left err -> (Left (ErrMsg err), EvalState mps rgen M.empty)
-                Right r  -> runState (runExceptT (evalS r)) (EvalState mps rgen M.empty)
+                Left err -> (Left (ErrMsg err), EvalState mps rgen)
+                Right r  -> runState (runExceptT (evalS r)) (EvalState mps rgen)
       let tt = fst t
       do
         new_n <- if tt == snd x
@@ -43,8 +43,8 @@ loop (x:xs) mps rgen bk n = do
             TIO.putStrLn $ "Failed: " <> sample <> " expected: " <> showT x <> " received: " <> showT t
             return 1
         let (m, g) = case t of
-                      (Right r, EvalState m_ g_ _)  -> (m_ & varmap %~ M.insert "_" r, g_)
-                      (Left _, EvalState m_ g_ _) -> (m_, g_)
+                      (Right r, EvalState m_ g_)  -> (m_ & varmap %~ M.insert "_" r, g_)
+                      (Left _, EvalState m_ g_) -> (m_, g_)
         loop xs m g bk (n + new_n)
 
     else do

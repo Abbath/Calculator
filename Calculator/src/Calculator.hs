@@ -110,36 +110,80 @@ import qualified Raylib.Core.Shapes as RL
 import qualified Raylib.Types as RL
 import qualified Raylib.Core.Text as RL
 import Data.Char (chr)
--- import Debug.Trace
+import Control.Monad (forM_)
+import Calculator.Types (gen)
+import Debug.Trace
 
-data AppState = AS TS.Text TS.Text
+data Zipper a = Zip [a] [a] deriving Show
+
+zipLeft :: Zipper a -> Zipper a
+zipLeft (Zip xs (y:ys)) = Zip (y:xs) ys
+zipLeft z@(Zip _ []) = z
+
+zipRight :: Zipper a -> Zipper a
+zipRight (Zip (x:xs) ys) = Zip xs (x:ys)
+zipRight z@(Zip [] _) = z
+
+zipPut :: Eq a => a -> Zipper a -> Zipper a
+zipPut x (Zip l r) = Zip l (x:r)
+
+zipTop :: Zipper a -> a
+zipTop (Zip l (x:xs)) = x
+zipTop (Zip (x:xs) []) = x
+zipTop (Zip [] []) = error "Empty zip"
+
+zipEmpty :: Zipper a -> Bool
+zipEmpty (Zip [] []) = True
+zipEmpty (Zip _ _) = False
+
+zipLeftEmpty :: Zipper a -> Bool
+zipLeftEmpty (Zip [] _) = True
+zipLeftEmpty (Zip _ _) = False
+
+data AppState = AS TS.Text [TS.Text] EvalState Integer (Zipper TS.Text)
 
 raylibLoop :: IO AppState
 raylibLoop = do
   let width = 800
   let height = 600
   let fps = 60
+  g <- getStdGen
+  let des = EvalState defaultMaps g
   RL.withWindow width height "Calculator" fps (\wr -> do
-    RL.whileWindowOpen (\(AS t rt) -> RL.drawing $ do
-      RL.clearBackground RL.darkGray
-      RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral width - 20) 20) 0.5 10 RL.gray
+    RL.whileWindowOpen (\(AS t rt es fc zt) -> do
+      w <- RL.getRenderWidth
+      h <- RL.getRenderHeight
       c <- RL.getCharPressed
       let t0 = if c /= 0 then TS.snoc t (chr c) else t
       bp <- RL.isKeyPressed RL.KeyBackspace
       let t1 = if bp && not (TS.null t0) then TS.init t0 else t0
-      RL.drawText (TS.unpack t1) 10 10 20 RL.lightGray
-      RL.drawText (TS.unpack rt) 10 32 20 RL.lightGray
+      tw <- RL.measureText (TS.unpack t1) 20
+      up <- RL.isKeyPressed RL.KeyUp
+      down <- RL.isKeyPressed RL.KeyDown
+      let (t2, zt1) = if down && not (zipEmpty zt)
+          then (zipTop zt, zipLeft zt)
+          else if up && not (zipEmpty zt)
+            then if not $ zipLeftEmpty zt
+              then let ztr = zipRight zt in (zipTop ztr, ztr)
+              else ("", zt)
+            else (t1, zt)
+      trace (show zt1) return ()
+      RL.drawing $ do
+        RL.clearBackground RL.darkGray
+        RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral w - 20) 20) 0.5 10 RL.gray
+        RL.drawText (TS.unpack t2) 10 10 20 RL.lightGray
+        when (fc `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (12 + tw) 10 2 20 RL.lightGray
+        forM_ (zip rt [0..]) (\(r, i) -> RL.drawText (TS.unpack r) 10 (32 + i * 22) 20 RL.lightGray)
       ep <- RL.isKeyPressed RL.KeyEnter
       if ep
         then do
-          g <- getStdGen
-          let y = parseEval Internal defaultMaps g t1
-          case y of
-            Right (r, _) -> do
-              let rt1 = showComplex $ r
-              return $ AS t1 rt1
-            _ -> return $ AS t1 rt
-        else return $ AS t1 rt) (AS "" ""))
+          let y = parseEval Internal (es ^. maps) (es ^. gen) t2
+          let (rt1, es1) = case y of
+                      Right (r, es0) -> (showComplex r : rt, es0)
+                      Left (ErrMsg m, _) -> (m : rt, es)
+                      Left (MsgMsg m, es0) -> (m : rt, es0)
+          return $ AS "" (take ((h - 32) `div` 22) rt1) es1 (fc + 1) (zipPut t2 zt1)
+        else return $ AS t2 rt es (fc + 1) zt1) (AS "" [] des 0 (Zip [] [])))
 #endif
 
 
@@ -211,8 +255,8 @@ parseString m s ms = case m of
                        Internal -> tloop s >>= P.parse ms
 
 evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (MessageType, EvalState) (Complex Rational, EvalState)
-evalExprS t mps g = either (Left . (, EvalState mps g M.empty) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
-  where getShit e = let a = runExceptT (evalS e) in S.runState a (EvalState mps g M.empty)
+evalExprS t mps g = either (Left . (, EvalState mps g) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
+  where getShit e = let a = runExceptT (evalS e) in S.runState a (EvalState mps g)
 
 type StateData = [String]
 
@@ -259,13 +303,13 @@ loop mode mps = do
       Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' md ms g) . withInterrupt $ do
           let y = parseEval md ms g (TS.pack x)
           case y of
-            Left (err, EvalState m ng _) -> do
+            Left (err, EvalState m ng) -> do
               let m' = removeLocals m
               case err of
                 MsgMsg msg -> liftIO $ TSIO.putStrLn msg
                 ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
               loop' md m' ng
-            Right (r, EvalState m ng _) -> do
+            Right (r, EvalState m ng) -> do
               let m' = removeLocals m
               liftIO . TSIO.putStrLn . showComplex $ r
               loop' md (m' & varmap %~ M.insert "_" r) ng
@@ -290,12 +334,12 @@ interpret path mode mps = do
       x -> do
         let y = parseEval md ms g x
         case y of
-          Left (err, EvalState m ng _) -> do
+          Left (err, EvalState m ng) -> do
             case err of
               MsgMsg msg -> liftIO $ TSIO.putStrLn msg
               ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
             loop' ls md m ng
-          Right (r, EvalState m ng _) -> do
+          Right (r, EvalState m ng) -> do
             liftIO . TSIO.putStrLn $ showComplex r
             loop' ls md (m & varmap %~ M.insert "_" r) ng
 
@@ -311,12 +355,12 @@ compileAndRun :: FilePath -> CompileMode -> Maps -> IO ()
 compileAndRun path mode mps = case mode of
   CompRead -> do
     parsed <- parseSource mps path
-    gen <- initStdGen
-    compileAst parsed $ \bc -> execute mps $ C.emptyVM bc gen
+    g <- initStdGen
+    compileAst parsed $ \bc -> execute mps $ C.emptyVM bc g
   CompLoad -> do
     bc <- fromMaybe C.emptyChunk <$> C.loadBc path
-    gen <- initStdGen
-    execute mps $ C.emptyVM bc gen
+    g <- initStdGen
+    execute mps $ C.emptyVM bc g
   CompStore -> do
     parsed <- parseSource mps path
     compileAst parsed $ C.storeBc (replaceExtension path ".bin")
@@ -445,9 +489,9 @@ webLoop port mode = do
                     (decode (B.fromStrict env) :: Maybe ListTuple)
           let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
           let t = parseString mode fs ms
-          gen <- liftIO $ readIORef ref
-          let res = evalExprS t ms gen
-          let txt = let (ress, EvalState mps ng _) = either
+          g1 <- liftIO $ readIORef ref
+          let res = evalExprS t ms g1
+          let txt = let (ress, EvalState mps ng) = either
                           Prelude.id
                           (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . varmap %~ M.insert "_" r) mg))
                           res

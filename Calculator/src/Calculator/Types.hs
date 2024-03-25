@@ -33,7 +33,6 @@ module Calculator.Types
     EvalState (..),
     maps,
     gen,
-    mem,
     isNumber,
     isId,
     numToText,
@@ -364,6 +363,6 @@ zipFormat = go T.empty
           formatted <- showComplexBase b cr
           go (acc <> formatted) fs rs
 
-data EvalState = EvalState {_maps :: Maps, _gen :: StdGen, _mem :: Map (Text, Int) (Map (Complex Rational) (Complex Rational))} deriving (Show)
+data EvalState = EvalState {_maps :: Maps, _gen :: StdGen} deriving (Show)
 
 makeLenses ''EvalState
