@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, OverloadedLists, CPP, TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings, OverloadedLists, CPP #-}
 module Calculator (
   Mode(..),
   CompileMode(..),
@@ -9,6 +9,9 @@ module Calculator (
 #endif
 #ifdef RAYLIB
   raylibLoop,
+#endif
+#ifdef DISCORD
+  pingpongExample,
 #endif
   evalFile,
   compileAndRunFile) where
@@ -33,8 +36,8 @@ import Calculator.Types
       extractFormat,
       zipFormat,
       isFormat, varmap, opmap, funmap)
-import Clay (render)
-import Control.Lens ((%~), (&), (^.), makeLenses)
+import Clay (render, parse)
+import Control.Lens ((%~), (&), (^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
   ( MonadIO (liftIO),
@@ -101,6 +104,58 @@ import qualified Control.Exception as CE
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Complex ( imagPart, realPart, Complex(..) )
 import Text.Read ( readMaybe )
+
+#ifdef DISCORD
+import           Control.Monad (when, void)
+import           UnliftIO.Concurrent
+import qualified Data.Text.IO as TIO
+
+import Discord
+    ( restCall,
+      runDiscord,
+      def,
+      DiscordHandler,
+      RunDiscordOpts(discordOnLog, discordToken, discordOnEvent) )
+import           Discord.Types (Event(..), Message, messageContent, messageAuthor, messageChannelId, userIsBot, messageId)
+import qualified Discord.Requests as R
+
+import Configuration.Dotenv (loadFile, defaultConfig)
+import System.Environment (lookupEnv)
+
+-- | Replies "pong" to every message that starts with "ping"
+pingpongExample :: IO ()
+pingpongExample = do
+    loadFile defaultConfig
+    token <- fromMaybe "" <$> lookupEnv "DISCORD_TOKEN"
+    g <- getStdGen
+    userFacingError <- runDiscord $ def
+             { discordToken = TS.pack token
+             , discordOnEvent = eventHandler g
+             , discordOnLog = \s -> TIO.putStrLn s >> TIO.putStrLn ""
+             } -- if you see OnLog error, post in the discord / open an issue
+
+    TIO.putStrLn userFacingError
+    -- userFacingError is an unrecoverable error
+    -- put normal 'cleanup' code in discordOnEnd (see examples)
+
+eventHandler :: StdGen -> Event -> DiscordHandler ()
+eventHandler g event = case event of
+    MessageCreate m -> when (isCalc m && not (fromBot m)) $ do
+        void $ restCall (R.CreateReaction (messageChannelId m, messageId m) "eyes")
+        let res = parseEval Internal defaultMaps g (TS.drop 5 $ messageContent m)
+        void $ restCall (R.CreateMessage (messageChannelId m) (case res of
+          Left (MsgMsg msg, _) -> msg
+          Left (ErrMsg msg, _) -> msg
+          Right (r, _) -> showComplex r))
+    _ -> return ()
+
+fromBot :: Message -> Bool
+fromBot = userIsBot . messageAuthor
+
+isCalc :: Message -> Bool
+isCalc = ("calc" `TS.isPrefixOf`) . TS.toLower . messageContent
+
+#endif
 
 #ifdef RAYLIB
 import qualified Raylib.Core as RL

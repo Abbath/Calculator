@@ -15,6 +15,7 @@ data Options = Options {
       backend     :: !String,
       test        :: !Bool,
       raylib      :: !Bool,
+      discord     :: !Bool,
       port        :: !Int
     }
 
@@ -27,6 +28,7 @@ options = Options
           <*> strOption (long "backend" <> short 'b' <> help "Backend (I)" <> metavar "BACKEND" <> value "I")
           <*> switch (long "test" <> short 't' <> help "Run tests")
           <*> switch (long "raylib" <> short 'r' <> help "Raylib GUI")
+          <*> switch (long "discord" <> short 'd' <> help "Discord bot")
           <*> option auto (long "port" <> short 'p' <> help "Port" <> metavar "PORT" <> value 3000)
 
 main :: IO ()
@@ -37,6 +39,9 @@ main = do
   if
 #ifdef RAYLIB
     | raylib opts2 -> raylibLoop
+#endif
+#ifdef DISCORD
+    | discord opts2 -> pingpongExample
 #endif
     | (not . null . input $ opts2) -> evalFile (input opts2)
     | (not . null . source $ opts2) -> compileAndRunFile (source opts2) $ case compileMode opts2 of

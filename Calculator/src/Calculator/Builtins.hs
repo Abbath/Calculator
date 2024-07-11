@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE BangPatterns #-}
 
 module Calculator.Builtins where
 
@@ -38,7 +37,7 @@ operators =
        ("<", Op { precedence = 3, associativity = L, oexec = FnOp (CmpOp (<)) }),
        (">", Op { precedence = 3, associativity = L, oexec = FnOp (CmpOp (>)) }),
        ("<<", Op { precedence = 4, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (fromInteger s))) }),
-       (">>", Op { precedence = 4, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (-1 * fromInteger s))) }),
+       (">>", Op { precedence = 4, associativity = R, oexec = FnOp (BitOp (\n s -> shift n ((-1) * fromInteger s))) }),
        ("+", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (+)) }),
        ("-", Op { precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (-)) }),
        ("*", Op { precedence = 6, associativity = L, oexec = FnOp (MathOp $ fmath (*)) }),

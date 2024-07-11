@@ -523,7 +523,7 @@ getOffset = gets $ V.length . (^. chunkc . code)
 
 writeOffset :: Int -> Int -> StateChunk ()
 writeOffset addr value =
-  if value < -2 ^ (15 :: Int) || value > 2 ^ (15 :: Int) - 1
+  if value < -(2 ^ (15 :: Int)) || value > 2 ^ (15 :: Int) - 1
     then throwError "Jump is too long"
     else do
       let val = abs value

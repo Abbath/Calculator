@@ -1,6 +1,6 @@
 cabal-version:        3.4
 name:                 Calculator
-version:              10.0.0
+version:              11.0.0
 synopsis:             Calculator
 -- description:
 -- license:
@@ -20,6 +20,11 @@ flag telegram
 
 flag raylib
   description: Enable raylib support
+  default: False
+  manual: True
+
+flag discord
+  description: Enable discord support
   default: False
   manual: True
 
@@ -73,6 +78,11 @@ library
   if flag(raylib)
     build-depends:    h-raylib
     cpp-options:     -DRAYLIB
+  if flag(discord)
+    build-depends:    discord-haskell
+                    , dotenv
+                    , unliftio
+    cpp-options:     -DDISCORD
 
 executable Calculator
   main-is:              Main.hs
@@ -87,6 +97,8 @@ executable Calculator
     cpp-options:       -DTELEGRAM
   if flag(raylib)
     cpp-options:       -DRAYLIB
+  if flag(discord)
+    cpp-options:       -DDISCORD
 
 test-suite Test
   type:                 exitcode-stdio-1.0
