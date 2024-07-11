@@ -1,6 +1,6 @@
 cabal-version:        3.4
 name:                 Calculator
-version:              11.0.0
+version:              11.0.1
 synopsis:             Calculator
 -- description:
 -- license:
@@ -81,7 +81,6 @@ library
   if flag(discord)
     build-depends:    discord-haskell
                     , dotenv
-                    , unliftio
     cpp-options:     -DDISCORD
 
 executable Calculator

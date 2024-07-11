@@ -36,7 +36,7 @@ import Calculator.Types
       extractFormat,
       zipFormat,
       isFormat, varmap, opmap, funmap)
-import Clay (render, parse)
+import Clay (render)
 import Control.Lens ((%~), (&), (^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
@@ -106,8 +106,7 @@ import Data.Complex ( imagPart, realPart, Complex(..) )
 import Text.Read ( readMaybe )
 
 #ifdef DISCORD
-import           Control.Monad (when, void)
-import           UnliftIO.Concurrent
+import           Control.Monad (void)
 import qualified Data.Text.IO as TIO
 
 import Discord
@@ -116,7 +115,7 @@ import Discord
       def,
       DiscordHandler,
       RunDiscordOpts(discordOnLog, discordToken, discordOnEvent) )
-import           Discord.Types (Event(..), Message, messageContent, messageAuthor, messageChannelId, userIsBot, messageId)
+import           Discord.Types (Event(..), Message (messageTimestamp), messageContent, messageAuthor, messageChannelId, userIsBot, messageId, User (userName))
 import qualified Discord.Requests as R
 
 import Configuration.Dotenv (loadFile, defaultConfig)
@@ -125,6 +124,7 @@ import System.Environment (lookupEnv)
 -- | Replies "pong" to every message that starts with "ping"
 pingpongExample :: IO ()
 pingpongExample = do
+    TIO.putStrLn "Started server"
     loadFile defaultConfig
     token <- fromMaybe "" <$> lookupEnv "DISCORD_TOKEN"
     g <- getStdGen
@@ -141,6 +141,7 @@ pingpongExample = do
 eventHandler :: StdGen -> Event -> DiscordHandler ()
 eventHandler g event = case event of
     MessageCreate m -> when (isCalc m && not (fromBot m)) $ do
+        liftIO . TSIO.putStrLn $ "[" <> (TS.pack . show $ messageTimestamp m) <> "] " <> (userName $ messageAuthor m) <> ": " <> TS.drop 5 (messageContent m)
         void $ restCall (R.CreateReaction (messageChannelId m, messageId m) "eyes")
         let res = parseEval Internal defaultMaps g (TS.drop 5 $ messageContent m)
         void $ restCall (R.CreateMessage (messageChannelId m) (case res of

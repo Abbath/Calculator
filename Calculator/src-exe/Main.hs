@@ -4,7 +4,7 @@ module Main where
 import Calculator
 import Calculator.Tests ( testLoop )
 import Options.Applicative
-import Control.Monad ( when, void )
+import Control.Monad ( when )
 import Data.Char ( toLower )
 
 data Options = Options {
