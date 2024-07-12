@@ -4,14 +4,15 @@ module Calculator.Opts.Dis where
 
 import Calculator (Mode (..), defaultMaps, parseEval)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
-import Calculator.Types (showComplex)
+import Calculator.Types (EvalState (EvalState), showComplex)
 import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Maybe (fromMaybe)
-import Data.Text as TS (drop, isPrefixOf, pack, toLower)
+import Data.Text as TS (dropWhile, isPrefixOf, pack, toLower)
 import Data.Text.IO as TSIO (putStrLn)
 import Data.Text.IO qualified as TIO
-import System.Random (StdGen, getStdGen)
+import System.Random (getStdGen)
+import UnliftIO.MVar
 
 import Discord (
     DiscordHandler,
@@ -24,6 +25,7 @@ import Discord.Requests qualified as R
 import Discord.Types (Event (..), Message (messageTimestamp), User (userName), messageAuthor, messageChannelId, messageContent, messageId, userIsBot)
 
 import Configuration.Dotenv (defaultConfig, loadFile)
+import Data.Char (isSpace)
 import System.Environment (lookupEnv)
 
 -- | Replies "pong" to every message that starts with "ping"
@@ -32,12 +34,12 @@ pingpongExample = do
     TIO.putStrLn "Started server"
     loadFile defaultConfig
     token <- fromMaybe "" <$> lookupEnv "DISCORD_TOKEN"
-    g <- getStdGen
+    mes <- getStdGen >>= newMVar . EvalState defaultMaps
     userFacingError <-
         runDiscord $
             def
                 { discordToken = TS.pack token
-                , discordOnEvent = eventHandler g
+                , discordOnEvent = eventHandler mes
                 , discordOnLog = \s -> TIO.putStrLn s >> TIO.putStrLn ""
                 } -- if you see OnLog error, post in the discord / open an issue
     TIO.putStrLn userFacingError
@@ -45,26 +47,33 @@ pingpongExample = do
 -- userFacingError is an unrecoverable error
 -- put normal 'cleanup' code in discordOnEnd (see examples)
 
-eventHandler :: StdGen -> Event -> DiscordHandler ()
-eventHandler g event = case event of
+eventHandler :: MVar EvalState -> Event -> DiscordHandler ()
+eventHandler mes event = case event of
     MessageCreate m -> when (isCalc m && not (fromBot m)) $ do
-        liftIO . TSIO.putStrLn $ "[" <> (TS.pack . show $ messageTimestamp m) <> "] " <> userName (messageAuthor m) <> ": " <> TS.drop 5 (messageContent m)
+        liftIO . TSIO.putStrLn $ "[" <> (TS.pack . show $ messageTimestamp m) <> "] " <> userName (messageAuthor m) <> ": " <> TS.dropWhile (not . isSpace) (messageContent m)
         void $ restCall (R.CreateReaction (messageChannelId m, messageId m) "eyes")
-        let res = parseEval Internal defaultMaps g (TS.drop 5 $ messageContent m)
+        es <- takeMVar mes
+        let res = parseEval Internal es (TS.dropWhile (not . isSpace) $ messageContent m)
+        case res of
+            Left (MsgMsg msg, nes) -> do
+                putMVar mes nes
+                respond m msg
+            Left (ErrMsg msg, _) -> respond m msg
+            Right (r, nes) -> do
+                putMVar mes nes
+                respond m $ showComplex r
+    _ -> return ()
+  where
+    respond m rsp =
         void $
             restCall
                 ( R.CreateMessage
                     (messageChannelId m)
-                    ( case res of
-                        Left (MsgMsg msg, _) -> msg
-                        Left (ErrMsg msg, _) -> msg
-                        Right (r, _) -> showComplex r
-                    )
+                    rsp
                 )
-    _ -> return ()
 
 fromBot :: Message -> Bool
 fromBot = userIsBot . messageAuthor
 
 isCalc :: Message -> Bool
-isCalc = ("calc" `TS.isPrefixOf`) . TS.toLower . messageContent
+isCalc = (\m -> any (`TS.isPrefixOf` m) ["calc", "!c"]) . TS.toLower . messageContent

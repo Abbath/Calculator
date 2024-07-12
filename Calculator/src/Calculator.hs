@@ -105,7 +105,7 @@ import System.Console.Haskeline (
 import System.Directory (findFile, getHomeDirectory, removeFile)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import System.FilePath (replaceExtension)
-import System.Random (StdGen, initStdGen, randomIO)
+import System.Random ( initStdGen, randomIO)
 import Text.Read (readMaybe)
 
 data Mode = Internal deriving (Show)
@@ -114,10 +114,10 @@ parseString :: Mode -> TS.Text -> Maps -> Either TS.Text Expr
 parseString m s ms = case m of
   Internal -> tloop s >>= P.parse ms
 
-evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (MessageType, EvalState) (Complex Rational, EvalState)
-evalExprS t mps g = either (Left . (,EvalState mps g) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
+evalExprS :: Either TS.Text Expr -> EvalState -> Either (MessageType, EvalState) (Complex Rational, EvalState)
+evalExprS t es = either (Left . (,es) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
  where
-  getShit e = let a = runExceptT (evalS e) in S.runState a (EvalState mps g)
+  getShit e = let a = runExceptT (evalS e) in S.runState a es
 
 type StateData = [String]
 
@@ -151,7 +151,7 @@ loop mode mps = do
       flip S.evalStateT [] $
         runInputT
           (replSettings{historyFile = Just (hd ++ "/.mycalchist")})
-          (loop' mode mps g)
+          (loop' mode (EvalState mps g))
   case x of
     Left (CE.ErrorCall s) -> do
       putStrLn s
@@ -159,55 +159,55 @@ loop mode mps = do
     Right _ -> return ()
  where
   removeLocals = varmap %~ M.filterWithKey (\k v -> not $ "_." `TS.isInfixOf` k)
-  loop' :: Mode -> Maps -> StdGen -> InputT (StateT StateData IO) ()
-  loop' md ms g = do
-    S.lift $ S.modify (\s -> s `union` extractNames ms)
+  loop' :: Mode -> EvalState -> InputT (StateT StateData IO) ()
+  loop' md es = do
+    S.lift $ S.modify (\s -> s `union` extractNames (es^.maps))
     input <- getInputLine "> "
     case input of
       Nothing -> return ()
       Just "quit" -> return ()
-      Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' md ms g) . withInterrupt $ do
-        let y = parseEval md ms g (TS.pack x)
+      Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' md es) . withInterrupt $ do
+        let y = parseEval md es (TS.pack x)
         case y of
           Left (err, EvalState m ng) -> do
             let m' = removeLocals m
             case err of
               MsgMsg msg -> liftIO $ TSIO.putStrLn msg
               ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
-            loop' md m' ng
+            loop' md (EvalState m' ng)
           Right (r, EvalState m ng) -> do
             let m' = removeLocals m
             liftIO . TSIO.putStrLn . showComplex $ r
-            loop' md (m' & varmap %~ M.insert "_" r) ng
+            loop' md (EvalState (m' & varmap %~ M.insert "_" r) ng)
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
 interpret path mode mps = do
   g <- initStdGen
   source <- TS.lines <$> TSIO.readFile path
-  x <- CE.try $ flip S.evalStateT [] $ loop' source mode mps g
+  x <- CE.try $ flip S.evalStateT [] $ loop' source mode (EvalState mps g)
   case x of
     Left (CE.ErrorCall s) -> do
       putStrLn s
       exitWith (ExitFailure 1)
     Right _ -> exitSuccess
  where
-  loop' :: [TS.Text] -> Mode -> Maps -> StdGen -> StateT StateData IO ()
-  loop' [] _ _ _ = return ()
-  loop' src@(l : ls) md ms g = do
-    S.modify (\s -> s `union` extractNames ms)
+  loop' :: [TS.Text] -> Mode -> EvalState -> StateT StateData IO ()
+  loop' [] _ _ = return ()
+  loop' src@(l : ls) md es = do
+    S.modify (\s -> s `union` extractNames (es^.maps))
     case l of
       "quit" -> return ()
       x -> do
-        let y = parseEval md ms g x
+        let y = parseEval md es x
         case y of
-          Left (err, EvalState m ng) -> do
+          Left (err, nes) -> do
             case err of
               MsgMsg msg -> liftIO $ TSIO.putStrLn msg
               ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
-            loop' ls md m ng
+            loop' ls md nes
           Right (r, EvalState m ng) -> do
             liftIO . TSIO.putStrLn $ showComplex r
-            loop' ls md (m & varmap %~ M.insert "_" r) ng
+            loop' ls md (EvalState (m & varmap %~ M.insert "_" r) ng)
 
 data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
@@ -278,8 +278,8 @@ defaultMaps = Maps defVar funMap opMap M.empty
 compileAndRunFile :: FilePath -> CompileMode -> IO ()
 compileAndRunFile f cm = compileAndRun f cm defaultMaps
 
-parseEval :: Mode -> Maps -> StdGen -> TS.Text -> Either (MessageType, EvalState) (Complex Rational, EvalState)
-parseEval md ms g x = evalExprS (parseString md x ms) ms g
+parseEval :: Mode -> EvalState -> TS.Text -> Either (MessageType, EvalState) (Complex Rational, EvalState)
+parseEval md es x = evalExprS (parseString md x (es^.maps)) es
 
 evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m defaultMaps
@@ -366,7 +366,7 @@ webLoop port mode = do
           let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
           let t = parseString mode fs ms
           g1 <- liftIO $ readIORef ref
-          let res = evalExprS t ms g1
+          let res = evalExprS t (EvalState ms g1)
           let txt =
                 let (ress, EvalState mps ng) =
                       either
