@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module Calculator.Css where
 
-import           Clay
+import Clay
 
 getCss :: Css
 getCss = do

@@ -1,6 +1,6 @@
 cabal-version:        3.4
 name:                 Calculator
-version:              11.0.1
+version:              11.0.2
 synopsis:             Calculator
 -- description:
 -- license:
@@ -74,13 +74,16 @@ library
   if flag(telegram)
     build-depends:    telegram-bot-simple
                     , telegram-bot-api
+    exposed-modules:    Calculator.Opts.Tel
     cpp-options:     -DTELEGRAM
   if flag(raylib)
     build-depends:    h-raylib
+    exposed-modules:  Calculator.Opts.Ray
     cpp-options:     -DRAYLIB
   if flag(discord)
     build-depends:    discord-haskell
                     , dotenv
+    exposed-modules:  Calculator.Opts.Dis
     cpp-options:     -DDISCORD
 
 executable Calculator

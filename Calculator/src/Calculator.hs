@@ -1,382 +1,163 @@
-{-# LANGUAGE OverloadedStrings, OverloadedLists, CPP #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Calculator (
-  Mode(..),
-  CompileMode(..),
+  Mode (..),
+  CompileMode (..),
   evalLoop,
   webLoop,
-#ifdef TELEGRAM
-  telegramSimple,
-#endif
-#ifdef RAYLIB
-  raylibLoop,
-#endif
-#ifdef DISCORD
-  pingpongExample,
-#endif
   evalFile,
-  compileAndRunFile) where
+  compileAndRunFile,
+  defaultMaps,
+  parseEval,
+) where
 
 import Calculator.Builtins (defVar, funMap, names, opMap)
+import Calculator.Compiler qualified as C
 import Calculator.Css (getCss, postCss)
-import Calculator.Evaluator (evalS, MessageType(..))
+import Calculator.Evaluator (MessageType (..), evalS)
 import Calculator.Lexer (tloop)
-import qualified Calculator.Parser as P
-import qualified Calculator.Compiler as C
-import Calculator.Types
-    ( Expr(Seq, Imprt),
-      ListTuple,
-      Maps(..),
-      opsToList,
-      opsFromList,
-      funsToList,
-      funsFromList,
-      showComplex,
-      EvalState (EvalState),
-      maps,
-      extractFormat,
-      zipFormat,
-      isFormat, varmap, opmap, funmap)
+import Calculator.Parser qualified as P
+import Calculator.Types (
+  EvalState (EvalState),
+  Expr (Imprt, Seq),
+  ListTuple,
+  Maps (..),
+  extractFormat,
+  funmap,
+  funsFromList,
+  funsToList,
+  isFormat,
+  maps,
+  opmap,
+  opsFromList,
+  opsToList,
+  showComplex,
+  varmap,
+  zipFormat,
+ )
 import Clay (render)
 import Control.Lens ((%~), (&), (^.))
 import Control.Monad.Except (runExceptT)
-import Control.Monad.Reader
-  ( MonadIO (liftIO),
-    when,
-  )
+import Control.Monad.Reader (
+  MonadIO (liftIO),
+  when,
+ )
 import Control.Monad.State (StateT)
-import qualified Control.Monad.State as S
+import Control.Monad.State qualified as S
 import Data.Aeson (decode, encode)
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy as B
+import Data.ByteString.Char8 qualified as BS
+import Data.ByteString.Lazy qualified as B
 import Data.List (isPrefixOf, union)
-import qualified Data.Map.Strict as M
+import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe, isJust, isNothing)
-import qualified Data.Text as TS
-import qualified Data.Text.IO as TSIO
-import qualified Data.Text.Lazy as T
+import Data.Text qualified as TS
+import Data.Text.IO qualified as TSIO
+import Data.Text.Lazy qualified as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Network.Wai (Request (remoteHost))
-import Network.Wai.Middleware.Static
-  ( addBase,
-    noDots,
-    staticPolicy,
-    (>->),
-  )
+import Network.Wai.Middleware.Static (
+  addBase,
+  noDots,
+  staticPolicy,
+  (>->),
+ )
 import Text.Blaze.Html.Renderer.Text (renderHtml)
-import qualified Text.Blaze.Html5 as H
-import Text.Blaze.Html5.Attributes
-  ( action,
-    autofocus,
-    enctype,
-    method,
-    name,
-    type_,
-    value,
-  )
-import Web.Scotty
-  ( file,
-    get,
-    html,
-    middleware,
-    post,
-    redirect,
-    request,
-    scotty,
-    captureParam,
-    formParam,
-  )
+import Text.Blaze.Html5 qualified as H
+import Text.Blaze.Html5.Attributes (
+  action,
+  autofocus,
+  enctype,
+  method,
+  name,
+  type_,
+  value,
+ )
+import Web.Scotty (
+  captureParam,
+  file,
+  formParam,
+  get,
+  html,
+  middleware,
+  post,
+  redirect,
+  request,
+  scotty,
+ )
 
-import System.Console.Haskeline
-    ( getInputLine,
-      completeWord,
-      runInputT,
-      Completion(..),
-      CompletionFunc,
-      InputT,
-      Settings(..),
-      withInterrupt,
-      handleInterrupt, outputStrLn)
-import System.Directory ( findFile, getHomeDirectory, removeFile )
-import System.FilePath (replaceExtension)
-import System.Random ( randomIO, initStdGen, StdGen, getStdGen )
-import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
-import qualified Control.Exception as CE
+import Control.Exception qualified as CE
+import Data.Complex (Complex (..), imagPart, realPart)
 import Data.IORef (newIORef, readIORef, writeIORef)
-import Data.Complex ( imagPart, realPart, Complex(..) )
-import Text.Read ( readMaybe )
+import System.Console.Haskeline (
+  Completion (..),
+  CompletionFunc,
+  InputT,
+  Settings (..),
+  completeWord,
+  getInputLine,
+  handleInterrupt,
+  outputStrLn,
+  runInputT,
+  withInterrupt,
+ )
+import System.Directory (findFile, getHomeDirectory, removeFile)
+import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
+import System.FilePath (replaceExtension)
+import System.Random (StdGen, initStdGen, randomIO)
+import Text.Read (readMaybe)
 
-#ifdef DISCORD
-import           Control.Monad (void)
-import qualified Data.Text.IO as TIO
-
-import Discord
-    ( restCall,
-      runDiscord,
-      def,
-      DiscordHandler,
-      RunDiscordOpts(discordOnLog, discordToken, discordOnEvent) )
-import           Discord.Types (Event(..), Message (messageTimestamp), messageContent, messageAuthor, messageChannelId, userIsBot, messageId, User (userName))
-import qualified Discord.Requests as R
-
-import Configuration.Dotenv (loadFile, defaultConfig)
-import System.Environment (lookupEnv)
-
--- | Replies "pong" to every message that starts with "ping"
-pingpongExample :: IO ()
-pingpongExample = do
-    TIO.putStrLn "Started server"
-    loadFile defaultConfig
-    token <- fromMaybe "" <$> lookupEnv "DISCORD_TOKEN"
-    g <- getStdGen
-    userFacingError <- runDiscord $ def
-             { discordToken = TS.pack token
-             , discordOnEvent = eventHandler g
-             , discordOnLog = \s -> TIO.putStrLn s >> TIO.putStrLn ""
-             } -- if you see OnLog error, post in the discord / open an issue
-
-    TIO.putStrLn userFacingError
-    -- userFacingError is an unrecoverable error
-    -- put normal 'cleanup' code in discordOnEnd (see examples)
-
-eventHandler :: StdGen -> Event -> DiscordHandler ()
-eventHandler g event = case event of
-    MessageCreate m -> when (isCalc m && not (fromBot m)) $ do
-        liftIO . TSIO.putStrLn $ "[" <> (TS.pack . show $ messageTimestamp m) <> "] " <> (userName $ messageAuthor m) <> ": " <> TS.drop 5 (messageContent m)
-        void $ restCall (R.CreateReaction (messageChannelId m, messageId m) "eyes")
-        let res = parseEval Internal defaultMaps g (TS.drop 5 $ messageContent m)
-        void $ restCall (R.CreateMessage (messageChannelId m) (case res of
-          Left (MsgMsg msg, _) -> msg
-          Left (ErrMsg msg, _) -> msg
-          Right (r, _) -> showComplex r))
-    _ -> return ()
-
-fromBot :: Message -> Bool
-fromBot = userIsBot . messageAuthor
-
-isCalc :: Message -> Bool
-isCalc = ("calc" `TS.isPrefixOf`) . TS.toLower . messageContent
-
-#endif
-
-#ifdef RAYLIB
-import qualified Raylib.Core as RL
-import qualified Raylib.Util as RL
-import qualified Raylib.Util.Colors as RL
-import qualified Raylib.Core.Shapes as RL
-import qualified Raylib.Types as RL
-import qualified Raylib.Core.Text as RL
-import Data.Char (chr)
-import Control.Monad (forM_)
-import Calculator.Types (gen)
-import Control.Monad.State (evalStateT)
-import Control.Lens ((%=), (.=), use)
-import Debug.Trace
-
-data Zipper a = Zip [a] [a] deriving Show
-
-zipLeft :: Zipper a -> Zipper a
-zipLeft (Zip xs (y:ys)) = Zip (y:xs) ys
-zipLeft z@(Zip _ []) = z
-
-zipRight :: Zipper a -> Zipper a
-zipRight (Zip (x:xs) ys) = Zip xs (x:ys)
-zipRight z@(Zip [] _) = z
-
-zipPut :: Eq a => a -> Zipper a -> Zipper a
-zipPut x (Zip l r) = Zip l (x:r)
-
-zipTop :: Zipper a -> a
-zipTop (Zip l (x:xs)) = x
-zipTop (Zip (x:xs) []) = x
-zipTop (Zip [] []) = error "Empty zip"
-
-zipEmpty :: Zipper a -> Bool
-zipEmpty (Zip [] []) = True
-zipEmpty (Zip _ _) = False
-
-zipLeftEmpty :: Zipper a -> Bool
-zipLeftEmpty (Zip [] _) = True
-zipLeftEmpty (Zip _ _) = False
-
-zipRightEmpty :: Zipper a -> Bool
-zipRightEmpty (Zip _ []) = True
-zipRightEmpty (Zip _ _) = False
-
-data AppState = AS {
-  _prompt :: TS.Text,
-  _results :: [TS.Text],
-  _estate :: EvalState,
-  _fc :: Integer,
-  _phist :: Zipper TS.Text
-  } deriving Show
-
-makeLenses ''AppState
-
-raylibLoop :: IO ()
-raylibLoop = do
-  g <- getStdGen
-  let des = EvalState defaultMaps g
-  evalStateT raylibLoop' (AS "" [] des 0 (Zip [] []))
-
-raylibLoop' :: StateT AppState IO ()
-raylibLoop' = do
-  let width = 800
-  let height = 600
-  let fps = 60
-  RL.withWindow width height "Calculator" fps $ \wr -> do
-    RL.whileWindowOpen0 $ do
-      w <- liftIO RL.getRenderWidth
-      h <- liftIO RL.getRenderHeight
-      c <- liftIO RL.getCharPressed
-      prompt %= if c /= 0 then flip TS.snoc (chr c) else id
-      bp <- liftIO $ RL.isKeyPressed RL.KeyBackspace
-      prompt %= \pr -> if bp && not (TS.null pr) then TS.init pr else pr
-      tw <- use prompt >>= liftIO . flip RL.measureText 20 . TS.unpack
-      up <- liftIO $ RL.isKeyPressed RL.KeyUp
-      down <- liftIO $ RL.isKeyPressed RL.KeyDown
-      checkHistory up down
-      pr <- use prompt
-      rt <- use results
-      frame_counter <- use fc
-      liftIO $ RL.drawing $ do
-        RL.clearBackground RL.darkGray
-        RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral w - 20) 20) 0.5 10 RL.gray
-        RL.drawText (TS.unpack pr) 15 10 20 RL.lightGray
-        when (frame_counter `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (17 + tw) 10 2 20 RL.lightGray
-        forM_ (zip rt [0..]) (\(r, i) -> RL.drawText (TS.unpack r) 15 (32 + i * 22) 20 RL.lightGray)
-      ep <- liftIO $ RL.isKeyPressed RL.KeyEnter
-      when ep $ do
-          es <- use estate
-          let y = parseEval Internal (es ^. maps) (es ^. gen) pr
-          let (res, es1) = case y of
-                      Right (r, es0) -> (showComplex r, es0)
-                      Left (ErrMsg m, _) -> (m, es)
-                      Left (MsgMsg m, es0) -> (m, es0)
-          prompt .= ""
-          results .= take ((h - 32) `div` 22) (res:rt)
-          estate .= es1
-          phist %= zipPut pr
-      fc %= (+1)
-  where
-    checkHistory up down = do
-      zt <- use phist
-      if down && not (zipEmpty zt)
-        then let ztl = zipLeft zt in do
-          prompt .= zipTop zt
-          when (not $ zipRightEmpty ztl) $ phist .= ztl
-        else when (up && not (zipEmpty zt)) $ if not $ zipLeftEmpty zt
-              then let ztr = zipRight zt in do
-                prompt .= zipTop ztr
-                phist .= ztr
-              else prompt .= ""
-#endif
-
-
-#ifdef TELEGRAM
-import Control.Arrow (first, second)
-import qualified Telegram.Bot.API  as Telegram
-import Telegram.Bot.Simple
-    ( getEnvToken,
-      startBot_,
-      conversationBot,
-      (<#),
-      replyText,
-      BotApp(..),
-      Eff )
-import Telegram.Bot.Simple.UpdateParser ( parseUpdate, text )
-
-newtype Model = Model {getMaps :: EvalState}
-
--- | Actions bot can perform.
-data Action
-  = NoAction    -- ^ Perform no action.
-  | Reply !TS.Text  -- ^ Reply some text.
-  deriving (Show)
-
--- | Bot application.
-bot :: Mode -> StdGen -> BotApp Model Action
-bot mode gen = BotApp
-  { botInitialModel = Model (EvalState (defVar, M.empty, opMap) gen M.empty)
-  , botAction = flip handleUpdate
-  , botHandler = handleAction mode
-  , botJobs = []
-  }
-
--- | How to process incoming 'Telegram.Update's
--- and turn them into 'Action's.
-handleUpdate :: Model -> Telegram.Update -> Maybe Action
-handleUpdate _ = parseUpdate (Reply <$> Telegram.Bot.Simple.UpdateParser.text)
-
--- | How to handle 'Action's.
-handleAction :: Mode -> Action -> Model -> Eff Action Model
-handleAction _ NoAction model = pure model
-handleAction mode (Reply msg) model = model2 <# do
-  replyText $ case response of
-    MsgMsg mmsg -> mmsg
-    ErrMsg emsg -> "Error: " <> emsg
-  pure NoAction
-  where (response, model2) = second Model $ either
-          Prelude.id
-          (first (MsgMsg . showComplex))
-          (let (EvalState mps rgen _) = getMaps model in parseEval mode mps rgen msg)
-
--- | Run bot with a given 'Telegram.Token'.
-run :: Mode -> Telegram.Token -> IO ()
-run mode token = do
-  g <- initStdGen
-  env <- Telegram.defaultTelegramClientEnv token
-  startBot_ (conversationBot Telegram.updateChatId (bot mode g)) env
-
--- | Run bot using 'Telegram.Token' from @TELEGRAM_BOT_TOKEN@ environment.
-telegramSimple :: Mode -> IO ()
-telegramSimple mode = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run mode
-
-#endif
-
-data Mode = Internal deriving Show
+data Mode = Internal deriving (Show)
 
 parseString :: Mode -> TS.Text -> Maps -> Either TS.Text Expr
 parseString m s ms = case m of
-                       Internal -> tloop s >>= P.parse ms
+  Internal -> tloop s >>= P.parse ms
 
 evalExprS :: Either TS.Text Expr -> Maps -> StdGen -> Either (MessageType, EvalState) (Complex Rational, EvalState)
-evalExprS t mps g = either (Left . (, EvalState mps g) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
-  where getShit e = let a = runExceptT (evalS e) in S.runState a (EvalState mps g)
+evalExprS t mps g = either (Left . (,EvalState mps g) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
+ where
+  getShit e = let a = runExceptT (evalS e) in S.runState a (EvalState mps g)
 
 type StateData = [String]
 
 completionGenerator :: String -> StateT StateData IO [Completion]
 completionGenerator s = do
   sd <- S.get
-  return $ map (\x -> Completion {replacement = x, display = x, isFinished = False})
-         $ filter (isPrefixOf s) (names `union` sd)
+  return $
+    map (\x -> Completion{replacement = x, display = x, isFinished = False}) $
+      filter (isPrefixOf s) (names `union` sd)
 
 replCompletion :: CompletionFunc (StateT StateData IO)
 replCompletion = completeWord Nothing " " completionGenerator
 
 replSettings :: Settings (StateT StateData IO)
-replSettings = Settings
-  { complete       = replCompletion
-  , historyFile    = Nothing
-  , autoAddHistory = True
-  }
+replSettings =
+  Settings
+    { complete = replCompletion
+    , historyFile = Nothing
+    , autoAddHistory = True
+    }
 
 extractNames :: Maps -> [String]
-extractNames ms = map TS.unpack $ M.keys (ms^.opmap) <> M.keys (ms^.varmap) <> map fst (M.keys (ms^.funmap))
+extractNames ms = map TS.unpack $ M.keys (ms ^. opmap) <> M.keys (ms ^. varmap) <> map fst (M.keys (ms ^. funmap))
 
 loop :: Mode -> Maps -> IO ()
 loop mode mps = do
-    g <- initStdGen
-    hd <- getHomeDirectory
-    x <- CE.try $ flip S.evalStateT [] $ runInputT
-       (replSettings { historyFile = Just (hd ++ "/.mycalchist")})
-       (loop' mode mps g)
-    case x of
-      Left (CE.ErrorCall s) -> do
-        putStrLn s
-        Calculator.loop mode mps
-      Right _ -> return ()
-  where
+  g <- initStdGen
+  hd <- getHomeDirectory
+  x <-
+    CE.try $
+      flip S.evalStateT [] $
+        runInputT
+          (replSettings{historyFile = Just (hd ++ "/.mycalchist")})
+          (loop' mode mps g)
+  case x of
+    Left (CE.ErrorCall s) -> do
+      putStrLn s
+      Calculator.loop mode mps
+    Right _ -> return ()
+ where
   removeLocals = varmap %~ M.filterWithKey (\k v -> not $ "_." `TS.isInfixOf` k)
   loop' :: Mode -> Maps -> StdGen -> InputT (StateT StateData IO) ()
   loop' md ms g = do
@@ -386,33 +167,33 @@ loop mode mps = do
       Nothing -> return ()
       Just "quit" -> return ()
       Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' md ms g) . withInterrupt $ do
-          let y = parseEval md ms g (TS.pack x)
-          case y of
-            Left (err, EvalState m ng) -> do
-              let m' = removeLocals m
-              case err of
-                MsgMsg msg -> liftIO $ TSIO.putStrLn msg
-                ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
-              loop' md m' ng
-            Right (r, EvalState m ng) -> do
-              let m' = removeLocals m
-              liftIO . TSIO.putStrLn . showComplex $ r
-              loop' md (m' & varmap %~ M.insert "_" r) ng
+        let y = parseEval md ms g (TS.pack x)
+        case y of
+          Left (err, EvalState m ng) -> do
+            let m' = removeLocals m
+            case err of
+              MsgMsg msg -> liftIO $ TSIO.putStrLn msg
+              ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
+            loop' md m' ng
+          Right (r, EvalState m ng) -> do
+            let m' = removeLocals m
+            liftIO . TSIO.putStrLn . showComplex $ r
+            loop' md (m' & varmap %~ M.insert "_" r) ng
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
 interpret path mode mps = do
-    g <- initStdGen
-    source <- TS.lines <$> TSIO.readFile path
-    x <- CE.try $ flip S.evalStateT [] $ loop' source mode mps g
-    case x of
-      Left (CE.ErrorCall s) -> do
-        putStrLn s
-        exitWith (ExitFailure 1)
-      Right _ -> exitSuccess
-  where
+  g <- initStdGen
+  source <- TS.lines <$> TSIO.readFile path
+  x <- CE.try $ flip S.evalStateT [] $ loop' source mode mps g
+  case x of
+    Left (CE.ErrorCall s) -> do
+      putStrLn s
+      exitWith (ExitFailure 1)
+    Right _ -> exitSuccess
+ where
   loop' :: [TS.Text] -> Mode -> Maps -> StdGen -> StateT StateData IO ()
   loop' [] _ _ _ = return ()
-  loop' src@(l:ls) md ms g = do
+  loop' src@(l : ls) md ms g = do
     S.modify (\s -> s `union` extractNames ms)
     case l of
       "quit" -> return ()
@@ -431,9 +212,9 @@ interpret path mode mps = do
 data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
 parseNumber :: TS.Text -> Complex Rational
-parseNumber t = case TS.split (=='j') t of
+parseNumber t = case TS.split (== 'j') t of
   [r, i] -> (toRational . read @Double . TS.unpack $ r) :+ (toRational . read @Double . TS.unpack $ i)
-  [r] -> (:+0) . toRational . read @Double . TS.unpack $ r
+  [r] -> (:+ 0) . toRational . read @Double . TS.unpack $ r
   _ -> 0 :+ 0
 
 compileAndRun :: FilePath -> CompileMode -> Maps -> IO ()
@@ -449,46 +230,47 @@ compileAndRun path mode mps = case mode of
   CompStore -> do
     parsed <- parseSource mps path
     compileAst parsed $ C.storeBc (replaceExtension path ".bin")
-  where
-    loop' :: [TS.Text] -> Maps -> StateT [Expr] IO ()
-    loop' [] _  = S.modify reverse
-    loop' (l:ls) ms = case parseString Internal l ms of
-      Left err -> do
-        liftIO $ TSIO.putStrLn err
-      Right res -> case res of
-        (Imprt filepath) -> do
-          source <- liftIO $ TS.lines <$> TSIO.readFile (T.unpack . T.fromStrict $ filepath)
-          loop' (source ++ ls) mps
-        _ -> do
-          S.modify (res:)
-          loop' ls mps
-    compileAst ast act = case C.compile mps (Seq ast) of
-      Left err -> TSIO.putStrLn err
-      Right bc -> act bc
-    parseSource ms fp = do
-      source <- TS.lines <$> TSIO.readFile fp
-      flip S.execStateT [] $ loop' source ms
-    execute ms vm = case C.interpretBcVM ms vm of
-      (Left err, _) -> TSIO.putStrLn err
-      (Right status, new_vm) -> case status of
-        C.IrOk -> putStrLn "Success"
-        C.IrIO operation fmt -> case operation of
-          C.OpInput -> do
-            line <- TSIO.getLine
-            execute ms $ C.injectValue (parseNumber line) new_vm
-          C.OpOutput -> case C.ejectValue new_vm of
-            (Nothing, _) -> execute ms new_vm
-            (Just v, newer_vm) -> do
-              TSIO.putStrLn (showComplex v)
-              execute ms newer_vm
-          C.OpFmt -> case fmt of
-            Nothing -> putStrLn "Nothing to format."
-            Just fmts -> case extractFormat fmts of
-              Left err -> TSIO.putStrLn err
-              Right fmtcs -> let (values, newer_vm) = C.ejectValues (length . filter isFormat $ fmtcs) new_vm
-                             in case zipFormat fmtcs values of
-                                Left err -> TSIO.putStrLn err
-                                Right res -> TSIO.putStrLn res >> execute ms newer_vm
+ where
+  loop' :: [TS.Text] -> Maps -> StateT [Expr] IO ()
+  loop' [] _ = S.modify reverse
+  loop' (l : ls) ms = case parseString Internal l ms of
+    Left err -> do
+      liftIO $ TSIO.putStrLn err
+    Right res -> case res of
+      (Imprt filepath) -> do
+        source <- liftIO $ TS.lines <$> TSIO.readFile (T.unpack . T.fromStrict $ filepath)
+        loop' (source ++ ls) mps
+      _ -> do
+        S.modify (res :)
+        loop' ls mps
+  compileAst ast act = case C.compile mps (Seq ast) of
+    Left err -> TSIO.putStrLn err
+    Right bc -> act bc
+  parseSource ms fp = do
+    source <- TS.lines <$> TSIO.readFile fp
+    flip S.execStateT [] $ loop' source ms
+  execute ms vm = case C.interpretBcVM ms vm of
+    (Left err, _) -> TSIO.putStrLn err
+    (Right status, new_vm) -> case status of
+      C.IrOk -> putStrLn "Success"
+      C.IrIO operation fmt -> case operation of
+        C.OpInput -> do
+          line <- TSIO.getLine
+          execute ms $ C.injectValue (parseNumber line) new_vm
+        C.OpOutput -> case C.ejectValue new_vm of
+          (Nothing, _) -> execute ms new_vm
+          (Just v, newer_vm) -> do
+            TSIO.putStrLn (showComplex v)
+            execute ms newer_vm
+        C.OpFmt -> case fmt of
+          Nothing -> putStrLn "Nothing to format."
+          Just fmts -> case extractFormat fmts of
+            Left err -> TSIO.putStrLn err
+            Right fmtcs ->
+              let (values, newer_vm) = C.ejectValues (length . filter isFormat $ fmtcs) new_vm
+               in case zipFormat fmtcs values of
+                    Left err -> TSIO.putStrLn err
+                    Right res -> TSIO.putStrLn res >> execute ms newer_vm
 
 defaultMaps :: Maps
 defaultMaps = Maps defVar funMap opMap M.empty
@@ -503,24 +285,30 @@ evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m defaultMaps
 
 evalFile :: FilePath -> IO ()
-evalFile f =  Calculator.interpret f Internal defaultMaps
+evalFile f = Calculator.interpret f Internal defaultMaps
 
 updateIDS :: Integer -> IO ()
 updateIDS i = do
-    f <- BS.readFile "ids"
-    let idsm = readMaybe (BS.unpack f) :: Maybe [(Integer, Integer)]
-    tm <- round `fmap` getPOSIXTime
-    let ids = fromMaybe [] idsm
-    mapM_ (\(_, ff) -> do
-             let logname = "log" ++ show ff ++ ".dat";
-             let storagename = "storage" ++ show ff ++ ".dat"
-             b1 <- findFile ["."] storagename
-             b2 <- findFile ["."] logname
-             when (isJust b1) $ removeFile storagename
-             when (isJust b2) $ removeFile logname) $ filter (\(a,_) -> tm-a > 60*60) ids
-    BS.writeFile "ids" $ BS.pack $ show $ if i `elem` map snd ids
-       then map (\(a,b) -> if b == i then (tm,i) else (a,b)) ids
-       else (tm,i) : filter (\(a,_) -> tm - a < 60*60) ids
+  f <- BS.readFile "ids"
+  let idsm = readMaybe (BS.unpack f) :: Maybe [(Integer, Integer)]
+  tm <- round `fmap` getPOSIXTime
+  let ids = fromMaybe [] idsm
+  mapM_
+    ( \(_, ff) -> do
+        let logname = "log" ++ show ff ++ ".dat"
+        let storagename = "storage" ++ show ff ++ ".dat"
+        b1 <- findFile ["."] storagename
+        b2 <- findFile ["."] logname
+        when (isJust b1) $ removeFile storagename
+        when (isJust b2) $ removeFile logname
+    )
+    $ filter (\(a, _) -> tm - a > 60 * 60) ids
+  BS.writeFile "ids" $
+    BS.pack $
+      show $
+        if i `elem` map snd ids
+          then map (\(a, b) -> if b == i then (tm, i) else (a, b)) ids
+          else (tm, i) : filter (\(a, _) -> tm - a < 60 * 60) ids
 
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = do
@@ -544,14 +332,16 @@ webLoop port mode = do
     Web.Scotty.get "/favicon.ico" $ Web.Scotty.file "./Static/favicon.ico"
     Web.Scotty.get "/:id" $ do
       iD <- Web.Scotty.captureParam "id"
-      liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ((map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ defVar, [], opsToList opMap) :: ListTuple ))
+      liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ((map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ defVar, [], opsToList opMap) :: ListTuple))
       liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
-      Web.Scotty.html $ renderHtml
-        $ H.html $ H.body $ do
-          H.h1 $ H.toHtml ("Calculator" :: TS.Text)
-          H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
-            H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
-          H.style $ H.toHtml . render $ getCss
+      Web.Scotty.html $
+        renderHtml $
+          H.html $
+            H.body $ do
+              H.h1 $ H.toHtml ("Calculator" :: TS.Text)
+              H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
+                H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
+              H.style $ H.toHtml . render $ getCss
     Web.Scotty.post "/clear/:id" $ do
       iD <- Web.Scotty.captureParam "id"
       Web.Scotty.redirect $ T.append "/" iD
@@ -568,37 +358,41 @@ webLoop port mode = do
           let storagename = "storage" ++ T.unpack iD ++ ".dat"
           rest <- liftIO $ BS.readFile logname
           env <- liftIO $ BS.readFile storagename
-          let ms = maybe
-                    (error "Cannot decode storage")
-                    listsToMaps
-                    (decode (B.fromStrict env) :: Maybe ListTuple)
+          let ms =
+                maybe
+                  (error "Cannot decode storage")
+                  listsToMaps
+                  (decode (B.fromStrict env) :: Maybe ListTuple)
           let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
           let t = parseString mode fs ms
           g1 <- liftIO $ readIORef ref
           let res = evalExprS t ms g1
-          let txt = let (ress, EvalState mps ng) = either
-                          Prelude.id
-                          (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . varmap %~ M.insert "_" r) mg))
-                          res
-                    in do
-                        storeMaps storagename mps
-                        liftIO $ writeIORef ref ng
-                        return $ (fs, unpackMsg ress) : lg
+          let txt =
+                let (ress, EvalState mps ng) =
+                      either
+                        Prelude.id
+                        (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . varmap %~ M.insert "_" r) mg))
+                        res
+                 in do
+                      storeMaps storagename mps
+                      liftIO $ writeIORef ref ng
+                      return $ (fs, unpackMsg ress) : lg
           rtxt <- liftIO txt
           liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
-          Web.Scotty.html $ renderHtml
-              $ H.html $
-                  H.body $ do
-                    H.h1 $ H.toHtml ("Calculator" :: TS.Text)
-                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
-                      H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
-                    H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/clear/" iD) $
-                      H.input H.! type_ "submit" H.! value "Clear history"
-                    H.table $ mapM_ (\(x,y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
-                    H.style $ H.toHtml . render $ postCss
-  where
-    storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
-    mapsToLists ms = (map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ (ms^.varmap), funsToList (ms^.funmap), opsToList (ms^.opmap))
-    listsToMaps (a, b, c) = Maps (M.fromList . map (\(k, (vr, vi)) -> (k, vr:+vi)) $ a) (M.union funMap $ funsFromList b) (M.union opMap $ opsFromList c) M.empty
-    unpackMsg (MsgMsg m) = m
-    unpackMsg (ErrMsg e) = e
+          Web.Scotty.html $
+            renderHtml $
+              H.html $
+                H.body $ do
+                  H.h1 $ H.toHtml ("Calculator" :: TS.Text)
+                  H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
+                    H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
+                  H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/clear/" iD) $
+                    H.input H.! type_ "submit" H.! value "Clear history"
+                  H.table $ mapM_ (\(x, y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
+                  H.style $ H.toHtml . render $ postCss
+ where
+  storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
+  mapsToLists ms = (map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ (ms ^. varmap), funsToList (ms ^. funmap), opsToList (ms ^. opmap))
+  listsToMaps (a, b, c) = Maps (M.fromList . map (\(k, (vr, vi)) -> (k, vr :+ vi)) $ a) (M.union funMap $ funsFromList b) (M.union opMap $ opsFromList c) M.empty
+  unpackMsg (MsgMsg m) = m
+  unpackMsg (ErrMsg e) = e

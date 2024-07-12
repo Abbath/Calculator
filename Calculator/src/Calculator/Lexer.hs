@@ -1,23 +1,31 @@
-{-# LANGUAGE ViewPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
+
 module Calculator.Lexer (tloop) where
 
-import Control.Applicative ( Alternative(..) )
-import Data.Char
-    ( isDigit, isSpace, isAlpha, isHexDigit, isOctDigit, ord )
-import           Data.Text (Text)
-import qualified Data.Text as T
-import           Calculator.Types    (Token (..), opSymbols, textToNum)
-import qualified Data.Scientific as S
+import Calculator.Types (Token (..), opSymbols, textToNum)
+import Control.Applicative (Alternative (..))
+import Data.Char (
+  isAlpha,
+  isDigit,
+  isHexDigit,
+  isOctDigit,
+  isSpace,
+  ord,
+ )
+import Data.Scientific qualified as S
+import Data.Text (Text)
+import Data.Text qualified as T
 
 data Input = Input
   { inputLoc :: Int
   , inputStr :: Text
-  } deriving (Show, Eq)
+  }
+  deriving (Show, Eq)
 
 inputUncons :: Input -> Maybe (Char, Input)
 inputUncons (Input _ t) | T.null t = Nothing
-inputUncons (Input loc t )         = T.uncons t >>= \(x, xs) -> Just (x, Input (loc + 1) xs)
+inputUncons (Input loc t) = T.uncons t >>= \(x, xs) -> Just (x, Input (loc + 1) xs)
 
 data ParserError = ParserError Int Text deriving (Show)
 
@@ -51,16 +59,16 @@ instance Alternative Parser where
 
 charP :: Char -> Parser Char
 charP x = Parser f
-  where
-    f input@(inputUncons -> Just (y, ys))
-      | y == x = Right (ys, x)
-      | otherwise =
+ where
+  f input@(inputUncons -> Just (y, ys))
+    | y == x = Right (ys, x)
+    | otherwise =
         Left $
-        ParserError
-          (inputLoc input)
-          ("Expected '" <> T.singleton x <> "', but found '" <>  T.singleton y <> "'")
-    f input =
-      Left $
+          ParserError
+            (inputLoc input)
+            ("Expected '" <> T.singleton x <> "', but found '" <> T.singleton y <> "'")
+  f input =
+    Left $
       ParserError
         (inputLoc input)
         ("Expected '" <> T.singleton x <> "', but reached end of string")
@@ -78,38 +86,39 @@ parseIf desc f =
       (inputUncons -> Just (y, ys))
         | f y -> Right (ys, y)
         | otherwise ->
-          Left $
-          ParserError
-            (inputLoc input)
-            ("Expected " <> desc <> ", but found '" <> T.singleton y <> "'")
+            Left $
+              ParserError
+                (inputLoc input)
+                ("Expected " <> desc <> ", but found '" <> T.singleton y <> "'")
       _ ->
         Left $
-        ParserError
-          (inputLoc input)
-          ("Expected " <> desc <> ", but reached end of string")
+          ParserError
+            (inputLoc input)
+            ("Expected " <> desc <> ", but reached end of string")
 
 doubleLiteral :: Parser Rational
 doubleLiteral =
-  (\sign int frac expo ->
-       toRational . read @S.Scientific $ (sign : int ++ frac ++ expo))
+  ( \sign int frac expo ->
+      toRational . read @S.Scientific $ (sign : int ++ frac ++ expo)
+  )
     <$> plusminus
     <*> digits
     <*> opt ((:) <$> charP '.' <*> digits)
     <*> opt ((:) <$> e <*> ((:) <$> plusminus <*> digits))
-  where
-    digits = (++) <$> some (parseIf "digit" isDigit) <*> (concat <$> many ud)
-    ud = some (parseIf "underscore" (=='_')) *> some (parseIf "digit" isDigit)
-    plusminus = charP '+' <|> charP '-' <|> pure '+'
-    e = charP 'e' <|> charP 'E'
-    opt = (<|> pure "")
+ where
+  digits = (++) <$> some (parseIf "digit" isDigit) <*> (concat <$> many ud)
+  ud = some (parseIf "underscore" (== '_')) *> some (parseIf "digit" isDigit)
+  plusminus = charP '+' <|> charP '-' <|> pure '+'
+  e = charP 'e' <|> charP 'E'
+  opt = (<|> pure "")
 
 basedLiteral :: (Char -> Bool) -> Char -> Parser Rational
 basedLiteral f p = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . (['0', p] ++) <$> digits)
-  where
-    digits = (++) <$> some (parseIf "digit" f) <*> (concat <$> many ud)
-    ud = some (parseIf "underscore" (=='_')) *> some (parseIf "digit" f)
-    zero = charP '0'
-    x = charP p
+ where
+  digits = (++) <$> some (parseIf "digit" f) <*> (concat <$> many ud)
+  ud = some (parseIf "underscore" (== '_')) *> some (parseIf "digit" f)
+  zero = charP '0'
+  x = charP p
 
 hexLiteral :: Parser Rational
 hexLiteral = basedLiteral isHexDigit 'x'
@@ -118,16 +127,23 @@ octLiteral :: Parser Rational
 octLiteral = basedLiteral isOctDigit 'o'
 
 binLiteral :: Parser Rational
-binLiteral = (\_ _ n -> toRational (n :: Integer))
-              <$> charP '0' <*> charP 'b'
-              <*> (foldl (\b c -> case c of
+binLiteral =
+  (\_ _ n -> toRational (n :: Integer))
+    <$> charP '0'
+    <*> charP 'b'
+    <*> ( foldl
+            ( \b c -> case c of
                 '_' -> b
-                n -> b * 2 + toInteger (ord n - ord '0')) 0 <$> binDigitOrUnderscore)
-  where
-    binDigitOrUnderscore = some $ parseIf "bin digit or underscore" (`elem` ("01_" :: String))
+                n -> b * 2 + toInteger (ord n - ord '0')
+            )
+            0
+            <$> binDigitOrUnderscore
+        )
+ where
+  binDigitOrUnderscore = some $ parseIf "bin digit or underscore" (`elem` ("01_" :: String))
 
 stringLiteral :: Parser Rational
-stringLiteral = charP '"' *> (fromInteger . textToNum 0 <$> many (parseIf "anything except \"" (/='"'))) <* charP '"'
+stringLiteral = charP '"' *> (fromInteger . textToNum 0 <$> many (parseIf "anything except \"" (/= '"'))) <* charP '"'
 
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
@@ -136,12 +152,21 @@ complexLiteral :: Parser (Rational, Rational)
 complexLiteral = (,) <$> (doubleLiteral <* (charP 'j' <|> charP 'i')) <*> doubleLiteral
 
 numba :: Parser Token
-numba = uncurry TNumber <$> wsBracket ((,0) <$> hexLiteral <|>
-                                       (,0) <$> octLiteral <|>
-                                       (,0) <$> binLiteral <|>
-                                       complexLiteral <|>
-                                       (,0) <$> doubleLiteral <|>
-                                       (,0) <$> stringLiteral)
+numba =
+  uncurry TNumber
+    <$> wsBracket
+      ( (,0)
+          <$> hexLiteral
+            <|> (,0)
+          <$> octLiteral
+            <|> (,0)
+          <$> binLiteral
+            <|> complexLiteral
+            <|> (,0)
+          <$> doubleLiteral
+            <|> (,0)
+          <$> stringLiteral
+      )
 
 lpar :: Parser Token
 lpar = TLPar <$ wsBracket (charP '(')
@@ -190,8 +215,8 @@ tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma 
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0
-  where
-    go acc (Input _ x) | T.null x = Right $ reverse acc
-    go acc input = case runParser tokah input of
-      Left (ParserError n s) -> Left ("Error: " <> s <> " at " <> (T.pack . show $ n))
-      Right (input1, tok) -> go (tok:acc) input1
+ where
+  go acc (Input _ x) | T.null x = Right $ reverse acc
+  go acc input = case runParser tokah input of
+    Left (ParserError n s) -> Left ("Error: " <> s <> " at " <> (T.pack . show $ n))
+    Right (input1, tok) -> go (tok : acc) input1

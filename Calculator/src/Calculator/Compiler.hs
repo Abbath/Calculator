@@ -7,24 +7,24 @@
 module Calculator.Compiler where
 
 import Calculator.Builtins
-import Calculator.Types
-  ( Assoc,
-    ExecFn (FnFn),
-    ExecOp (FnOp),
-    Expr (..),
-    Fun (fexec),
-    FunFun (..),
-    FunMap,
-    FunOp (BitOp, CmpOp, MathOp),
-    Maps(..),
-    Op (oexec),
-    OpMap,
-    numToText,
-    showT,
-    varmap,
-    opmap,
-    funmap
-  )
+import Calculator.Types (
+  Assoc,
+  ExecFn (FnFn),
+  ExecOp (FnOp),
+  Expr (..),
+  Fun (fexec),
+  FunFun (..),
+  FunMap,
+  FunOp (BitOp, CmpOp, MathOp),
+  Maps (..),
+  Op (oexec),
+  OpMap,
+  funmap,
+  numToText,
+  opmap,
+  showT,
+  varmap,
+ )
 import Control.Lens (makeLenses, use, uses, (%=), (%~), (+=), (.=), (^.))
 import Control.Monad.Except
 import Control.Monad.State
@@ -65,36 +65,36 @@ newtype UserVar = UV
 makeLenses ''UserVar
 
 data UserFun = UF
-  { _params :: [Text],
-    _ufexpr :: Expr,
-    _ufchunk :: Chunk
+  { _params :: [Text]
+  , _ufexpr :: Expr
+  , _ufchunk :: Chunk
   }
   deriving (Show, Generic)
 
 makeLenses ''UserFun
 
 data UserOp = UO
-  { _precedence :: Int,
-    _associativity :: Assoc,
-    _uoexec :: Expr
+  { _precedence :: Int
+  , _associativity :: Assoc
+  , _uoexec :: Expr
   }
   deriving (Show, Generic)
 
 makeLenses ''UserOp
 
 data UserLabel = UL
-  { _uoffset :: Int,
-    _locations :: [Int]
+  { _uoffset :: Int
+  , _locations :: [Int]
   }
   deriving (Show)
 
 makeLenses ''UserLabel
 
 data UserMaps = UM
-  { _ufuns :: Map (Text, Int) UserFun,
-    _uops :: Map Text UserOp,
-    _uvars :: Map Text UserVar,
-    _ulbs :: Map Text UserLabel
+  { _ufuns :: Map (Text, Int) UserFun
+  , _uops :: Map Text UserOp
+  , _uvars :: Map Text UserVar
+  , _ulbs :: Map Text UserLabel
   }
   deriving (Show, Generic)
 
@@ -163,42 +163,42 @@ disassembleChunk v = case V.uncons v of
     if
       | n > 7 -> "err (too much)"
       | n >= 0 && n <= 7 -> case fromWord8 n of
-        OpSet -> case V.uncons ns of
-          Nothing -> "err (no constant)"
-          Just (n1, ns1) -> "set (" <> show n1 <> ")\n" <> disassembleChunk ns1
-        OpGet -> case V.uncons ns of
-          Nothing -> "err (no constant)"
-          Just (n1, ns1) -> "get (" <> show n1 <> ")\n" <> disassembleChunk ns1
-        OpReturn -> "ret"
-        OpConstant ->
-          case V.uncons ns of
+          OpSet -> case V.uncons ns of
             Nothing -> "err (no constant)"
-            Just (n1, ns1) -> "const (" <> show n1 <> ")\n" <> disassembleChunk ns1
-        OpBuiltin ->
-          case V.uncons ns of
-            Nothing -> "err (no callee number)"
-            Just (n1, ns1) -> "call (" <> show n1 <> ")\n" <> disassembleChunk ns1
-        OpJmp ->
-          case V.uncons ns of
-            Nothing -> "err (no offset 1)"
-            Just (n1, ns1) ->
-              case V.uncons ns1 of
-                Nothing -> "err (no offset 2)"
-                Just (n2, ns2) -> "jmp (" <> show n1 <> ", " <> show n2 <> ")\n" <> disassembleChunk ns2
-        OpInternal ->
-          case V.uncons ns of
-            Nothing -> "err (no op number)"
-            Just (n1, ns1) -> "internal (" <> show n1 <> ")\n" <> disassembleChunk ns1
-        OpEject ->
-          case V.uncons ns of
-            Nothing -> "err (no eject opcode)"
-            Just (n1, ns1) -> case fromWord8 n1 of
-              OpInput -> "input\n" <> disassembleChunk ns1
-              OpOutput -> "output\n" <> disassembleChunk ns1
-              OpFmt -> case V.uncons ns1 of
-                Nothing -> "err (no format string)"
-                Just (n2, ns2) -> "fmt (" <> show n2 <> ")\n" <> disassembleChunk ns2
-        OpCall -> disassembleChunk ns
+            Just (n1, ns1) -> "set (" <> show n1 <> ")\n" <> disassembleChunk ns1
+          OpGet -> case V.uncons ns of
+            Nothing -> "err (no constant)"
+            Just (n1, ns1) -> "get (" <> show n1 <> ")\n" <> disassembleChunk ns1
+          OpReturn -> "ret"
+          OpConstant ->
+            case V.uncons ns of
+              Nothing -> "err (no constant)"
+              Just (n1, ns1) -> "const (" <> show n1 <> ")\n" <> disassembleChunk ns1
+          OpBuiltin ->
+            case V.uncons ns of
+              Nothing -> "err (no callee number)"
+              Just (n1, ns1) -> "call (" <> show n1 <> ")\n" <> disassembleChunk ns1
+          OpJmp ->
+            case V.uncons ns of
+              Nothing -> "err (no offset 1)"
+              Just (n1, ns1) ->
+                case V.uncons ns1 of
+                  Nothing -> "err (no offset 2)"
+                  Just (n2, ns2) -> "jmp (" <> show n1 <> ", " <> show n2 <> ")\n" <> disassembleChunk ns2
+          OpInternal ->
+            case V.uncons ns of
+              Nothing -> "err (no op number)"
+              Just (n1, ns1) -> "internal (" <> show n1 <> ")\n" <> disassembleChunk ns1
+          OpEject ->
+            case V.uncons ns of
+              Nothing -> "err (no eject opcode)"
+              Just (n1, ns1) -> case fromWord8 n1 of
+                OpInput -> "input\n" <> disassembleChunk ns1
+                OpOutput -> "output\n" <> disassembleChunk ns1
+                OpFmt -> case V.uncons ns1 of
+                  Nothing -> "err (no format string)"
+                  Just (n2, ns2) -> "fmt (" <> show n2 <> ")\n" <> disassembleChunk ns2
+          OpCall -> disassembleChunk ns
       | otherwise -> "err (unknown)"
 
 writeValueArray :: ValueArray -> Value -> ValueArray
@@ -255,9 +255,9 @@ catchVar locals ms ex = case ex of
     return $ Call ":=" [Id nm, ne]
   (Id i) | T.head i == '@' -> return $ Id i
   (Id i) ->
-    let a = M.lookup i (ms^.varmap) :: Maybe (Complex Rational)
+    let a = M.lookup i (ms ^. varmap) :: Maybe (Complex Rational)
         getNames = map (\(f, _) -> (f, f)) . M.keys
-        b = lookup i (getNames (ms^.funmap) ++ getNames functions) :: Maybe Text
+        b = lookup i (getNames (ms ^. funmap) ++ getNames functions) :: Maybe Text
         c = S.member i locals
      in case a of
           Just n -> return $ randomCheck n i
@@ -267,11 +267,11 @@ catchVar locals ms ex = case ex of
               if c
                 then return $ Id i
                 else Left $ "No such variable: " <> i
-    where
-      randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number (realPart n) (imagPart n)
+   where
+    randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number (realPart n) (imagPart n)
   e -> goInside st e
-    where
-      st = catchVar locals ms
+   where
+    st = catchVar locals ms
 
 addConstant :: Value -> StateChunk ()
 addConstant = doVar OpConstant
@@ -450,60 +450,60 @@ run m = do
                               push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
                             _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
                     runNext
-  where
-    jump offset = ip += offset
-    runNext = run m
-    push v = stack %= (v :)
-    readWord = do
-      oc <- gets (\vm -> (vm ^. chunke . code) V.! (vm ^. ip))
-      step
-      return oc
-    readOffset = do
-      msb <- extendWord8 <$> readWord
-      lsb <- extendWord8 <$> readWord
-      return $ (shiftL (msb .&. 0x7f) 8 .|. lsb) * if testBit msb 7 then -1 else 1
-    pop = do
-      s <- use stack
+ where
+  jump offset = ip += offset
+  runNext = run m
+  push v = stack %= (v :)
+  readWord = do
+    oc <- gets (\vm -> (vm ^. chunke . code) V.! (vm ^. ip))
+    step
+    return oc
+  readOffset = do
+    msb <- extendWord8 <$> readWord
+    lsb <- extendWord8 <$> readWord
+    return $ (shiftL (msb .&. 0x7f) 8 .|. lsb) * if testBit msb 7 then -1 else 1
+  pop = do
+    s <- use stack
+    if null s
+      then throwError "Stack underflow!"
+      else do
+        stack .= tail s
+        return . head $ s
+  peek = do
+    s <- use stack
+    if null s
+      then throwError "Stack underflow!"
+      else return . head $ s
+  peekSafe = do
+    s <- use stack
+    return $
       if null s
-        then throwError "Stack underflow!"
-        else do
-          stack .= tail s
-          return . head $ s
-    peek = do
-      s <- use stack
-      if null s
-        then throwError "Stack underflow!"
-        else return . head $ s
-    peekSafe = do
-      s <- use stack
-      return $
-        if null s
-          then 0 :+ 0
-          else head s
-    readOpcode = readWord
-    step = ip += 1
-    sanityCheck = do
-      i <- use ip
-      l <- uses (chunke . code) V.length
-      return $ i < l
-    readConstant n = gets $ (V.! fromWord8 n) . unarray . (^. chunke . constants)
-    getvar name = do
-      mv <- uses vars $ M.lookup name
-      case mv of
-        Nothing -> throwError $ "No such variable: " <> name
-        Just v -> return v
-    setvar name val = vars %= M.insert name val
-    handleInternal op = do
-      case op of
-        OpReal -> pop >>= push . (:+ 0) . realPart
-        OpImag -> pop >>= push . (:+ 0) . imagPart
-        OpConj -> pop >>= push . conjugate
-        OpUnder -> peekSafe >>= setvar "_"
-        OpRandom -> do
-          rgen <- use gen
-          let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
-          gen .= newGen
-          push $ (:+ 0) . toRational $ randomNumber
+        then 0 :+ 0
+        else head s
+  readOpcode = readWord
+  step = ip += 1
+  sanityCheck = do
+    i <- use ip
+    l <- uses (chunke . code) V.length
+    return $ i < l
+  readConstant n = gets $ (V.! fromWord8 n) . unarray . (^. chunke . constants)
+  getvar name = do
+    mv <- uses vars $ M.lookup name
+    case mv of
+      Nothing -> throwError $ "No such variable: " <> name
+      Just v -> return v
+  setvar name val = vars %= M.insert name val
+  handleInternal op = do
+    case op of
+      OpReal -> pop >>= push . (:+ 0) . realPart
+      OpImag -> pop >>= push . (:+ 0) . imagPart
+      OpConj -> pop >>= push . conjugate
+      OpUnder -> peekSafe >>= setvar "_"
+      OpRandom -> do
+        rgen <- use gen
+        let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
+        gen .= newGen
+        push $ (:+ 0) . toRational $ randomNumber
 
 emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty)
@@ -529,7 +529,7 @@ writeOffset addr value =
       let val = abs value
       let msb = toWord8 (val `shiftR` 8) .|. if value < 0 then bit 7 else 0x0
       let lsb = toWord8 (val .&. 0xff)
-      chunkc . code %= (V.// [(addr-2, msb), (addr -1, lsb)])
+      chunkc . code %= (V.// [(addr - 2, msb), (addr - 1, lsb)])
 
 unfinishedJump :: StateChunk Int
 unfinishedJump = do
@@ -541,113 +541,119 @@ unfinishedJump = do
 processLabels :: StateChunk ()
 processLabels = do
   labels <- use (umaps . ulbs)
-  forM_ labels (\(UL o ls) -> do
-    forM_ ls (\loc -> do
-      writeOffset loc (o - loc)))
+  forM_
+    labels
+    ( \(UL o ls) -> do
+        forM_
+          ls
+          ( \loc -> do
+              writeOffset loc (o - loc)
+          )
+    )
 
 compile' :: Maps -> Expr -> StateChunk ()
 compile' m = go
-  where
-    go ex = case ex of
-      Imprt filename -> return ()
-      ChairLit _ -> return ()
-      ChairSit _ _ -> return ()
-      Asgn name expr -> go expr >> setVar (StrVal name)
-      UDF name args (Call "df" [body, var]) -> case derivative body var of
-        Left err -> throwError err
-        Right der -> addFun m name args der
-      UDF name args body -> addFun m name args body
-      UDO name opprec assoc body -> addOp m name opprec assoc body
-      Par e -> go e
-      Call ":=" [Id name, expr] ->
-        if "c." `T.isPrefixOf` name
-          then throwError "Can't change constant"
-          else go expr >> setVar (StrVal name)
-      Call ":" [a, b] -> go a >> go b
-      Call "|>" [x, Id f] -> go $ Call f [x]
-      Call "input" [] -> do
-        emitByte OpEject
-        emitByte OpInput
-      Call "print" [x] -> do
-        go x
-        emitByte OpEject
-        emitByte OpOutput
-      Call "print" (Number n ni : values) -> do
-        let format = numToText (n :+ ni)
-        forM_ values go
-        emitByte OpEject
-        emitByte OpFmt
-        findPlace (StrVal $ either id id format) >>= emitByte
-      Call "atan" [Call "/" [x, y]] -> go $ Call "atan2" [x, y]
-      Call "log" [x, y] -> go $ Call "log2" [x, y]
-      Call "if" [cond, t] -> go (Call "if" [cond, t, Number 0 0])
-      Call "if" [cond, t, f] -> do
-        go cond
-        off1 <- unfinishedJump
-        go t
-        addConstant (NumVal $ 0 :+ 0)
-        off2 <- unfinishedJump
-        go f
-        off3 <- getOffset
-        writeOffset off1 (off2 - off1)
-        writeOffset off2 (off3 - off2)
-      Call "loop" [c, a] -> do
-        off1 <- getOffset
-        go c
-        off2 <- unfinishedJump
-        go a
-        addConstant (NumVal $ 0 :+ 0)
-        off3 <- unfinishedJump
-        writeOffset off2 (off3 - off2)
-        writeOffset off3 (off1 - off3)
-      Call "loop" [s, c, a] -> do
-        go s
-        go $ Call "loop" [c, a]
-      Call "goto" [Id l] -> do
-        addConstant (NumVal $ 0 :+ 0)
-        off <- unfinishedJump
-        useLabel l off
-      Call f [x] | f `V.elem` ["real", "imag", "conj"] -> do
-        go x
-        emitByte OpInternal
-        let idx = fromMaybe 0 $ V.elemIndex f ["real", "imag", "conj"]
-        emitByte (toEnum idx :: OpInternal)
-      Call op [x, y] | M.member op (m ^. opmap) -> do
-        go x
-        go y
-        emitByte OpBuiltin
-        emitByte (op2Code (m ^. opmap) op)
-      Call fun args | M.member (fun, length args) (m ^. funmap) -> do
-        forM_ args go
-        emitByte OpBuiltin
-        emitByte (fun2Code (m ^. funmap) (fun, length args))
-      Call callee args -> do
-        UM fm om _ _ <- use umaps
-        if
-          | (M.member (callee, length args) fm) -> do
-              let UF ps e _ = fm M.! (callee, length args)
-              ne <- liftEither $ substitute (zip ps args) e
-              go ne
-          | (M.member callee om) -> do
-              let UO _ _ e = om M.! callee
-              ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
-              go ne
-          | (callee == "-" && length args == 1) -> go (Call "-" [Number 0 0, head args])
-          | (callee == "~" && length args == 1) -> go (Call "comp" args)
-          | (callee == "!" && length args == 1) -> go (Call "fact" args)
-          | otherwise -> throwError $ "Callee does not exist: " <> callee
-      Number a b -> addConstant (NumVal $ a :+ b)
-      Id a -> do
-        if
-          | a == "m.r" -> emitByte OpInternal >> emitByte OpRandom
-          | M.member a (m ^. varmap) && a /= "_" -> addConstant (NumVal $ (m ^. varmap) M.! a)
-          | otherwise -> getVar (StrVal a)
-      Seq es -> forM_ es $ \e -> do
-        go e
-        emitByte OpInternal >> emitByte OpUnder
-      Label l -> do
-        off <- getOffset
-        addLabel l off
+ where
+  go ex = case ex of
+    Imprt filename -> return ()
+    ChairLit _ -> return ()
+    ChairSit _ _ -> return ()
+    Asgn name expr -> go expr >> setVar (StrVal name)
+    UDF name args (Call "df" [body, var]) -> case derivative body var of
+      Left err -> throwError err
+      Right der -> addFun m name args der
+    UDF name args body -> addFun m name args body
+    UDO name opprec assoc body -> addOp m name opprec assoc body
+    Par e -> go e
+    Call ":=" [Id name, expr] ->
+      if "c." `T.isPrefixOf` name
+        then throwError "Can't change constant"
+        else go expr >> setVar (StrVal name)
+    Call ":" [a, b] -> go a >> go b
+    Call "|>" [x, Id f] -> go $ Call f [x]
+    Call "input" [] -> do
+      emitByte OpEject
+      emitByte OpInput
+    Call "print" [x] -> do
+      go x
+      emitByte OpEject
+      emitByte OpOutput
+    Call "print" (Number n ni : values) -> do
+      let format = numToText (n :+ ni)
+      forM_ values go
+      emitByte OpEject
+      emitByte OpFmt
+      findPlace (StrVal $ either id id format) >>= emitByte
+    Call "atan" [Call "/" [x, y]] -> go $ Call "atan2" [x, y]
+    Call "log" [x, y] -> go $ Call "log2" [x, y]
+    Call "if" [cond, t] -> go (Call "if" [cond, t, Number 0 0])
+    Call "if" [cond, t, f] -> do
+      go cond
+      off1 <- unfinishedJump
+      go t
+      addConstant (NumVal $ 0 :+ 0)
+      off2 <- unfinishedJump
+      go f
+      off3 <- getOffset
+      writeOffset off1 (off2 - off1)
+      writeOffset off2 (off3 - off2)
+    Call "loop" [c, a] -> do
+      off1 <- getOffset
+      go c
+      off2 <- unfinishedJump
+      go a
+      addConstant (NumVal $ 0 :+ 0)
+      off3 <- unfinishedJump
+      writeOffset off2 (off3 - off2)
+      writeOffset off3 (off1 - off3)
+    Call "loop" [s, c, a] -> do
+      go s
+      go $ Call "loop" [c, a]
+    Call "goto" [Id l] -> do
+      addConstant (NumVal $ 0 :+ 0)
+      off <- unfinishedJump
+      useLabel l off
+    Call f [x] | f `V.elem` ["real", "imag", "conj"] -> do
+      go x
+      emitByte OpInternal
+      let idx = fromMaybe 0 $ V.elemIndex f ["real", "imag", "conj"]
+      emitByte (toEnum idx :: OpInternal)
+    Call op [x, y] | M.member op (m ^. opmap) -> do
+      go x
+      go y
+      emitByte OpBuiltin
+      emitByte (op2Code (m ^. opmap) op)
+    Call fun args | M.member (fun, length args) (m ^. funmap) -> do
+      forM_ args go
+      emitByte OpBuiltin
+      emitByte (fun2Code (m ^. funmap) (fun, length args))
+    Call callee args -> do
+      UM fm om _ _ <- use umaps
+      if
+        | (M.member (callee, length args) fm) -> do
+            let UF ps e _ = fm M.! (callee, length args)
+            ne <- liftEither $ substitute (zip ps args) e
+            go ne
+        | (M.member callee om) -> do
+            let UO _ _ e = om M.! callee
+            ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
+            go ne
+        | (callee == "-" && length args == 1) -> go (Call "-" [Number 0 0, head args])
+        | (callee == "~" && length args == 1) -> go (Call "comp" args)
+        | (callee == "!" && length args == 1) -> go (Call "fact" args)
+        | otherwise -> throwError $ "Callee does not exist: " <> callee
+    Number a b -> addConstant (NumVal $ a :+ b)
+    Id a -> do
+      if
+        | a == "m.r" -> emitByte OpInternal >> emitByte OpRandom
+        | M.member a (m ^. varmap) && a /= "_" -> addConstant (NumVal $ (m ^. varmap) M.! a)
+        | otherwise -> getVar (StrVal a)
+    Seq es -> forM_ es $ \e -> do
+      go e
+      emitByte OpInternal >> emitByte OpUnder
+    Label l -> do
+      off <- getOffset
+      addLabel l off
 
 op2Code :: OpMap -> Text -> Word8
 op2Code m op = toWord8 $ M.findIndex op m
@@ -663,10 +669,10 @@ ejectValue vm =
   let st = vm ^. stack
    in case st of
         [] -> (Nothing, vm)
-        (x : xs) -> (Just x, vm {_stack = xs})
+        (x : xs) -> (Just x, vm{_stack = xs})
 
 ejectValues :: Int -> VM -> ([Val], VM)
 ejectValues n vm =
   let st = vm ^. stack
       (s, f) = splitAt n st
-   in (reverse s, vm {_stack = f})
+   in (reverse s, vm{_stack = f})

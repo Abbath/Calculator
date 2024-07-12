@@ -2,10 +2,41 @@
 module Main where
 
 import Calculator
+    ( CompileMode(CompRead, CompLoad, CompStore),
+      Mode(Internal),
+      compileAndRunFile,
+      evalLoop,
+      evalFile,
+      webLoop )
 import Calculator.Tests ( testLoop )
 import Options.Applicative
+    ( auto,
+      fullDesc,
+      header,
+      help,
+      info,
+      long,
+      metavar,
+      option,
+      progDesc,
+      short,
+      strOption,
+      switch,
+      value,
+      execParser,
+      helper,
+      Parser )
 import Control.Monad ( when )
 import Data.Char ( toLower )
+#ifdef DISCORD
+import Calculator.Opts.Dis ( pingpongExample )
+#endif
+#ifdef RAYLIB
+import Calculator.Opts.Ray ( raylibLoop )
+#endif
+#ifdef TELEGRAM
+import Calculator.Opts.Tel
+#endif
 
 data Options = Options {
       input       :: !FilePath,
