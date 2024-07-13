@@ -52,8 +52,6 @@ library
                     , http-client
                     , http-client-tls
                     , http-types
-                    , ieee754
-                    , integration
                     , lens
                     , lens-aeson
                     , mtl
@@ -74,7 +72,7 @@ library
   if flag(telegram)
     build-depends:    telegram-bot-simple
                     , telegram-bot-api
-    exposed-modules:    Calculator.Opts.Tel
+    exposed-modules:  Calculator.Opts.Tel
     cpp-options:     -DTELEGRAM
   if flag(raylib)
     build-depends:    h-raylib
