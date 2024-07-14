@@ -9,7 +9,7 @@ import Calculator.Builtins (
   functions,
   getFakePrecedences,
   getPrecedences,
-  operators,
+  operators, maxPrecedence,
  )
 import Calculator.Generator
 import Calculator.Types (
@@ -179,7 +179,7 @@ evalS ex = case ex of
       Nothing -> throwErr $ "No such operator: " <> op
   UDO n p a e
     | M.member n operators -> throwErr $ "Can not redefine the built-in operator: " <> n
-    | p < 1 || p > 14 -> throwErr $ "Bad precedence: " <> showT p
+    | p < 1 || p > maxPrecedence -> throwErr $ "Bad precedence: " <> showT p
     | otherwise -> do
         mps <- use maps
         let t = localize ["x", "y"] e >>= catchVar (mps ^. varmap, mps ^. funmap)

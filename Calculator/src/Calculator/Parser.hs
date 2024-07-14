@@ -26,6 +26,7 @@ import Data.Map.Strict qualified as M
 import Data.Ratio (numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Calculator.Builtins (maxPrecedence)
 
 data Input = Input
   { inputLoc :: Int
@@ -294,7 +295,7 @@ expr min_bp m = Parser $
         return $ case asoc of
           L -> (p, p + 0.25)
           R -> (p + 0.25, p)
-      else return (13, 13.25)
+      else let mp = fromIntegral (maxPrecedence + 1) in return (mp, mp + 0.25)
   prefix_binding_power :: Text -> Maps -> Double
   prefix_binding_power op ms =
     let (Op pr _ _) = (ms ^. opmap) M.! op

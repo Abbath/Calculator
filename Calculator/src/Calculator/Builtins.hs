@@ -7,6 +7,7 @@ import Calculator.Types (Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (.
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
 import Data.Complex (Complex (..), imagPart, realPart)
+import Data.Foldable (maximumBy)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.Ratio (denominator, numerator, (%))
@@ -49,6 +50,9 @@ operators =
   , ("|>", Op{precedence = 11, associativity = L, oexec = NOp})
   , ("::=", Op{precedence = 12, associativity = R, oexec = NOp})
   ]
+
+maxPrecedence :: Int
+maxPrecedence = precedence . snd $ maximumBy (\a b -> precedence (snd a) `compare` precedence (snd b)) (M.toList operators)
 
 linearOperators :: V.Vector (Text, Op)
 linearOperators = V.fromList $ M.assocs operators
@@ -114,6 +118,8 @@ functions =
   , (("cosc", 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0], Call "-" [Call "/" [Call "cos" [Id "x"], Id "x"], Call "/" [Call "sin" [Id "x"], Call "^" [Id "x", Number 2 0]]], Number 1 0])})
   , (("sincn", 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0], Call "/" [Call "sin" [Call "*" [Id "m.pi", Id "x"]], Par (Call "*" [Id "m.pi", Id "x"])], Number 1 0])})
   , (("coscn", 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0], Call "-" [Call "/" [Call "cos" [Call "*" [Id "m.pi", Id "x"]], Id "x"], Call "/" [Call "sin" [Call "*" [Id "m.pi", Id "x"]], Par (Call "*" [Id "m.pi", Call "^" [Id "x", Number 2 0]])]], Number 1 0])})
+  , (("hav", 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Call "-" [Number 1 0, Call "cos" [Id "x"]], Number 2 0])})
+  , (("ahav", 1), Fun{params = ["x"], fexec = ExFn (Call "*" [Number 2 0, Call "asin" [Call "sqrt" [Id "x"]]])})
   , (("trunc", 1), Fun{params = [], fexec = FnFn (IntFn1 truncate)})
   , (("round", 1), Fun{params = [], fexec = FnFn (IntFn1 round)})
   , (("floor", 1), Fun{params = [], fexec = FnFn (IntFn1 floor)})
