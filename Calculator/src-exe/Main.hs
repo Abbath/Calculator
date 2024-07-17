@@ -28,6 +28,8 @@ import Options.Applicative
       Parser )
 import Control.Monad ( when )
 import Data.Char ( toLower )
+import Paths_Calculator (version)
+import Data.Version (showVersion)
 #ifdef DISCORD
 import Calculator.Opts.Dis ( pingpongExample )
 #endif
@@ -47,6 +49,7 @@ data Options = Options {
       test        :: !Bool,
       raylib      :: !Bool,
       discord     :: !Bool,
+      ver     :: !Bool,
       port        :: !Int
     }
 
@@ -60,22 +63,24 @@ options = Options
           <*> switch (long "test" <> short 't' <> help "Run tests")
           <*> switch (long "raylib" <> short 'r' <> help "Raylib GUI")
           <*> switch (long "discord" <> short 'd' <> help "Discord bot")
+          <*> switch (long "version" <> short 'v' <> help "Version")
           <*> option auto (long "port" <> short 'p' <> help "Port" <> metavar "PORT" <> value 3000)
 
 main :: IO ()
 main = do
   writeFile "ids" "[]"
   opts2 <- execParser opts
-  when (test opts2) testLoop
   if
+    | test opts2 -> testLoop
+    | ver opts2 -> putStrLn $ showVersion version
 #ifdef RAYLIB
     | raylib opts2 -> raylibLoop
 #endif
 #ifdef DISCORD
     | discord opts2 -> pingpongExample
 #endif
-    | (not . null . input $ opts2) -> evalFile (input opts2)
-    | (not . null . source $ opts2) -> compileAndRunFile (source opts2) $ case compileMode opts2 of
+    | not . null . input $ opts2 -> evalFile (input opts2)
+    | not . null . source $ opts2 -> compileAndRunFile (source opts2) $ case compileMode opts2 of
         "L" -> CompLoad
         "S" -> CompStore
         "R" -> CompRead

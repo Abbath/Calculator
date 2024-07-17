@@ -1,6 +1,6 @@
 cabal-version:        3.4
 name:                 Calculator
-version:              11.3.0
+version:              11.4.0
 synopsis:             Calculator
 -- description:
 -- license:
@@ -87,6 +87,7 @@ library
 
 executable Calculator
   main-is:              Main.hs
+  other-modules:        Paths_Calculator
   build-depends:        Calculator
                       , base >= 4.7 && < 5
                       , optparse-applicative
