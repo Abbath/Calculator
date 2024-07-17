@@ -203,24 +203,6 @@ funsToList = map (\(k, v) -> (k, (params v, unpackExFn . fexec $ v))) . filter (
 funsFromList :: [((Text, Int), ([Text], Expr))] -> FunMap
 funsFromList = M.fromList . map (\(k, (p, e)) -> (k, Fun p (ExFn e)))
 
--- instance Show Expr where
---   show = showExpr 0
-
--- showExpr :: Int -> Expr -> String
--- showExpr n ex =
---   let suf = case ex of
---         UDF name a e    -> name ++ "("++ intercalate ", " a ++ ")" ++ "\n" ++ s e
---         UDO name p a e  -> name ++ "("++ show p ++ ", " ++ show a ++ ")" ++ "\n" ++ s e
---         Asgn i e        -> "Assign " ++ i ++ "\n" ++ s e
---         Number x        -> "Number " ++ show x
---         Par e           -> "Par \n" ++ s e
---         UMinus e        -> "UMinus \n" ++ s e
---         OpCall op e1 e2 -> "OpCall " ++ op ++ "\n" ++ s e1 ++ "\n" ++ s e2
---         FunCall name e  -> "FunCall " ++ name ++ "\n" ++ intercalate "\n" (map s e)
---         Id name         -> "Id " ++ name
---   in replicate n ' ' ++ suf
---   where s = showExpr (n+1)
-
 showT :: (Show a) => a -> Text
 showT = T.pack . show
 

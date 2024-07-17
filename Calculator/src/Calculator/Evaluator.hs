@@ -9,7 +9,8 @@ import Calculator.Builtins (
   functions,
   getFakePrecedences,
   getPrecedences,
-  operators, maxPrecedence,
+  maxPrecedence,
+  operators,
  )
 import Calculator.Generator
 import Calculator.Types (
@@ -153,21 +154,26 @@ evalS ex = case ex of
     maps . chairmap . at s ?= M.empty
     throwMsg "New chair"
   Asgn s _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
-  Asgn s e -> do
-    r <- evm e
-    maps . varmap . at s ?= r
-    throwMsg ((if "c." `T.isPrefixOf` s then "Constant " else "Variable ") <> s <> "=" <> showComplex r)
-  UDF n [s] (Call "df" [e, Id x]) | s == x -> do
+  Asgn f e@(Call "/" [Id g, Number n _]) -> do
+    let n1 = fromInteger . numerator $ n
+    fm <- use (maps . funmap)
+    if M.member (g, n1) fm
+      then do
+        maps . funmap . at (f, n1) ?= (fm M.! (g, n1))
+        throwMsg ("Function " <> f <> "/" <> showT n1)
+      else createVar f e
+  Asgn s e -> createVar s e
+  UDF f [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
-    either throwErr (evm . UDF n [s]) de
-  UDF n s e -> do
+    either throwErr (evm . UDF f [s]) de
+  UDF f s e -> do
     mps <- use maps
     let newe = localize s e >>= catchVar (mps ^. varmap, mps ^. funmap)
     either
       throwErr
       ( \r -> do
-          maps . funmap . at (n, length s) ?= Fun (map (T.cons '@') s) (ExFn r)
-          throwMsg ("Function " <> n <> "/" <> showT (length s))
+          maps . funmap . at (f, length s) ?= Fun (map (T.cons '@') s) (ExFn r)
+          throwMsg ("Function " <> f <> "/" <> showT (length s))
       )
       newe
   UDO n (-1) _ e@(Call op _) -> do
@@ -408,12 +414,13 @@ evalS ex = case ex of
   Id s -> do
     mps <- use maps
     chairs <- use $ maps . chairmap
+    vars <- use $ maps . varmap
     if M.member s chairs
       then
         throwMsg $ showChair (chairs M.! s)
       else do
-        let val = asum ([M.lookup ("_." <> s) (mps ^. varmap), M.lookup s (mps ^. varmap)] :: [Maybe (Complex Rational)])
-        maybe (throwError (ErrMsg $ "No such variable: " <> s)) return val
+        let val = asum ([M.lookup ("_." <> s) vars, M.lookup s vars] :: [Maybe (Complex Rational)])
+        maybe (throwError (ErrMsg $ "No such variable : " <> s)) return val
   ChairLit _ -> return $ 0 :+ 0
   ChairSit a xs -> do
     val <- use $ maps . chairmap . at a
@@ -429,6 +436,10 @@ evalS ex = case ex of
   Imprt _ -> throwErr "Imports are not supported in this mode!"
   Label _ -> throwErr "Label are not supported in this mode!"
  where
+  createVar f e = do
+    r <- evm e
+    maps . varmap . at f ?= r
+    throwMsg ((if "c." `T.isPrefixOf` f then "Constant " else "Variable ") <> f <> "=" <> showComplex r)
   evalBuiltinOp bop x y = do
     let builtin_op = operators M.! bop
     case oexec builtin_op of

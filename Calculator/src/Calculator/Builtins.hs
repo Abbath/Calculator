@@ -16,7 +16,7 @@ import Data.Text qualified as T
 import Data.Vector qualified as V
 import Numeric (expm1, log1mexp, log1p, log1pexp)
 
-operators :: Map Text Op
+operators :: OpMap
 operators =
   [ ("=", Op{precedence = 0, associativity = R, oexec = NOp})
   , ("<-", Op{precedence = 0, associativity = R, oexec = NOp})
@@ -57,7 +57,7 @@ maxPrecedence = precedence . snd $ maximumBy (\a b -> precedence (snd a) `compar
 linearOperators :: V.Vector (Text, Op)
 linearOperators = V.fromList $ M.assocs operators
 
-functions :: Map (Text, Int) Fun
+functions :: FunMap
 functions =
   [ (("prat", 1), Fun{params = [], fexec = NFn})
   , (("str", 1), Fun{params = [], fexec = NFn})
