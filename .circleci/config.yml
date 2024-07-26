@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   build:
     docker:
-      - image: haskell:9.2.8
+      - image: haskell:9.6
     resource_class: large
     steps:
       - checkout
@@ -15,7 +15,7 @@ jobs:
           no_output_timeout: 30m
           command: cabal new-update && cabal new-install Calculator --lib
       - run:
-          name: Build 
+          name: Build
           command: cabal new-build Calculator
       - run:
           name: Build Tests
