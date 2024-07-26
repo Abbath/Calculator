@@ -50,7 +50,7 @@ handleAction mode (Reply msg) model = model2 <# do
   where (response, model2) = second Model $ either
           Prelude.id
           (first (MsgMsg . showComplex))
-          (let (EvalState mps rgen) = getMaps model in parseEval mode mps rgen msg)
+          (let (EvalState mps rgen) = getMaps model in parseEval mode (EvalState mps rgen) msg)
 
 -- | Run bot with a given 'Telegram.Token'.
 run :: Mode -> Telegram.Token -> IO ()

@@ -45,6 +45,8 @@ import Data.Vector qualified as V
 import Data.Word
 import GHC.Generics
 import System.Random (Random (randomR), StdGen)
+import Control.Monad (when)
+import Data.Foldable (forM_)
 
 -- import Debug.Trace
 

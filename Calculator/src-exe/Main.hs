@@ -26,7 +26,6 @@ import Options.Applicative
       execParser,
       helper,
       Parser )
-import Control.Monad ( when )
 import Data.Char ( toLower )
 import Paths_Calculator (version)
 import Data.Version (showVersion)

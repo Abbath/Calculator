@@ -40,9 +40,10 @@ import Calculator.Types (
 import Clay (render)
 import Control.Lens ((%~), (&), (^.))
 import Control.Monad.Except (runExceptT)
+
+import Control.Monad (when)
 import Control.Monad.Reader (
   MonadIO (liftIO),
-  when,
  )
 import Control.Monad.State (StateT)
 import Control.Monad.State qualified as S
@@ -105,7 +106,7 @@ import System.Console.Haskeline (
 import System.Directory (findFile, getHomeDirectory, removeFile)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import System.FilePath (replaceExtension)
-import System.Random ( initStdGen, randomIO)
+import System.Random (initStdGen, randomIO)
 import Text.Read (readMaybe)
 
 data Mode = Internal deriving (Show)
@@ -161,7 +162,7 @@ loop mode mps = do
   removeLocals = varmap %~ M.filterWithKey (\k v -> not $ "_." `TS.isInfixOf` k)
   loop' :: Mode -> EvalState -> InputT (StateT StateData IO) ()
   loop' md es = do
-    S.lift $ S.modify (\s -> s `union` extractNames (es^.maps))
+    S.lift $ S.modify (\s -> s `union` extractNames (es ^. maps))
     input <- getInputLine "> "
     case input of
       Nothing -> return ()
@@ -194,7 +195,7 @@ interpret path mode mps = do
   loop' :: [TS.Text] -> Mode -> EvalState -> StateT StateData IO ()
   loop' [] _ _ = return ()
   loop' src@(l : ls) md es = do
-    S.modify (\s -> s `union` extractNames (es^.maps))
+    S.modify (\s -> s `union` extractNames (es ^. maps))
     case l of
       "quit" -> return ()
       x -> do
@@ -279,7 +280,7 @@ compileAndRunFile :: FilePath -> CompileMode -> IO ()
 compileAndRunFile f cm = compileAndRun f cm defaultMaps
 
 parseEval :: Mode -> EvalState -> TS.Text -> Either (MessageType, EvalState) (Complex Rational, EvalState)
-parseEval md es x = evalExprS (parseString md x (es^.maps)) es
+parseEval md es x = evalExprS (parseString md x (es ^. maps)) es
 
 evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m defaultMaps

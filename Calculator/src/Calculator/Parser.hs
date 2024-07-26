@@ -18,9 +18,9 @@ import Calculator.Types (
   opmap,
   showT,
  )
-import Control.Applicative (Alternative (..), Applicative (liftA2))
+import Control.Applicative (Alternative (..))
 import Control.Lens ((^.))
-import Control.Monad.Reader (void)
+import Control.Monad (void)
 import Data.Complex
 import Data.Map.Strict qualified as M
 import Data.Ratio (numerator)

@@ -5,8 +5,8 @@ module Calculator.Opts.Ray where
 
 import Calculator (Mode (..), defaultMaps, parseEval)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
-import Calculator.Types (EvalState (..), gen, maps, showComplex)
-import Control.Lens (makeLenses, use, (%=), (.=), (^.))
+import Calculator.Types (EvalState (..), showComplex)
+import Control.Lens (makeLenses, use, (%=), (.=))
 import Control.Monad (forM_, unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.State (StateT, evalStateT)
@@ -96,7 +96,7 @@ raylibLoop' = do
       ep <- liftIO $ RL.isKeyPressed RL.KeyEnter
       when ep $ do
         es <- use estate
-        let y = parseEval Internal (es ^. maps) (es ^. gen) pr
+        let y = parseEval Internal es pr
         let (res, es1) = case y of
               Right (r, es0) -> (showComplex r, es0)
               Left (ErrMsg m, _) -> (m, es)
