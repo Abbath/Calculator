@@ -49,6 +49,8 @@ module Calculator.Types (
   ChairVal (..),
   Chair,
   showChair,
+  Arity(..),
+  ar2int
 )
 where
 
@@ -82,6 +84,7 @@ data Token
   | TComma
   | TEqual
   | TLabel Text
+  | TDots
   deriving (Show, Eq)
 
 data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
@@ -113,7 +116,7 @@ instance ToJSON Expr
 
 instance FromJSON Expr
 
-type ListTuple = ([(Text, (Rational, Rational))], [((Text, Int), ([Text], Expr))], [(Text, ((Int, Assoc), Expr))])
+type ListTuple = ([(Text, (Rational, Rational))], [((Text, Arity), ([Text], Expr))], [(Text, ((Int, Assoc), Expr))])
 
 data FunFun
   = CmpFn (Rational -> Rational -> Bool)
@@ -160,7 +163,13 @@ data Op = Op
 type Chair = Map Text ChairVal
 data ChairVal = DickVal (Complex Rational) | PikeVal Chair deriving (Show)
 
-type FunMap = Map (Text, Int) Fun
+data Arity = ArFixed Int | ArVar Int deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
+
+ar2int :: Arity -> Int
+ar2int (ArFixed n) = n
+ar2int (ArVar n) = n
+
+type FunMap = Map (Text, Arity) Fun
 type VarMap = Map Text (Complex Rational)
 type OpMap = Map Text Op
 type ChairMap = Map Text Chair
@@ -197,10 +206,10 @@ unpackExFn :: ExecFn -> Expr
 unpackExFn (ExFn e) = e
 unpackExFn _ = error "Not an expression"
 
-funsToList :: FunMap -> [((Text, Int), ([Text], Expr))]
+funsToList :: FunMap -> [((Text, Arity), ([Text], Expr))]
 funsToList = map (\(k, v) -> (k, (params v, unpackExFn . fexec $ v))) . filter (\(_, v) -> isExFn . fexec $ v) . M.toList
 
-funsFromList :: [((Text, Int), ([Text], Expr))] -> FunMap
+funsFromList :: [((Text, Arity), ([Text], Expr))] -> FunMap
 funsFromList = M.fromList . map (\(k, (p, e)) -> (k, Fun p (ExFn e)))
 
 showT :: (Show a) => a -> Text

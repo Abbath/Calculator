@@ -187,6 +187,9 @@ brackets x = braLeft *> x <* braRight
 comma :: Parser Token
 comma = parseIf "," (== TComma)
 
+dots :: Parser Text
+dots =  "..." <$ parseIf "..." (== TDots)
+
 sepBy :: Parser a -> Parser Token -> Parser [a]
 sepBy p s = liftA2 (:) p (concat <$> many ps) <|> pure []
  where
@@ -195,7 +198,7 @@ sepBy p s = liftA2 (:) p (concat <$> many ps) <|> pure []
 udfStmt :: Maps -> Parser Expr
 udfStmt m = do
   name <- identifier
-  args <- parens $ sepBy identifier comma
+  args <- parens $ sepBy (identifier <|> dots) comma
   void eq2
   UDF name args <$> expr 0.0 m
 

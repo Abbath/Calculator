@@ -23,7 +23,7 @@ import Calculator.Types (
   numToText,
   opmap,
   showT,
-  varmap,
+  varmap, Arity (ArFixed),
  )
 import Control.Lens (makeLenses, use, uses, (%=), (%~), (+=), (.=), (^.))
 import Control.Monad.Except
@@ -625,10 +625,10 @@ compile' m = go
       go y
       emitByte OpBuiltin
       emitByte (op2Code (m ^. opmap) op)
-    Call fun args | M.member (fun, length args) (m ^. funmap) -> do
+    Call fun args | M.member (fun, ArFixed . length $ args) (m ^. funmap) -> do
       forM_ args go
       emitByte OpBuiltin
-      emitByte (fun2Code (m ^. funmap) (fun, length args))
+      emitByte (fun2Code (m ^. funmap) (fun, ArFixed . length $ args))
     Call callee args -> do
       UM fm om _ _ <- use umaps
       if
@@ -660,7 +660,7 @@ compile' m = go
 op2Code :: OpMap -> Text -> Word8
 op2Code m op = toWord8 $ M.findIndex op m
 
-fun2Code :: FunMap -> (Text, Int) -> Word8
+fun2Code :: FunMap -> (Text, Arity) -> Word8
 fun2Code m (fun, l) = 0x80 .|. toWord8 (M.findIndex (fun, l) m)
 
 injectValue :: Val -> VM -> VM

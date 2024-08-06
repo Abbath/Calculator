@@ -14,6 +14,7 @@ import Calculator.Builtins (
  )
 import Calculator.Generator
 import Calculator.Types (
+  Arity (ArFixed),
   Assoc (..),
   Chair,
   ChairVal (..),
@@ -29,6 +30,7 @@ import Calculator.Types (
   Op (..),
   OpMap,
   VarMap,
+  ar2int,
   chairmap,
   exprToString,
   extractFormat,
@@ -47,6 +49,7 @@ import Calculator.Types (
   zipFormat,
  )
 import Control.Applicative (asum)
+import Control.Arrow (Arrow (second))
 import Control.Lens (at, use, (.=), (?=), (^.))
 import Control.Monad.Except (
   ExceptT,
@@ -155,7 +158,7 @@ evalS ex = case ex of
     throwMsg "New chair"
   Asgn s _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
   Asgn f e@(Call "/" [Id g, Number n _]) -> do
-    let n1 = fromInteger . numerator $ n
+    let n1 = ArFixed . fromInteger . numerator $ n
     fm <- use (maps . funmap)
     if M.member (g, n1) fm
       then do
@@ -172,7 +175,7 @@ evalS ex = case ex of
     either
       throwErr
       ( \r -> do
-          maps . funmap . at (f, length s) ?= Fun (map (T.cons '@') s) (ExFn r)
+          maps . funmap . at (f, ArFixed . length $ s) ?= Fun (map (T.cons '@') s) (ExFn r)
           throwMsg ("Function " <> f <> "/" <> showT (length s))
       )
       newe
@@ -368,8 +371,8 @@ evalS ex = case ex of
       else evm $ Call "loop" [c, a]
   Call "-" [Call "^" [x, y]] -> evm $ Call "^" [Call "-" [x], y]
   Call "-" [x] -> evm $ Call "-" [Number 0 0, x]
-  Call f ps | M.member (f, length ps) functions -> do
-    let builtin_fun = functions M.! (f, length ps)
+  Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
+    let builtin_fun = functions M.! (f, ArFixed . length $ ps)
     case fexec builtin_fun of
       FnFn (CmpFn fun) -> cmp fun (head ps) (ps !! 1)
       FnFn (IntFn1 fun) -> evalInt1 fun (head ps)
@@ -390,14 +393,14 @@ evalS ex = case ex of
       _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do
     mps <- use maps
-    case (M.lookup (name, length e) (mps ^. funmap) :: Maybe Fun) of
+    case (M.lookup (name, ArFixed . length $ e) (mps ^. funmap) :: Maybe Fun) of
       Just (Fun al (ExFn expr)) -> do
         let expr1 = substitute (al, e) expr
         either throwErr evm expr1
       Nothing -> case name of
         x | T.head x == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ ->
-          let (wa, wn) = findSimilar (name, length e) (M.keys (mps ^. funmap))
+          let (wa, wn) = findSimilar (name, ArFixed . length $ e) (M.keys (mps ^. funmap))
               cvt_nls txt nls =
                 if not (null nls)
                   then txt <> T.init (T.concat (map (\(n, l) -> "\t" <> n <> "/" <> showT l <> "\n") nls))
@@ -491,10 +494,11 @@ evalS ex = case ex of
       then throwError (ErrMsg "Too much!")
       else return $ f t1 t2
   procListElem m fun n = evalState (runExceptT (evm (Call fun [Number n 0]))) m
-  findSimilar :: (Text, Int) -> [(Text, Int)] -> ([(Text, Int)], [(Text, Int)])
-  findSimilar (name, len) funs =
-    let wrongArgNum = filter (\(n, l) -> n == name && len /= l) funs
-        wrongName = filter (\(n, _) -> damerauLevenshteinNorm n name >= 0.5) funs
+  findSimilar :: (Text, Arity) -> [(Text, Arity)] -> ([(Text, Int)], [(Text, Int)])
+  findSimilar (name, arity) funs =
+    let extractArity = map (second ar2int)
+        wrongArgNum = extractArity $ filter (\(n, a) -> n == name && arity /= a) funs
+        wrongName = extractArity $ filter (\(n, _) -> let dln = damerauLevenshteinNorm n name in dln >= 0.5 && dln < 1) funs
      in (wrongArgNum, wrongName)
   fromComplex = fromRational . realPart
   toComplex :: (Real a) => a -> Complex Rational

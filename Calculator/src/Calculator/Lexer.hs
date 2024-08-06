@@ -210,8 +210,11 @@ operata = TOp . T.pack <$> wsBracket (some opsym <|> charP '`' *> ((:) <$> alfa 
 comma :: Parser Token
 comma = TComma <$ wsBracket (charP ',')
 
+dots :: Parser Token
+dots = TDots <$ wsBracket (charP '.' <* charP '.' <* charP '.')
+
 tokah :: Parser Token
-tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> operata <|> numba <|> label <|> ident
+tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> operata <|> numba <|> label <|> ident <|> dots
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0
