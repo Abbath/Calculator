@@ -191,14 +191,15 @@ dots :: Parser Text
 dots =  "..." <$ parseIf "..." (== TDots)
 
 sepBy :: Parser a -> Parser Token -> Parser [a]
-sepBy p s = liftA2 (:) p (concat <$> many ps) <|> pure []
+sepBy p s = (:) <$> p <*> (concat <$> many ps) <|> pure []
  where
   ps = s *> some p
 
 udfStmt :: Maps -> Parser Expr
 udfStmt m = do
+  let ldots = (: []) <$> dots
   name <- identifier
-  args <- parens $ liftA2 (++) (sepBy identifier comma) (comma *> ((: []) <$> dots) <|> pure [])
+  args <- parens $ ldots <|> (++) <$> sepBy identifier comma <*> (comma *> ldots <|> pure [])
   void eq2
   UDF name args <$> expr 0.0 m
 
