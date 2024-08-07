@@ -85,7 +85,7 @@ goInside f ex = case ex of
 
 substitute :: [(Text, Expr)] -> Expr -> Either Text Expr
 substitute [] e = return e
-substitute ((x,y) : xys) (Id i) =
+substitute ((x, y) : xys) (Id i) =
   if i == x
     then return $ case y of
       (Number _ _) -> y
@@ -162,17 +162,18 @@ findFunction n a fm =
 turboZip :: [Text] -> [Expr] -> [(Text, Expr)]
 turboZip t e | length t == length e = zip t e
 turboZip t e = turboZip' 0 t e
-  where
-    turboZip' :: Int -> [Text] -> [Expr] -> [(Text, Expr)]
-    turboZip' _ [] [] = []
-    turboZip' _ _ [] = []
-    turboZip' n [] (y:ys) = ("@v." <> showT n, y):turboZip' (n+1) [] ys
-    turboZip' n (x:xs) (y:ys) = (x,y):turboZip' n xs ys
+ where
+  turboZip' :: Int -> [Text] -> [Expr] -> [(Text, Expr)]
+  turboZip' _ [] [] = []
+  turboZip' n (x : xs) [] = (x, Number 0 0) : turboZip' n xs []
+  turboZip' n [] (y : ys) = ("@v." <> showT n, y) : turboZip' (n + 1) [] ys
+  turboZip' n (x : xs) (y : ys) = (x, y) : turboZip' n xs ys
 
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
-  Asgn s (ChairLit _) -> do
-    maps . chairmap . at s ?= M.empty
+  Asgn s (ChairLit e) -> do
+    es <- mapM (\(k,v) -> (k,) . DickVal <$> evm v) e
+    maps . chairmap . at s ?= M.fromList es
     throwMsg "New chair"
   Asgn s _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
   Asgn f e@(Call "/" [Id g, Number n _]) -> do
@@ -183,6 +184,7 @@ evalS ex = case ex of
         maps . funmap . at (f, n1) ?= (fm M.! (g, n1))
         throwMsg ("Function " <> f <> "/" <> showT n1)
       else createVar f e
+  Asgn s (Id "undef") -> evm (Call "undef" [Id s])
   Asgn s e -> createVar s e
   UDF f [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
@@ -192,7 +194,7 @@ evalS ex = case ex of
     let newe = localize s e >>= catchVar (mps ^. varmap, mps ^. funmap)
     let len = length s
     let is_var = len > 0 && last s == "..."
-    let arity = if is_var then ArVar (len-1) else ArFixed len
+    let arity = if is_var then ArVar (len - 1) else ArFixed len
     let args = if is_var then init s else s
     either
       throwErr
@@ -222,6 +224,10 @@ evalS ex = case ex of
           )
           t
   Call "debug" [e] -> throwMsg . showT . preprocess $ e
+  Call "undef" [Id x] -> removeVar x
+  Call "undef" [Id x, e] -> do
+    n <- evm e
+    removeFun x (fromInteger . numerator . realPart $ n)
   Call "str" [e] -> evm e >>= (either throwErr (throwMsg . (\s -> "\"" <> s <> "\"")) . numToText)
   Call "fmt" (Number n ni : es) -> do
     let format = numToText (n :+ ni) >>= extractFormat
@@ -417,12 +423,12 @@ evalS ex = case ex of
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
       Just (Fun al (ExFn expr)) -> do
-        let expr1 = substitute (turboZip al e) expr
+        let expr1 = substitute (("@v.n", Number (fromIntegral . length $ e) 0):turboZip al e) expr
         either throwErr evm expr1
       Nothing -> case name of
         x | T.head x == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ ->
-          let (wa, wn) = findSimilar (name, ArFixed . length $ e) (M.keys (mps ^. funmap))
+          let (wa, wn) = findSimilar (name, length e) (M.keys (mps ^. funmap))
               cvt_nls txt nls =
                 if not (null nls)
                   then txt <> T.init (T.concat (map (\(n, l) -> "\t" <> n <> "/" <> showT l <> "\n") nls))
@@ -437,7 +443,6 @@ evalS ex = case ex of
     gen .= newGen
     return . (:+ 0) . toRational $ randomNumber
   Id s -> do
-    mps <- use maps
     chairs <- use $ maps . chairmap
     vars <- use $ maps . varmap
     if M.member s chairs
@@ -465,6 +470,20 @@ evalS ex = case ex of
     r <- evm e
     maps . varmap . at f ?= r
     throwMsg ((if "c." `T.isPrefixOf` f then "Constant " else "Variable ") <> f <> "=" <> showComplex r)
+  removeVar f =
+    if M.member f defVar
+      then throwErr "Can't remove that"
+      else do
+        vm <- use $ maps . varmap
+        maps . varmap .= M.delete f vm
+        throwMsg $ "Removed: " <> f
+  removeFun f a =
+    if M.member (f, ArFixed a) functions
+      then throwErr "Can't remove that"
+      else do
+        vm <- use $ maps . funmap
+        maps . funmap .= M.delete (f, if a >= 0 then ArFixed a else ArVar (-a)) vm
+        throwMsg $ "Removed: " <> f <> "/" <> showT a
   evalBuiltinOp bop x y = do
     let builtin_op = operators M.! bop
     case oexec builtin_op of
@@ -516,10 +535,10 @@ evalS ex = case ex of
       then throwError (ErrMsg "Too much!")
       else return $ f t1 t2
   procListElem m fun n = evalState (runExceptT (evm (Call fun [Number n 0]))) m
-  findSimilar :: (Text, Arity) -> [(Text, Arity)] -> ([(Text, Int)], [(Text, Int)])
+  findSimilar :: (Text, Int) -> [(Text, Arity)] -> ([(Text, Int)], [(Text, Int)])
   findSimilar (name, arity) funs =
     let extractArity = map (second ar2int)
-        wrongArgNum = extractArity $ filter (\(n, a) -> n == name && arity /= a) funs
+        wrongArgNum = extractArity $ filter (\(n, a) -> n == name && arity /= ar2int a) funs
         wrongName = extractArity $ filter (\(n, _) -> let dln = damerauLevenshteinNorm n name in dln >= 0.5 && dln < 1) funs
      in (wrongArgNum, wrongName)
   fromComplex = fromRational . realPart

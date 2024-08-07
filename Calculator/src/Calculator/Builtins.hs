@@ -72,6 +72,7 @@ functions =
   , (("hex", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("oct", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("bin", ArFixed 1), Fun{params = [], fexec = NFn})
+  , (("undef", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("lt", ArFixed 2), Fun{params = [], fexec = FnFn (CmpFn (<))})
   , (("gt", ArFixed 2), Fun{params = [], fexec = FnFn (CmpFn (>))})
   , (("eq", ArFixed 2), Fun{params = [], fexec = FnFn (CmpFn (==))})
