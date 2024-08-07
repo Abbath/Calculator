@@ -14,7 +14,7 @@ import Calculator.Builtins (
  )
 import Calculator.Generator
 import Calculator.Types (
-  Arity (ArFixed),
+  Arity (ArFixed, ArVar),
   Assoc (..),
   Chair,
   ChairVal (..),
@@ -83,36 +83,34 @@ goInside f ex = case ex of
   (Call n e) -> Call n <$> mapM f e
   e -> return e
 
-substitute :: ([Text], [Expr]) -> Expr -> Either Text Expr
-substitute ([], []) e = return e
-substitute (x, y) _
-  | length x /= length y =
-      Left $ "Bad argument number: " <> showT (length y) <> " instead of " <> showT (length x)
-substitute (x : xs, y : ys) (Id i) =
+substitute :: [(Text, Expr)] -> Expr -> Either Text Expr
+substitute [] e = return e
+substitute ((x,y) : xys) (Id i) =
   if i == x
     then return $ case y of
       (Number _ _) -> y
       (Id _) -> y
       (Par _) -> y
       t -> Par t
-    else substitute (xs, ys) (Id i)
-substitute s@(x : xs, Id fname : ys) (Call n e) =
+    else substitute xys (Id i)
+substitute s@((x, Id fname) : xys) (Call n e) =
   if n == x
     then Call fname <$> mapM (substitute s) e
     else do
       t <- mapM (substitute s) e
-      substitute (xs, ys) (Call n t)
-substitute (x : xs, Id sname : ys) (ChairSit n e) =
+      substitute xys (Call n t)
+substitute ((x, Id sname) : xys) (ChairSit n e) =
   if n == T.tail x
     then Right $ ChairSit sname e
-    else substitute (xs, ys) (ChairSit n e)
-substitute s@(_ : xs, _ : ys) (Call n e) = do
+    else substitute xys (ChairSit n e)
+substitute s@(_ : xys) (Call n e) = do
   t <- mapM (substitute s) e
-  substitute (xs, ys) (Call n t)
+  substitute xys (Call n t)
 substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
 localize [] e = return e
+localize _ (Id i) | "v." `T.isPrefixOf` i = return $ Id (T.cons '@' i)
 localize (x : xs) (Id i) = if i == x then return $ Id (T.cons '@' i) else localize xs (Id i)
 localize s@(x : xs) (Call nm e) =
   if nm == x
@@ -151,6 +149,26 @@ throwErr = throwError . ErrMsg
 throwMsg :: (MonadError MessageType m) => Text -> m a
 throwMsg = throwError . MsgMsg
 
+findFunction :: Text -> Int -> FunMap -> Maybe Fun
+findFunction n a fm =
+  let f = M.lookup (n, ArFixed a) fm
+   in case f of
+        Just _ -> f
+        Nothing -> fst <$> M.minView (M.filterWithKey helper fm)
+ where
+  helper (k, ArFixed _) _ = False
+  helper (k, ArVar a1) _ = k == n && a1 <= a
+
+turboZip :: [Text] -> [Expr] -> [(Text, Expr)]
+turboZip t e | length t == length e = zip t e
+turboZip t e = turboZip' 0 t e
+  where
+    turboZip' :: Int -> [Text] -> [Expr] -> [(Text, Expr)]
+    turboZip' _ [] [] = []
+    turboZip' _ _ [] = []
+    turboZip' n [] (y:ys) = ("@v." <> showT n, y):turboZip' (n+1) [] ys
+    turboZip' n (x:xs) (y:ys) = (x,y):turboZip' n xs ys
+
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
   Asgn s (ChairLit _) -> do
@@ -172,11 +190,15 @@ evalS ex = case ex of
   UDF f s e -> do
     mps <- use maps
     let newe = localize s e >>= catchVar (mps ^. varmap, mps ^. funmap)
+    let len = length s
+    let is_var = len > 0 && last s == "..."
+    let arity = if is_var then ArVar (len-1) else ArFixed len
+    let args = if is_var then init s else s
     either
       throwErr
       ( \r -> do
-          maps . funmap . at (f, ArFixed . length $ s) ?= Fun (map (T.cons '@') s) (ExFn r)
-          throwMsg ("Function " <> f <> "/" <> showT (length s))
+          maps . funmap . at (f, arity) ?= Fun (map (T.cons '@') args) (ExFn r)
+          throwMsg ("Function " <> f <> "/" <> showT (ar2int arity))
       )
       newe
   UDO n (-1) _ e@(Call op _) -> do
@@ -348,7 +370,7 @@ evalS ex = case ex of
     mps <- use maps
     case (M.lookup op (mps ^. opmap) :: Maybe Op) of
       Just Op{oexec = ExOp expr} -> do
-        let expr1 = substitute (["@x", "@y"], [x, y]) expr
+        let expr1 = substitute (zip ["@x", "@y"] [x, y]) expr
         either throwErr evm expr1
       Just Op{oexec = AOp aop} -> evm (Call aop [x, y])
       Nothing -> case op of
@@ -388,14 +410,14 @@ evalS ex = case ex of
         m <- evm (ps !! 1)
         return . fun n $ m
       ExFn expr -> do
-        let expr1 = substitute (params builtin_fun, ps) expr
+        let expr1 = substitute (zip (params builtin_fun) ps) expr
         either throwErr evm expr1
       _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do
     mps <- use maps
-    case (M.lookup (name, ArFixed . length $ e) (mps ^. funmap) :: Maybe Fun) of
+    case findFunction name (length e) (mps ^. funmap) of
       Just (Fun al (ExFn expr)) -> do
-        let expr1 = substitute (al, e) expr
+        let expr1 = substitute (turboZip al e) expr
         either throwErr evm expr1
       Nothing -> case name of
         x | T.head x == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)

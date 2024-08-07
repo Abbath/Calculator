@@ -198,7 +198,7 @@ sepBy p s = liftA2 (:) p (concat <$> many ps) <|> pure []
 udfStmt :: Maps -> Parser Expr
 udfStmt m = do
   name <- identifier
-  args <- parens $ sepBy (identifier <|> dots) comma
+  args <- parens $ liftA2 (++) (sepBy identifier comma) (comma *> ((: []) <$> dots) <|> pure [])
   void eq2
   UDF name args <$> expr 0.0 m
 
