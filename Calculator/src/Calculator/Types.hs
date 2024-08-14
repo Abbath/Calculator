@@ -229,7 +229,7 @@ exprToString ex = case ex of
   Asgn i e -> i <> " = " <> exprToString e
   Number x _ -> showT . (fromRational :: Rational -> Double) $ x
   Par e -> "(" <> exprToString e <> ")"
-  Call op [e] -> "(" <> op <> exprToString e <> ")"
+  Call op [e] | isOp op -> "(" <> op <> exprToString e <> ")"
   Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
   Call n e -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
   Id s -> s
@@ -262,9 +262,12 @@ simplifyExpr ex = case ex of
   Par (Par e) -> Par (simplifyExpr e)
   Par e -> Par (simplifyExpr e)
   Call "+" [Number 0.0 0.0, n] -> simplifyExpr n
+  Call "+" [n, Number 0.0 0.0] -> simplifyExpr n
   Call op [n, Number 0.0 0.0] | op `elem` ["+", "-"] -> simplifyExpr n
   Call "*" [Number 1.0 0.0, n] -> simplifyExpr n
   Call "*" [Number 0.0 0.0, n] -> Number 0.0 0.0
+  Call "*" [n, Number 1.0 0.0] -> simplifyExpr n
+  Call "*" [n, Number 0.0 0.0] -> Number 0.0 0.0
   Call op [n, Number 1.0 0.0] | op `elem` ["*", "/", "%"] -> simplifyExpr n
   Call "^" [n, Number 1.0 0.0] -> simplifyExpr n
   Call "^" [Call "sqrt" [e], Number 2.0 0.0] -> simplifyExpr e
