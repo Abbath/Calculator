@@ -9,7 +9,7 @@ jobs:
       - checkout
       - restore_cache:
           name: Restore Cached Artifacts
-          key: haskell-artifacts-{{ checksum "Calculator/Calculator.cabal" }}
+          key: haskell-artifacts-{{ grep "^version" Calculator/Calculator.cabal | awk '{print $2}' | awk -F'.' '{print $1}' }}
       - run:
           name: Update Dependencies
           no_output_timeout: 30m
