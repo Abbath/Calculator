@@ -6,6 +6,7 @@
 
 module Calculator.Parser where
 
+import Calculator.Builtins (maxPrecedence)
 import Calculator.Lexer (tloop)
 import Calculator.Types (
   Assoc (L, R),
@@ -13,6 +14,7 @@ import Calculator.Types (
   Maps,
   Op (Op),
   Token (..),
+  isSpaceFun,
   numToText,
   opSymbols,
   opmap,
@@ -26,7 +28,6 @@ import Data.Map.Strict qualified as M
 import Data.Ratio (numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Calculator.Builtins (maxPrecedence)
 
 data Input = Input
   { inputLoc :: Int
@@ -188,7 +189,7 @@ comma :: Parser Token
 comma = parseIf "," (== TComma)
 
 dots :: Parser Text
-dots =  "..." <$ parseIf "..." (== TDots)
+dots = "..." <$ parseIf "..." (== TDots)
 
 sepBy :: Parser a -> Parser Token -> Parser [a]
 sepBy p s = (:) <$> p <*> (concat <$> many ps) <|> pure []
@@ -236,6 +237,14 @@ keyValuePair m = do
 keyValuePairs :: Maps -> Parser [(Text, Expr)]
 keyValuePairs m = sepBy (keyValuePair m) comma
 
+eid :: Parser Expr
+eid = Id <$> identifier
+
+enumber :: Parser Expr
+enumber = do
+  (r, i) <- number
+  pure $ Number r i
+
 expr :: Double -> Maps -> Parser Expr
 expr min_bp m = Parser $
   \case
@@ -256,6 +265,9 @@ expr min_bp m = Parser $
         Just TLBracket -> do
           (i, e) <- runParser (brackets (sepBy identifier comma)) ts
           inner_loop (ChairSit a e) min_bp m i
+        Just x | isSpaceFun x -> do
+          (i, e) <- runParser (many (eid <|> enumber <|> parens (expr 0.0 m))) ts
+          inner_loop (Call a e) min_bp m i
         _ -> inner_loop (Id a) min_bp m ts
       TLPar -> do
         (i, e) <- runParser (expr 0.0 m) ts

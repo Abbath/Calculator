@@ -49,8 +49,9 @@ module Calculator.Types (
   ChairVal (..),
   Chair,
   showChair,
-  Arity(..),
-  ar2int
+  Arity (..),
+  ar2int,
+  isSpaceFun,
 )
 where
 
@@ -86,6 +87,12 @@ data Token
   | TLabel Text
   | TDots
   deriving (Show, Eq)
+
+isSpaceFun :: Token -> Bool
+isSpaceFun (TIdent _) = True
+isSpaceFun (TNumber _ _) = True
+isSpaceFun TLPar = True
+isSpaceFun _ = False
 
 data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
 

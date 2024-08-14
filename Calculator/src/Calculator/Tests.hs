@@ -103,6 +103,7 @@ tests =
     , ("sin `f` m.pi", Right 0)
     , ("0 |> sin |> cos", Right 1)
     , ("!6", Right 720)
+    , ("sin 1 + sin 2", Right 1.750768411633578214292583652422763407230377197265625)
     ]
 
 defVar :: VarMap
