@@ -196,7 +196,7 @@ alfaNumDot :: Parser Char
 alfaNumDot = alfaNum <|> parseIf "dot" (== '.')
 
 ident :: Parser Token
-ident = TIdent <$> wsBracket (T.cons <$> alfa <*> (T.pack <$> many alfaNumDot))
+ident = TIdent <$> wsBracket (T.cons <$> alfa <*> (T.pack <$> ((++) <$> many alfaNumDot <*> ((: []) <$> charP '\'' <|> pure []))))
 
 label :: Parser Token
 label = TLabel <$> wsBracket (T.pack <$> many alfaNum <* parseIf ":" (== ':'))

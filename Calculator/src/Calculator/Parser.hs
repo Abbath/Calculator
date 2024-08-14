@@ -196,13 +196,16 @@ sepBy p s = (:) <$> p <*> (concat <$> many ps) <|> pure []
  where
   ps = s *> some p
 
+trimTick :: Text -> Text
+trimTick name = if "'" `T.isSuffixOf` name then T.init name else name
+
 udfStmt :: Maps -> Parser Expr
 udfStmt m = do
   let ldots = (: []) <$> dots
   name <- identifier
   args <- parens $ ldots <|> (++) <$> sepBy identifier comma <*> (comma *> ldots <|> pure [])
   void eq2
-  UDF name args <$> expr 0.0 m
+  UDF (trimTick name) args <$> expr 0.0 m
 
 udoStmt :: Maps -> Parser Expr
 udoStmt m = do
@@ -219,7 +222,7 @@ assignStmt :: Maps -> Parser Expr
 assignStmt m = do
   name <- identifier
   void eq
-  Asgn name <$> expr 0.0 m
+  Asgn (trimTick name) <$> expr 0.0 m
 
 imprtStmt :: Parser Expr
 imprtStmt = do
@@ -241,9 +244,7 @@ eid :: Parser Expr
 eid = Id <$> identifier
 
 enumber :: Parser Expr
-enumber = do
-  (r, i) <- number
-  pure $ Number r i
+enumber = uncurry Number <$> number
 
 expr :: Double -> Maps -> Parser Expr
 expr min_bp m = Parser $
@@ -259,7 +260,7 @@ expr min_bp m = Parser $
           inner_loop (Call funop [e]) min_bp m i
       TNumber a b -> inner_loop (Number a b) min_bp m ts
       TIdent a -> case inputPeek ts of
-        Just TLPar -> do
+        Just TLPar | not ("'" `T.isSuffixOf` a)  -> do
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts
           inner_loop (Call a e) min_bp m i
         Just TLBracket -> do
@@ -267,12 +268,13 @@ expr min_bp m = Parser $
           inner_loop (ChairSit a e) min_bp m i
         Just x | isSpaceFun x -> do
           (i, e) <- runParser (many (eid <|> enumber <|> parens (expr 0.0 m))) ts
-          inner_loop (Call a e) min_bp m i
+          inner_loop (Call (trimTick a) e) min_bp m i
         _ -> inner_loop (Id a) min_bp m ts
       TLPar -> do
         (i, e) <- runParser (expr 0.0 m) ts
         case i of
           (inputUncons -> Just (TRPar, i1)) -> inner_loop (Par e) min_bp m i1
+          (inputUncons -> Just (TComma, _)) -> Left "Argument list without a function name"
           _ -> Left "No closing parenthesis"
       TLBrace -> do
         (i, e) <- runParser (keyValuePairs m) ts
@@ -300,6 +302,7 @@ expr min_bp m = Parser $
             else do
               (ts2, e) <- runParser (expr r_bp om) ts1
               inner_loop (Call op [lhs, e]) bp om ts2
+      TLPar -> Left "Calling a ticked function as a normal one"
       tok -> Left $ "Wrong token: " <> showT tok
     _ -> Right (ts, lhs)
   infix_binding_power :: Text -> Maps -> Maybe (Double, Double)
