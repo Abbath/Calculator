@@ -82,7 +82,7 @@ instance Monad Parser where
 
 eof :: Parser ()
 eof = Parser $ \input -> case input of
-  (inputUncons -> Just (_, _)) -> Left "DUPA"
+  (inputUncons -> Just (_, _)) -> Left "Extra input left"
   _ -> return (input, ())
 
 parse :: Maps -> [Token] -> Either Text Expr
@@ -321,7 +321,7 @@ expr min_bp m = Parser $
      in fromIntegral pr
   selectOp :: Text -> Either Text Text
   selectOp op =
-    let ops = [("~", "comp"), ("!", "fact"), ("-", "-")]
+    let ops = [("~", "comp"), ("!", "fact"), ("-", "-"), ("?", "opt")]
      in case M.lookup op ops of
           Nothing -> Left ("No such operator: " <> op)
           Just fun -> return fun

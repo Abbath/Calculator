@@ -240,7 +240,7 @@ exprToString ex = case ex of
   ChairSit a x -> a <> "[" <> T.intercalate "," x <> "]"
 
 opSymbols :: String
-opSymbols = "+-/*%^$!~&|=><:"
+opSymbols = "+-/*%^$!~&|=><:?"
 
 isOp :: Text -> Bool
 isOp = T.all (`elem` opSymbols)

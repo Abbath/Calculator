@@ -49,6 +49,9 @@ operators =
   , ("cmp", Op{precedence = 10, associativity = L, oexec = FnOp (MathOp fcmp)})
   , ("|>", Op{precedence = 11, associativity = L, oexec = NOp})
   , ("::=", Op{precedence = 12, associativity = R, oexec = NOp})
+  , ("?", Op{precedence = 13, associativity = L, oexec = NOp})
+  , ("!", Op{precedence = 13, associativity = L, oexec = NOp})
+  , ("~", Op{precedence = 13, associativity = L, oexec = NOp})
   ]
 
 maxPrecedence :: Int
@@ -73,6 +76,8 @@ functions =
   , (("oct", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("bin", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("undef", ArFixed 1), Fun{params = [], fexec = NFn})
+  , (("opt", ArFixed 1), Fun{params = [], fexec = NFn})
+  , (("opt", ArFixed 2), Fun{params = [], fexec = NFn})
   , (("lt", ArFixed 2), Fun{params = [], fexec = FnFn (CmpFn (<))})
   , (("gt", ArFixed 2), Fun{params = [], fexec = FnFn (CmpFn (>))})
   , (("eq", ArFixed 2), Fun{params = [], fexec = FnFn (CmpFn (==))})

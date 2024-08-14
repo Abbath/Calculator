@@ -228,6 +228,14 @@ evalS ex = case ex of
   Call "undef" [Id x, e] -> do
     n <- evm e
     removeFun x (fromInteger . numerator . realPart $ n)
+  Call "opt" [Id x] -> extractId x >>= maybe (return $ 0 :+ 0) return
+  Call "opt" [e] -> evm e
+  Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
+    case e1 of
+      Id x -> do
+        res <- evm e2
+        extractId x >>= maybe (return res) return
+      _ -> evm e1
   Call "str" [e] -> evm e >>= (either throwErr (throwMsg . (\s -> "\"" <> s <> "\"")) . numToText)
   Call "fmt" (Number n ni : es) -> do
     let format = numToText (n :+ ni) >>= extractFormat
@@ -442,15 +450,7 @@ evalS ex = case ex of
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
     gen .= newGen
     return . (:+ 0) . toRational $ randomNumber
-  Id s -> do
-    chairs <- use $ maps . chairmap
-    vars <- use $ maps . varmap
-    if M.member s chairs
-      then
-        throwMsg $ showChair (chairs M.! s)
-      else do
-        let val = asum ([M.lookup ("_." <> s) vars, M.lookup s vars] :: [Maybe (Complex Rational)])
-        maybe (throwError (ErrMsg $ "No such variable : " <> s)) return val
+  Id s -> extractId s >>= maybe (throwError (ErrMsg $ "No such variable : " <> s)) return
   ChairLit _ -> return $ 0 :+ 0
   ChairSit a xs -> do
     val <- use $ maps . chairmap . at a
@@ -466,6 +466,15 @@ evalS ex = case ex of
   Imprt _ -> throwErr "Imports are not supported in this mode!"
   Label _ -> throwErr "Label are not supported in this mode!"
  where
+  extractId s = do
+    chairs <- use $ maps . chairmap
+    vars <- use $ maps . varmap
+    if M.member s chairs
+      then
+        throwMsg $ showChair (chairs M.! s)
+      else do
+        let val = asum ([M.lookup ("_." <> s) vars, M.lookup s vars] :: [Maybe (Complex Rational)])
+        return val
   createVar f e = do
     r <- evm e
     maps . varmap . at f ?= r
