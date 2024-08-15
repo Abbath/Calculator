@@ -145,7 +145,7 @@ functions =
   ]
 
 prod :: Integer -> Integer
-prod n = product ([1 .. n] :: [Integer])
+prod = product . enumFromTo 1
 
 opMap :: OpMap
 opMap = operators
@@ -218,14 +218,10 @@ defVar =
   ]
 
 getPrecedences :: OpMap -> Map Text Int
-getPrecedences om =
-  let lst = M.toList om
-   in M.fromList $ map (second precedence) lst
+getPrecedences = M.fromList . map (second precedence) . M.toList
 
 getFakePrecedences :: FunMap -> Map Text Int
-getFakePrecedences fm =
-  let lst = M.keys fm
-   in M.fromList . map (\(name, argnum) -> (name, 14)) . filter (\(_, argnum) -> argnum == ArFixed 2) $ lst
+getFakePrecedences = M.fromList . map (second $ const (maxPrecedence + 1)) . filter ((== ArFixed 2) . snd) . M.keys
 
 derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of

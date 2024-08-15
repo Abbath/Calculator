@@ -103,7 +103,14 @@ tests =
     , ("sin `f` m.pi", Right 0)
     , ("0 |> sin |> cos", Right 1)
     , ("!6", Right 720)
+    , ("g(...) = ?v.0 + ?v.1 + v.n", Left . MsgMsg $ "Function g/0")
+    , ("g(1)", Right 2)
+    , ("g(1,2)", Right 5)
+    , ("g(1,2,3)", Right 6)
+    , ("undef(x)", Left . MsgMsg $ "Removed: x")
+    , ("x", Left . ErrMsg $ "No such variable : x")
     , ("sin 1 + sin 2", Right 1.750768411633578214292583652422763407230377197265625)
+    , ("gcd' (2+3) 5", Right 5)
     ]
 
 defVar :: VarMap

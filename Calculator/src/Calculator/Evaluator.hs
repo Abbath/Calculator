@@ -243,9 +243,7 @@ evalS ex = case ex of
       Left err -> throwError (ErrMsg err)
       Right fs -> do
         rs <- traverse evm es
-        throwMsg $ case zipFormat fs rs of
-          Left err -> err
-          Right txt -> txt
+        throwMsg $ either id id $ zipFormat fs rs
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
   Call "df" [a, x] -> do

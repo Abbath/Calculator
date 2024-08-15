@@ -76,20 +76,23 @@ instance Alternative Parser where
 
 instance Monad Parser where
   (>>=) :: Parser a -> (a -> Parser b) -> Parser b
-  (>>=) p f = Parser $ \input -> case runParser p input of
-    Left err -> Left err
-    Right (i, a) -> runParser (f a) i
+  (>>=) p f = Parser $ \input -> do
+    (i, a) <- runParser p input
+    runParser (f a) i
 
 eof :: Parser ()
 eof = Parser $ \input -> case input of
-  (inputUncons -> Just (_, _)) -> Left "Extra input left"
+  (inputUncons -> Just _) -> Left "Extra input left"
   _ -> return (input, ())
 
 parse :: Maps -> [Token] -> Either Text Expr
-parse m ts = runParser (stmt m) (Input 0 ts) >>= \(i, e) -> return e
+parse m ts =
+  runParser (stmt m) (Input 0 ts) >>= \(i, e) -> case i of
+    (inputUncons -> Just _) -> Left "Extra input left"
+    _ -> return e
 
 stmt :: Maps -> Parser Expr
-stmt m = udfStmt m <|> udoStmt m <|> assignStmt m <|> labelStmt <|> opAliasStmt <|> imprtStmt <|> (expr 0.0 m <* eof)
+stmt m = udfStmt m <|> udoStmt m <|> assignStmt m <|> labelStmt <|> opAliasStmt <|> imprtStmt <|> expr 0.0 m
 
 eq :: Parser Token
 eq = parseIf "=" (== TOp "=") <|> parseIf "<-" (== TOp "<-")
@@ -148,36 +151,16 @@ identifier = extractId <$> parseIf "id" isTIdent
   extractId _ = ""
 
 parLeft :: Parser ()
-parLeft = do
-  _ <- parseIf "(" isParLeft
-  return ()
- where
-  isParLeft TLPar = True
-  isParLeft _ = False
+parLeft = void $ parseIf "(" (== TLPar)
 
 parRight :: Parser ()
-parRight = do
-  _ <- parseIf ")" isParRight
-  return ()
- where
-  isParRight TRPar = True
-  isParRight _ = False
+parRight = void $ parseIf ")" (== TRPar)
 
 braLeft :: Parser ()
-braLeft = do
-  _ <- parseIf "[" isBraLeft
-  return ()
- where
-  isBraLeft TLBracket = True
-  isBraLeft _ = False
+braLeft = void $ parseIf "[" (== TLBracket)
 
 braRight :: Parser ()
-braRight = do
-  _ <- parseIf "]" isBraRight
-  return ()
- where
-  isBraRight TRBracket = True
-  isBraRight _ = False
+braRight = void $ parseIf "]" (== TRBracket)
 
 parens :: Parser a -> Parser a
 parens x = parLeft *> x <* parRight
@@ -238,7 +221,7 @@ keyValuePair m = do
   return (i, e)
 
 keyValuePairs :: Maps -> Parser [(Text, Expr)]
-keyValuePairs m = sepBy (keyValuePair m) comma
+keyValuePairs = flip sepBy comma . keyValuePair
 
 eid :: Parser Expr
 eid = Id <$> identifier
@@ -260,7 +243,7 @@ expr min_bp m = Parser $
           inner_loop (Call funop [e]) min_bp m i
       TNumber a b -> inner_loop (Number a b) min_bp m ts
       TIdent a -> case inputPeek ts of
-        Just TLPar | not ("'" `T.isSuffixOf` a)  -> do
+        Just TLPar | not ("'" `T.isSuffixOf` a) -> do
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts
           inner_loop (Call a e) min_bp m i
         Just TLBracket -> do
@@ -327,6 +310,4 @@ expr min_bp m = Parser $
           Just fun -> return fun
 
 testParser :: Parser a -> Text -> Either Text (Input, a)
-testParser p input = case tloop input of
-  Left err -> Left err
-  Right i -> runParser p (Input 0 i)
+testParser = flip ((>>=) . tloop) . (. Input 0) . runParser

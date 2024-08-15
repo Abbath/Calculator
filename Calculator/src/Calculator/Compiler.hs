@@ -8,6 +8,7 @@ module Calculator.Compiler where
 
 import Calculator.Builtins
 import Calculator.Types (
+  Arity (ArFixed),
   Assoc,
   ExecFn (FnFn),
   ExecOp (FnOp),
@@ -23,15 +24,17 @@ import Calculator.Types (
   numToText,
   opmap,
   showT,
-  varmap, Arity (ArFixed),
+  varmap,
  )
 import Control.Lens (makeLenses, use, uses, (%=), (%~), (+=), (.=), (^.))
+import Control.Monad (when)
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Aeson qualified as AE
 import Data.Bits
 import Data.ByteString.Lazy qualified as B
 import Data.Complex
+import Data.Foldable (forM_)
 import Data.Map (Map)
 import Data.Map qualified as M
 import Data.Maybe (fromMaybe)
@@ -45,8 +48,6 @@ import Data.Vector qualified as V
 import Data.Word
 import GHC.Generics
 import System.Random (Random (randomR), StdGen)
-import Control.Monad (when)
-import Data.Foldable (forM_)
 
 -- import Debug.Trace
 
@@ -307,9 +308,7 @@ addFun :: Maps -> Text -> [Text] -> Expr -> StateChunk ()
 addFun ms name args expr = do
   new_expr <- liftEither $ localize args expr >>= catchVar S.empty ms
   let chunk = compile ms expr
-  case chunk of
-    Left err -> throwError err
-    Right c -> umaps . ufuns %= M.insert (name, length args) (UF (map (T.cons '@') args) new_expr c)
+  either throwError (\c -> umaps . ufuns %= M.insert (name, length args) (UF (map (T.cons '@') args) new_expr c)) chunk
 
 addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
 addOp ms name opprec assoc expr = do
@@ -516,9 +515,7 @@ emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV $ Number 0 0)] M
 compile :: Maps -> Expr -> Either Text Chunk
 compile m e =
   let (a, s) = runState (runExceptT (compile' m e >> processLabels >> emitByte OpReturn)) emptyCompileState
-   in case a of
-        Left err -> Left err
-        Right () -> Right (s ^. chunkc)
+   in s ^. chunkc <$ a
 
 getOffset :: StateChunk Int
 getOffset = gets $ V.length . (^. chunkc . code)
