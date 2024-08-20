@@ -3,7 +3,7 @@
 
 module Calculator.Builtins where
 
-import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Op (..), OpMap, VarMap)
+import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Op (..), OpMap, VarMap, Maps(..))
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
 import Data.Complex (Complex (..), imagPart, realPart)
@@ -216,6 +216,9 @@ defVar =
   , ("b.false", 0.0 :+ 0)
   , ("_", 0.0 :+ 0)
   ]
+
+defaultMaps :: Maps
+defaultMaps = Maps defVar funMap opMap M.empty
 
 getPrecedences :: OpMap -> Map Text Int
 getPrecedences = M.fromList . map (second precedence) . M.toList

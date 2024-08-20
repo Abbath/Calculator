@@ -2,7 +2,8 @@
 
 module Calculator.Opts.Dis where
 
-import Calculator (Mode (..), defaultMaps, parseEval)
+import Calculator (Mode (..), parseEval)
+import Calculator.Builtins (defaultMaps)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
 import Calculator.Types (EvalState (EvalState), showComplex)
 import Control.Monad (void, when)
@@ -29,8 +30,8 @@ import Data.Char (isSpace)
 import System.Environment (lookupEnv)
 
 -- | Replies "pong" to every message that starts with "ping"
-pingpongExample :: IO ()
-pingpongExample = do
+discordCalculator :: IO ()
+discordCalculator = do
     TIO.putStrLn "Started server"
     loadFile defaultConfig
     token <- fromMaybe "" <$> lookupEnv "DISCORD_TOKEN"

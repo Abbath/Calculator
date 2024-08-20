@@ -9,11 +9,10 @@ module Calculator (
   webLoop,
   evalFile,
   compileAndRunFile,
-  defaultMaps,
   parseEval,
 ) where
 
-import Calculator.Builtins (defVar, funMap, names, opMap)
+import Calculator.Builtins (defVar, defaultMaps, funMap, names, opMap)
 import Calculator.Compiler qualified as C
 import Calculator.Css (getCss, postCss)
 import Calculator.Evaluator (MessageType (..), evalS)
@@ -58,12 +57,7 @@ import Data.Text.IO qualified as TSIO
 import Data.Text.Lazy qualified as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Network.Wai (Request (remoteHost))
-import Network.Wai.Middleware.Static (
-  addBase,
-  noDots,
-  staticPolicy,
-  (>->),
- )
+import Network.Wai.Middleware.Static qualified as NWMS
 import Text.Blaze.Html.Renderer.Text (renderHtml)
 import Text.Blaze.Html5 qualified as H
 import Text.Blaze.Html5.Attributes (
@@ -75,22 +69,12 @@ import Text.Blaze.Html5.Attributes (
   type_,
   value,
  )
-import Web.Scotty (
-  captureParam,
-  file,
-  formParam,
-  get,
-  html,
-  middleware,
-  post,
-  redirect,
-  request,
-  scotty,
- )
+import Web.Scotty qualified as WS
 
 import Control.Exception qualified as CE
 import Data.Complex (Complex (..), imagPart, realPart)
 import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.String (IsString)
 import System.Console.Haskeline (
   Completion (..),
   CompletionFunc,
@@ -118,7 +102,7 @@ parseString m s ms = case m of
 evalExprS :: Either TS.Text Expr -> EvalState -> Either (MessageType, EvalState) (Complex Rational, EvalState)
 evalExprS t es = either (Left . (,es) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
  where
-  getShit e = let a = runExceptT (evalS e) in S.runState a es
+  getShit e = S.runState (runExceptT (evalS e)) es
 
 type StateData = [String]
 
@@ -273,9 +257,6 @@ compileAndRun path mode mps = case mode of
                     Left err -> TSIO.putStrLn err
                     Right res -> TSIO.putStrLn res >> execute ms newer_vm
 
-defaultMaps :: Maps
-defaultMaps = Maps defVar funMap opMap M.empty
-
 compileAndRunFile :: FilePath -> CompileMode -> IO ()
 compileAndRunFile f cm = compileAndRun f cm defaultMaps
 
@@ -288,16 +269,20 @@ evalLoop m = Calculator.loop m defaultMaps
 evalFile :: FilePath -> IO ()
 evalFile f = Calculator.interpret f Internal defaultMaps
 
+logName :: (Semigroup a, IsString a) => a -> a
+logName lname = "log" <> lname <> ".dat"
+
+storageName :: (Semigroup a, IsString a) => a -> a
+storageName sname = "storage" <> sname <> ".dat"
+
 updateIDS :: Integer -> IO ()
 updateIDS i = do
-  f <- BS.readFile "ids"
-  let idsm = readMaybe (BS.unpack f) :: Maybe [(Integer, Integer)]
+  ids :: [(Integer, Integer)] <- fromMaybe [] . readMaybe . BS.unpack <$> BS.readFile "ids"
   tm <- round `fmap` getPOSIXTime
-  let ids = fromMaybe [] idsm
   mapM_
     ( \(_, ff) -> do
-        let logname = "log" ++ show ff ++ ".dat"
-        let storagename = "storage" ++ show ff ++ ".dat"
+        let logname = logName $ show ff
+        let storagename = storageName $ show ff
         b1 <- findFile ["."] storagename
         b2 <- findFile ["."] logname
         when (isJust b1) $ removeFile storagename
@@ -313,29 +298,26 @@ updateIDS i = do
 
 webLoop :: Int -> Mode -> IO ()
 webLoop port mode = do
-  g <- initStdGen
-  ref <- newIORef g
-  Web.Scotty.scotty port $ do
-    Web.Scotty.middleware $ Network.Wai.Middleware.Static.staticPolicy (Network.Wai.Middleware.Static.noDots Network.Wai.Middleware.Static.>-> Network.Wai.Middleware.Static.addBase "Static/images") -- for future
-    Web.Scotty.get "/" $ do
-      req <- Web.Scotty.request
-      let sa = remoteHost req
+  ref <- initStdGen >>= newIORef
+  WS.scotty port $ do
+    WS.middleware $ NWMS.staticPolicy (NWMS.noDots NWMS.>-> NWMS.addBase "Static/images")
+    WS.get "/" $ do
+      sa <- remoteHost <$> WS.request
       liftIO $ print sa
       do
-        let x = liftIO (randomIO :: IO Integer)
-        y <- x
-        f <- liftIO $ findFile ["."] ("log" ++ show y ++ ".dat")
+        y <- liftIO (abs <$> randomIO :: IO Integer)
+        f <- liftIO . findFile ["."] . logName . show $ y
         if isJust f
-          then Web.Scotty.redirect "/"
+          then WS.redirect "/"
           else do
-            liftIO $ updateIDS (abs y)
-            Web.Scotty.redirect $ T.append "/" $ T.pack (show $ abs y)
-    Web.Scotty.get "/favicon.ico" $ Web.Scotty.file "./Static/favicon.ico"
-    Web.Scotty.get "/:id" $ do
-      iD <- Web.Scotty.captureParam "id"
-      liftIO $ BS.writeFile ("storage" ++ T.unpack iD ++ ".dat") (B.toStrict . encode $ ((map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ defVar, [], opsToList opMap) :: ListTuple))
-      liftIO $ BS.writeFile ("log" ++ T.unpack iD ++ ".dat") "[]"
-      Web.Scotty.html $
+            liftIO $ updateIDS y
+            WS.redirect . T.append "/" . T.pack . show $ y
+    WS.get "/favicon.ico" $ WS.file "./Static/favicon.ico"
+    WS.get "/:id" $ do
+      iD <- WS.captureParam "id"
+      liftIO $ BS.writeFile (storageName $ T.unpack iD) (B.toStrict . encode $ ((remapComplex . M.toList $ defVar, [], opsToList opMap) :: ListTuple))
+      liftIO $ BS.writeFile (logName $ T.unpack iD) "[]"
+      WS.html $
         renderHtml $
           H.html $
             H.body $ do
@@ -343,20 +325,18 @@ webLoop port mode = do
               H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
                 H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
               H.style $ H.toHtml . render $ getCss
-    Web.Scotty.post "/clear/:id" $ do
-      iD <- Web.Scotty.captureParam "id"
-      Web.Scotty.redirect $ T.append "/" iD
-    Web.Scotty.post "/:id" $ do
-      iD <- Web.Scotty.captureParam "id"
+    WS.post "/clear/:id" $ WS.captureParam "id" >>= WS.redirect . T.append "/"
+    WS.post "/:id" $ do
+      iD <- WS.captureParam "id"
       liftIO $ updateIDS (read . T.unpack $ iD :: Integer)
-      fs <- Web.Scotty.formParam "foo"
-      f1 <- liftIO $ findFile ["."] ("storage" ++ T.unpack iD ++ ".dat")
-      f2 <- liftIO $ findFile ["."] ("log" ++ T.unpack iD ++ ".dat")
+      fs <- WS.formParam "foo"
+      f1 <- liftIO $ findFile ["."] (storageName $ T.unpack iD)
+      f2 <- liftIO $ findFile ["."] (logName $ T.unpack iD)
       if isNothing f1 || isNothing f2
-        then Web.Scotty.redirect "/"
+        then WS.redirect "/"
         else do
-          let logname = "log" ++ T.unpack iD ++ ".dat"
-          let storagename = "storage" ++ T.unpack iD ++ ".dat"
+          let logname = logName $ T.unpack iD
+          let storagename = storageName $ T.unpack iD
           rest <- liftIO $ BS.readFile logname
           env <- liftIO $ BS.readFile storagename
           let ms =
@@ -380,7 +360,7 @@ webLoop port mode = do
                       return $ (fs, unpackMsg ress) : lg
           rtxt <- liftIO txt
           liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
-          Web.Scotty.html $
+          WS.html $
             renderHtml $
               H.html $
                 H.body $ do
@@ -393,7 +373,8 @@ webLoop port mode = do
                   H.style $ H.toHtml . render $ postCss
  where
   storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
-  mapsToLists ms = (map (\(k, v) -> (k, (realPart v, imagPart v))) . M.toList $ (ms ^. varmap), funsToList (ms ^. funmap), opsToList (ms ^. opmap))
+  mapsToLists ms = (remapComplex . M.toList $ (ms ^. varmap), funsToList (ms ^. funmap), opsToList (ms ^. opmap))
+  remapComplex = map $ \(k, v) -> (k, (realPart v, imagPart v))
   listsToMaps (a, b, c) = Maps (M.fromList . map (\(k, (vr, vi)) -> (k, vr :+ vi)) $ a) (M.union funMap $ funsFromList b) (M.union opMap $ opsFromList c) M.empty
   unpackMsg (MsgMsg m) = m
   unpackMsg (ErrMsg e) = e

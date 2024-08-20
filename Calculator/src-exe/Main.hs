@@ -30,7 +30,7 @@ import Data.Char ( toLower )
 import Paths_Calculator (version)
 import Data.Version (showVersion)
 #ifdef DISCORD
-import Calculator.Opts.Dis ( pingpongExample )
+import Calculator.Opts.Dis ( discordCalculator )
 #endif
 #ifdef RAYLIB
 import Calculator.Opts.Ray ( raylibLoop )
@@ -76,7 +76,7 @@ main = do
     | raylib opts2 -> raylibLoop
 #endif
 #ifdef DISCORD
-    | discord opts2 -> pingpongExample
+    | discord opts2 -> discordCalculator
 #endif
     | not . null . input $ opts2 -> evalFile (input opts2)
     | not . null . source $ opts2 -> compileAndRunFile (source opts2) $ case compileMode opts2 of

@@ -3,11 +3,11 @@
 
 module Calculator.Tests (testLoop) where
 
-import Calculator.Builtins (opMap)
+import Calculator.Builtins (defaultMaps)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg), evalS)
 import Calculator.Lexer (tloop)
 import Calculator.Parser qualified as P
-import Calculator.Types (EvalState (..), Maps (..), VarMap, showT, varmap)
+import Calculator.Types (EvalState (..), Maps (..), showT, varmap)
 import Control.Lens ((%~), (&))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State (runState)
@@ -113,22 +113,11 @@ tests =
     , ("gcd' (2+3) 5", Right 5)
     ]
 
-defVar :: VarMap
-defVar =
-  [ ("m.pi", (:+ 0) $ toRational (pi :: Double))
-  , ("m.e", (:+ 0) $ toRational . exp $ (1.0 :: Double))
-  , ("_", 0.0 :+ 0.0)
-  , ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double) :+ 0)
-  , ("m.r", 0.0 :+ 0)
-  , ("b.true", 1.0 :+ 0)
-  , ("b.false", 0.0 :+ 0)
-  ]
-
 testLoop :: IO ()
 testLoop = do
   g <- initStdGen
   TIO.putStrLn "Internal parser:"
-  n <- loop tests (Maps defVar M.empty opMap M.empty) g Internal 0
+  n <- loop tests defaultMaps g Internal 0
   if n == 0
     then exitSuccess
     else exitWith $ ExitFailure n
