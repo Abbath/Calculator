@@ -3,9 +3,10 @@
 
 module Calculator.Opts.Ray where
 
-import Calculator (Mode (..), defaultMaps, parseEval)
+import Calculator (Mode (..), parseEval)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
 import Calculator.Types (EvalState (..), showComplex)
+import Calculator.Builtins (defaultMaps)
 import Control.Lens (makeLenses, use, (%=), (.=))
 import Control.Monad (forM_, unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
