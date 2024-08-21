@@ -47,6 +47,7 @@ import Calculator.Types (
   showT,
   varmap,
   zipFormat,
+  Precise,
  )
 import Control.Applicative (asum)
 import Control.Arrow (Arrow (second))
@@ -255,11 +256,11 @@ evalS ex = case ex of
   Call "atan" [Call "/" [e1, e2]] -> do
     t1 <- evm e1
     t2 <- evm e2
-    return $ toComplex $ atan2 (fromComplex t1 :: Double) (fromComplex t2 :: Double)
+    return $ toComplex $ atan2 (fromComplex t1 :: Precise) (fromComplex t2 :: Precise)
   Call "log" [e1, e2] -> do
     t1 <- evm e1
     t2 <- evm e2
-    return $ toRational <$> logBase (fromRational <$> t1 :: Complex Double) (fromRational <$> t2 :: Complex Double)
+    return $ toRational <$> logBase (fromRational <$> t1 :: Complex Precise) (fromRational <$> t2 :: Complex Precise)
   Call "prat" [e] -> evm e >>= throwMsg . showFraction . realPart
   Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text]) -> do
     t1 <- evm e
@@ -431,7 +432,7 @@ evalS ex = case ex of
       _ -> throwErr $ "Suspicious function: " <> name
   Id "m.r" -> do
     rgen <- use gen
-    let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
+    let (randomNumber, newGen) = randomR (0.0, 1.0 :: Precise) rgen
     gen .= newGen
     return . (:+ 0) . toRational $ randomNumber
   Id s -> extractId s >>= maybe (throwError (ErrMsg $ "No such variable : " <> s)) return
@@ -512,7 +513,7 @@ evalS ex = case ex of
     if denominator (realPart t1) == 1 && denominator (realPart t2) == 1
       then return . toComplex $ f (numerator (realPart t1)) (numerator (realPart t2))
       else throwError (ErrMsg "Cannot use integral function on rational numbers!")
-  evalInt1 :: (Double -> Integer) -> Expr -> Result (Complex Rational)
+  evalInt1 :: (Precise -> Integer) -> Expr -> Result (Complex Rational)
   evalInt1 f x = do
     t1 <- evm x
     return . toComplex $ f (fromComplex t1)
@@ -525,7 +526,7 @@ evalS ex = case ex of
   eval' f op x y = do
     t1 <- evm x
     t2 <- evm y
-    if (op == "^" && logBase 10 (fromComplex t1 :: Double) * (fromComplex t2 :: Double) > 2408240)
+    if (op == "^" && logBase 10 (fromComplex t1 :: Precise) * (fromComplex t2 :: Precise) > 2408240)
       || realPart (f t1 t2) > tooBig
       then throwError (ErrMsg "Too much!")
       else return $ f t1 t2

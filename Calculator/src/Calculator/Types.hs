@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -52,15 +53,17 @@ module Calculator.Types (
   Arity (..),
   ar2int,
   isSpaceFun,
+  Precise,
 )
 where
 
 import Control.Arrow (second)
-import Control.Lens.TH
+import Control.Lens.TH (makeLenses)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Bits (shiftL, shiftR, (.&.))
+-- import Data.CReal (CReal)
 import Data.Char (chr, ord)
-import Data.Complex
+import Data.Complex (Complex, imagPart, realPart)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe)
@@ -71,6 +74,8 @@ import Data.Text qualified as T
 import GHC.Generics (Generic)
 import Numeric (showBin, showHex, showOct)
 import System.Random (StdGen)
+
+type Precise = Double
 
 data Token
   = TNumber Rational Rational
@@ -128,9 +133,9 @@ type ListTuple = ([(Text, (Rational, Rational))], [((Text, Arity), ([Text], Expr
 data FunFun
   = CmpFn (Rational -> Rational -> Bool)
   | FracFn1 (Complex Rational -> Complex Rational)
-  | MathFn1 (Complex Double -> Complex Double)
+  | MathFn1 (Complex Precise -> Complex Precise)
   | MathFn2 (Complex Rational -> Complex Rational -> Complex Rational)
-  | IntFn1 (Double -> Integer)
+  | IntFn1 (Precise -> Integer)
   | IntFn2 (Integer -> Integer -> Integer)
   | BitFn (Integer -> Integer)
 
@@ -225,9 +230,9 @@ showT = T.pack . show
 exprToString :: Expr -> Text
 exprToString ex = case ex of
   UDF n a e -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
-  UDO n p a e -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Double else 1) <> ")" <> " = " <> exprToString e
+  UDO n p a e -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Precise else 1) <> ")" <> " = " <> exprToString e
   Asgn i e -> i <> " = " <> exprToString e
-  Number x _ -> showT . (fromRational :: Rational -> Double) $ x
+  Number x _ -> showT . (fromRational :: Rational -> Precise) $ x
   Par e -> "(" <> exprToString e <> ")"
   Call op [e] | isOp op -> "(" <> op <> exprToString e <> ")"
   Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"

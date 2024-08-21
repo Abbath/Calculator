@@ -1,6 +1,6 @@
 cabal-version:        3.4
 name:                 Calculator
-version:              12.4.0
+version:              12.4.1
 synopsis:             Calculator
 -- description:
 -- license:
@@ -47,6 +47,7 @@ library
                     , clay
                     , containers
                     , directory
+                    , exact-real
                     , filepath
                     , haskeline
                     , http-client

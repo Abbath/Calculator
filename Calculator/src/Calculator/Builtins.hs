@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
 
 module Calculator.Builtins where
 
-import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Op (..), OpMap, VarMap, Maps(..))
+import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Op (..), OpMap, VarMap, Maps(..), Precise)
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
 import Data.Complex (Complex (..), imagPart, realPart)
@@ -15,6 +16,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Numeric (expm1, log1mexp, log1p, log1pexp)
+
 
 operators :: OpMap
 operators =
@@ -179,12 +181,12 @@ pow a b
           na = numerator (realPart a)
           nb = numerator (realPart b)
        in if da == 1 && db == 1 && nb < 0
-            then (:+ 0) . toRational $ (fromRational (realPart a) :: Double) ^^ nb
+            then (:+ 0) . toRational $ (fromRational (realPart a) :: Precise) ^^ nb
             else
               if da == 1 && na == 1
                 then (:+ 0) . toRational $ na ^ nb
-                else (:+ 0) . toRational $ (fromRational (realPart a) :: Double) ** (fromRational (realPart b) :: Double)
-pow a b = toRational <$> (fromRational <$> a :: Complex Double) ** (fromRational <$> b :: Complex Double)
+                else (:+ 0) . toRational $ (fromRational (realPart a) :: Precise) ** (fromRational (realPart b) :: Precise)
+pow a b = toRational <$> (fromRational <$> a :: Complex Precise) ** (fromRational <$> b :: Complex Precise)
 
 hypot :: Complex Rational -> Complex Rational -> Complex Rational
 hypot cx cy =
@@ -194,8 +196,8 @@ hypot cx cy =
       r = min' / max'
    in max' * realPart (pow ((1 + r * r) :+ 0) (1 % 2 :+ 0)) :+ 0
 
-wrapRealFun2 :: (Double -> Double -> Double) -> Complex Rational -> Complex Rational -> Complex Rational
-wrapRealFun2 f x y = (:+ 0) . toRational @Double $ f (fromRational $ realPart x) (fromRational $ realPart y)
+wrapRealFun2 :: (Precise -> Precise -> Precise) -> Complex Rational -> Complex Rational -> Complex Rational
+wrapRealFun2 f x y = (:+ 0) . toRational @Precise $ f (fromRational $ realPart x) (fromRational $ realPart y)
 
 atan3 :: Complex Rational -> Complex Rational -> Complex Rational
 atan3 = wrapRealFun2 atan2
@@ -208,9 +210,9 @@ names = T.unpack <$> M.keys operators ++ map fst (M.keys functions)
 
 defVar :: VarMap
 defVar =
-  [ ("m.pi", toRational (pi :: Double) :+ 0)
-  , ("m.e", (toRational . exp $ (1 :: Double)) :+ 0)
-  , ("m.phi", toRational ((1 + sqrt 5) / 2 :: Double) :+ 0)
+  [ ("m.pi", toRational (pi :: Precise) :+ 0)
+  , ("m.e", (toRational . exp $ (1 :: Precise)) :+ 0)
+  , ("m.phi", toRational ((1 + sqrt 5) / 2 :: Precise) :+ 0)
   , ("m.r", 0.0 :+ 0)
   , ("b.true", 1.0 :+ 0)
   , ("b.false", 0.0 :+ 0)
