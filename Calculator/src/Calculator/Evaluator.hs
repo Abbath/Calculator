@@ -172,7 +172,7 @@ turboZip t e = turboZip' 0 t e
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
   Asgn s (ChairLit e) -> do
-    es <- mapM (\(k,v) -> (k,) . DickVal <$> evm v) e
+    es <- evalChairLit e
     maps . chairmap . at s ?= M.fromList es
     throwMsg "New chair"
   Asgn s _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
@@ -225,9 +225,7 @@ evalS ex = case ex of
           t
   Call "debug" [e] -> throwMsg . showT . preprocess $ e
   Call "undef" [Id x] -> removeVar x
-  Call "undef" [Id x, e] -> do
-    n <- evm e
-    removeFun x (fromInteger . numerator . realPart $ n)
+  Call "undef" [Id x, e] -> evm e >>= removeFun x . fromInteger . numerator . realPart
   Call "opt" [Id x] -> extractId x >>= maybe (return $ 0 :+ 0) return
   Call "opt" [e] -> evm e
   Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
@@ -246,9 +244,7 @@ evalS ex = case ex of
         throwMsg $ either id id $ zipFormat fs rs
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
-  Call "df" [a, x] -> do
-    let e = derivative a x
-    either throwErr (throwMsg . exprToString . preprocess) e
+  Call "df" [a, x] -> either throwErr (throwMsg . exprToString . preprocess) $ derivative a x
   Call "int" [Id fun, a, b] -> evm $ Call "int" [Id fun, a, b, Number 1e-10 0]
   Call "int" [Id fun, a, b, eps] -> do
     mps <- get
@@ -264,9 +260,7 @@ evalS ex = case ex of
     t1 <- evm e1
     t2 <- evm e2
     return $ toRational <$> logBase (fromRational <$> t1 :: Complex Double) (fromRational <$> t2 :: Complex Double)
-  Call "prat" [e] -> do
-    t1 <- evm e
-    throwMsg $ showFraction (realPart t1)
+  Call "prat" [e] -> evm e >>= throwMsg . showFraction . realPart
   Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text]) -> do
     t1 <- evm e
     case f of
@@ -346,7 +340,7 @@ evalS ex = case ex of
           throwMsg "Sitting chair"
   Call ":=" [ChairSit a xs, y] -> do
     val <- case y of
-      ChairLit _ -> return $ PikeVal M.empty
+      ChairLit e -> PikeVal . M.fromList <$> evalChairLit e
       ChairSit b ys -> do
         chair <- use $ maps . chairmap . at b
         case chair of
@@ -381,9 +375,7 @@ evalS ex = case ex of
   Call op [x, y] | isOp op -> do
     mps <- use maps
     case (M.lookup op (mps ^. opmap) :: Maybe Op) of
-      Just Op{oexec = ExOp expr} -> do
-        let expr1 = substitute (zip ["@x", "@y"] [x, y]) expr
-        either throwErr evm expr1
+      Just Op{oexec = ExOp expr} -> either throwErr evm $ substitute (zip ["@x", "@y"] [x, y]) expr
       Just Op{oexec = AOp aop} -> evm (Call aop [x, y])
       Nothing -> case op of
         opn | T.head opn == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail opn <> "/2"
@@ -394,9 +386,7 @@ evalS ex = case ex of
     if cond /= 0 :+ 0
       then evm b
       else evm c
-  Call "loop" [i, c, a] -> do
-    _ <- evm i
-    evm $ Call "loop" [c, a]
+  Call "loop" [i, c, a] -> evm i >> evm (Call "loop" [c, a])
   Call "loop" [c, a] -> do
     n <- evm c
     res <- evm a
@@ -421,16 +411,12 @@ evalS ex = case ex of
         n <- evm (head ps)
         m <- evm (ps !! 1)
         return . fun n $ m
-      ExFn expr -> do
-        let expr1 = substitute (zip (params builtin_fun) ps) expr
-        either throwErr evm expr1
+      ExFn expr -> either throwErr evm $ substitute (zip (params builtin_fun) ps) expr
       _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
-      Just (Fun al (ExFn expr)) -> do
-        let expr1 = substitute (("@v.n", Number (fromIntegral . length $ e) 0):turboZip al e) expr
-        either throwErr evm expr1
+      Just (Fun al (ExFn expr)) -> either throwErr evm $ substitute (("@v.n", Number (fromIntegral . length $ e) 0) : turboZip al e) expr
       Nothing -> case name of
         x | T.head x == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ ->
@@ -464,6 +450,8 @@ evalS ex = case ex of
   Imprt _ -> throwErr "Imports are not supported in this mode!"
   Label _ -> throwErr "Label are not supported in this mode!"
  where
+  evalChairLit :: [(Text, Expr)] -> Result [(Text, ChairVal)]
+  evalChairLit = mapM (\(k, v) -> (k,) . DickVal <$> evm v)
   extractId s = do
     chairs <- use $ maps . chairmap
     vars <- use $ maps . varmap

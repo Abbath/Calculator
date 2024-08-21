@@ -4,9 +4,9 @@
 module Calculator.Opts.Ray where
 
 import Calculator (Mode (..), parseEval)
+import Calculator.Builtins (defaultMaps)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
 import Calculator.Types (EvalState (..), showComplex)
-import Calculator.Builtins (defaultMaps)
 import Control.Lens (makeLenses, use, (%=), (.=))
 import Control.Monad (forM_, unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -73,28 +73,27 @@ raylibLoop' = do
   let width = 800
   let height = 600
   let fps = 60
+  let fontSize = 40
   RL.withWindow width height "Calculator" fps $ \wr -> do
+    liftIO $ do
+      RL.setWindowState [RL.WindowResizable]
+      RL.setTextLineSpacing 1
     RL.whileWindowOpen0 $ do
-      w <- liftIO RL.getRenderWidth
-      h <- liftIO RL.getRenderHeight
-      c <- liftIO RL.getCharPressed
+      [w, h, c] <- liftIO $ sequence [RL.getRenderWidth, RL.getRenderHeight, RL.getCharPressed]
       prompt %= if c /= 0 then flip TS.snoc (chr c) else id
-      bp <- liftIO $ RL.isKeyPressed RL.KeyBackspace
+      [bp, up, down, ep] <- liftIO $ mapM RL.isKeyPressed [RL.KeyBackspace, RL.KeyUp, RL.KeyDown, RL.KeyEnter]
       prompt %= \pr -> if bp && not (TS.null pr) then TS.init pr else pr
-      tw <- use prompt >>= liftIO . flip RL.measureText 20 . TS.unpack
-      up <- liftIO $ RL.isKeyPressed RL.KeyUp
-      down <- liftIO $ RL.isKeyPressed RL.KeyDown
+      tw <- use prompt >>= liftIO . flip RL.measureText fontSize . TS.unpack
       checkHistory up down
       pr <- use prompt
       rt <- use results
       frame_counter <- use fc
       liftIO $ RL.drawing $ do
         RL.clearBackground RL.darkGray
-        RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral w - 20) 20) 0.5 10 RL.gray
-        RL.drawText (TS.unpack pr) 15 10 20 RL.lightGray
-        when (frame_counter `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (17 + tw) 10 2 20 RL.lightGray
-        forM_ (zip rt [0 ..]) (\(r, i) -> RL.drawText (TS.unpack r) 15 (32 + i * 22) 20 RL.lightGray)
-      ep <- liftIO $ RL.isKeyPressed RL.KeyEnter
+        RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral w - 20) (fromIntegral fontSize)) 0.5 10 RL.gray
+        RL.drawText (TS.unpack pr) 15 10 fontSize RL.lightGray
+        when (frame_counter `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (17 + tw) 10 2 fontSize RL.lightGray
+        forM_ (zip rt [0 ..]) (\(r, i) -> RL.drawText (TS.unpack r) 15 (fontSize + 12 + i * (fontSize + 2)) fontSize RL.lightGray)
       when ep $ do
         es <- use estate
         let y = parseEval Internal es pr
@@ -103,7 +102,7 @@ raylibLoop' = do
               Left (ErrMsg m, _) -> (m, es)
               Left (MsgMsg m, es0) -> (m, es0)
         prompt .= ""
-        results .= take ((h - 32) `div` 22) (res : rt)
+        results .= take ((h - (fontSize + 12)) `div` (fontSize + 2)) (res : rt)
         estate .= es1
         phist %= zipPut pr
       fc %= (+ 1)

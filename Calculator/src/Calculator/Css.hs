@@ -9,7 +9,7 @@ getCss = do
   h1 ? fontSize (px 24)
   body ? textAlign (alignSide sideCenter)
   input # "type=\"input\"" ? do
-    width (px 600)
+    width (px 640)
     height (px 50)
     fontSize (px 18)
 
@@ -20,7 +20,7 @@ postCss = do
     fontFamily ["Tahoma"] [sansSerif]
   body ? textAlign (alignSide sideCenter)
   input # "type=\"input\"" ? do
-    width (px 600)
+    width (px 640)
     height (px 50)
     fontSize (px 18)
   input # "type=\"submit\"" ? do
@@ -32,12 +32,15 @@ postCss = do
     listStyleType none
     fontFamily ["Tahoma"] [sansSerif]
   table ? do
-    width (px 600)
+    width (px 640)
     "table-layout" -: "fixed"
     textAlign (alignSide sideCenter)
     marginRight auto
     marginLeft auto
     fontFamily ["Tahoma"] [sansSerif]
-  td ? ("word-wrap" -: "break-word")
+  td ? do
+    fontSize (px 18)
+    "word-wrap" -: "break-word"
+    "text-align" -: "left"
   tr # ":nth-child(even)" ? backgroundColor "#c0c0c0"
   tr # ":nth-child(odd)" ? backgroundColor "#e0e0e0"
