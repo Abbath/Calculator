@@ -29,6 +29,7 @@ import Calculator.Types (
   Maps (..),
   Op (..),
   OpMap,
+  Precise,
   VarMap,
   ar2int,
   chairmap,
@@ -45,9 +46,9 @@ import Calculator.Types (
   showComplex,
   showFraction,
   showT,
+  textToNum,
   varmap,
   zipFormat,
-  Precise,
  )
 import Control.Applicative (asum)
 import Control.Arrow (Arrow (second))
@@ -66,7 +67,7 @@ import Data.Complex (Complex (..), conjugate, imagPart, realPart)
 import Data.Either (fromRight)
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe, isNothing)
-import Data.Ratio (denominator, numerator)
+import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Metrics (damerauLevenshteinNorm)
@@ -242,7 +243,9 @@ evalS ex = case ex of
       Left err -> throwError (ErrMsg err)
       Right fs -> do
         rs <- traverse evm es
-        throwMsg $ either id id $ zipFormat fs rs
+        case zipFormat fs rs of
+          Left err -> throwError (ErrMsg err)
+          Right t -> return . (:+ 0) . (% 1) . textToNum 0 $ T.unpack t
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
   Call "df" [a, x] -> either throwErr (throwMsg . exprToString . preprocess) $ derivative a x

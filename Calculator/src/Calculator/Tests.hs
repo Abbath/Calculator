@@ -99,7 +99,7 @@ tests =
     , ("1 << 10", Right 1024)
     , ("1024 >> 10", Right 1)
     , ("pop(1023)", Right 10)
-    , ("fmt(\"%s %f %r\", \"test\", 2, 3)", Left . MsgMsg $ "test 2 3 / 1")
+    , ("fmt(\"%s %f %r\", \"test\", 2, 3)", Right 36022907861344900240232095793)
     , ("sin `f` m.pi", Right 0)
     , ("0 |> sin |> cos", Right 1)
     , ("!6", Right 720)
