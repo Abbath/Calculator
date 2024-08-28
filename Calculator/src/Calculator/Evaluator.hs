@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result, MessageType (..)) where
 
@@ -73,6 +74,7 @@ import Data.Text qualified as T
 import Data.Text.Metrics (damerauLevenshteinNorm)
 import Numeric (showBin, showHex, showInt, showOct)
 import System.Random (Random (randomR))
+import qualified GHC.IsList
 
 -- import Debug.Trace
 
@@ -171,6 +173,13 @@ turboZip t e = turboZip' 0 t e
   turboZip' n [] (y : ys) = ("@v." <> showT n, y) : turboZip' (n + 1) [] ys
   turboZip' n (x : xs) (y : ys) = (x, y) : turboZip' n xs ys
 
+pattern Debug :: GHC.IsList.Item [Expr] -> Expr
+pattern Debug e = Call "debug" [e]
+pattern Undef :: [Expr] -> Expr
+pattern Undef es = Call "undef" es
+pattern Atan2 :: GHC.IsList.Item [Expr] -> GHC.IsList.Item [Expr] -> Expr
+pattern Atan2 e1 e2 = Call "atan" [Call "/" [e1, e2]]
+
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
   Asgn s (ChairLit e) -> do
@@ -225,9 +234,9 @@ evalS ex = case ex of
               throwMsg ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))
           )
           t
-  Call "debug" [e] -> throwMsg . showT . preprocess $ e
-  Call "undef" [Id x] -> removeVar x
-  Call "undef" [Id x, e] -> evm e >>= removeFun x . fromInteger . numerator . realPart
+  Debug e -> throwMsg . showT . preprocess $ e
+  Undef [Id x] -> removeVar x
+  Undef [Id x, e] -> evm e >>= removeFun x . fromInteger . numerator . realPart
   Call "opt" [Id x] -> extractId x >>= maybe (return $ 0 :+ 0) return
   Call "opt" [e] -> evm e
   Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
@@ -256,7 +265,7 @@ evalS ex = case ex of
     b1 <- evm b
     e1 <- evm eps
     return $ integrate (realPart . fromRight (0 :+ 0) . procListElem mps fun) (realPart a1) (realPart b1) (realPart e1)
-  Call "atan" [Call "/" [e1, e2]] -> do
+  Atan2 e1 e2 -> do
     t1 <- evm e1
     t2 <- evm e2
     return $ toComplex $ atan2 (fromComplex t1 :: Precise) (fromComplex t2 :: Precise)
@@ -397,7 +406,7 @@ evalS ex = case ex of
     if n == 0 :+ 0
       then return res
       else evm $ Call "loop" [c, a]
-  Call "-" [Call "^" [x, y]] -> evm $ Call "^" [Call "-" [x], y]
+  -- Call "-" [Call "^" [x, y]] -> evm $ Call "^" [Call "-" [x], y]
   Call "-" [x] -> evm $ Call "-" [Number 0 0, x]
   Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
     let builtin_fun = functions M.! (f, ArFixed . length $ ps)

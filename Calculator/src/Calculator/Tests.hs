@@ -79,7 +79,7 @@ tests =
     , ("2^3^4", Right 2417851639229258349412352)
     , ("2+2*2", Right 6)
     , ("-((1))", Right (-1))
-    , ("-1^2", Right 1)
+    , ("-1^2", Right (-1))
     , ("(2+2)*2", Right 8)
     , ("x = 5", Left . MsgMsg $ "Variable x=5")
     , ("abs(-x)==x", Right 1)
