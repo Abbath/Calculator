@@ -1,5 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -54,28 +57,90 @@ module Calculator.Types (
   ar2int,
   isSpaceFun,
   Precise,
+  prec,
 )
 where
 
 import Control.Arrow (second)
 import Control.Lens.TH (makeLenses)
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Bits (shiftL, shiftR, (.&.))
--- import Data.CReal (CReal)
+import Data.Bits as B (bit, shiftL, shiftR, unsafeShiftL, (.&.))
+import Data.CReal (CReal)
+import Data.CReal.Internal as CRI (atPrecision, atanBounded, crMemoize, crealPrecision, recipBounded, shiftL)
 import Data.Char (chr, ord)
 import Data.Complex (Complex, imagPart, realPart)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe)
-import Data.Ratio (denominator, numerator)
+import Data.Ratio (denominator, numerator, (%))
 import Data.Scientific qualified as S
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
+import GHC.Real (Ratio (..))
 import Numeric (showBin, showHex, showOct)
-import System.Random (StdGen)
+import System.Random (Random, StdGen)
 
-type Precise = Double
+newtype Precise = Precise {unreal :: CReal 256}
+  deriving (Show, Eq, Ord)
+  deriving (Num, Fractional, Floating, Real, RealFrac, Random) via CReal 256
+
+piBy4 :: CReal n
+piBy4 = atanBounded (recipBounded 5) `CRI.shiftL` 2 - atanBounded (recipBounded 239) -- Machin Formula
+
+piBy2 :: CReal n
+piBy2 = piBy4 `CRI.shiftL` 1
+
+instance RealFloat Precise where
+  floatRadix :: Precise -> Integer
+  floatRadix _ = 2
+  floatDigits :: Precise -> Int
+  floatDigits _ = error "Data.CReal.Internal floatDigits"
+  floatRange :: Precise -> (Int, Int)
+  floatRange _ = error "Data.CReal.Internal floatRange"
+  decodeFloat :: Precise -> (Integer, Int)
+  decodeFloat x =
+    let p = crealPrecision x.unreal
+     in (x.unreal `atPrecision` p, -p)
+  encodeFloat :: Integer -> Int -> Precise
+  encodeFloat m n =
+    if n <= 0
+      then fromRational (m % bit (negate n))
+      else fromRational (unsafeShiftL m n :% 1)
+  exponent :: Precise -> Int
+  exponent _ = 0
+  significand :: Precise -> Precise
+  significand = error "Data.CReal.Internal significand"
+  scaleFloat :: Int -> Precise -> Precise
+  scaleFloat n x = Precise $ x.unreal `CRI.shiftL` n
+  isNaN :: Precise -> Bool
+  isNaN _ = False
+  isInfinite :: Precise -> Bool
+  isInfinite _ = False
+  isDenormalized :: Precise -> Bool
+  isDenormalized _ = False
+  isNegativeZero :: Precise -> Bool
+  isNegativeZero _ = False
+  isIEEE :: Precise -> Bool
+  isIEEE _ = False
+  atan2 :: Precise -> Precise -> Precise
+  atan2 y x =
+    Precise $
+      crMemoize
+        ( \p ->
+            let y' = y.unreal `atPrecision` p
+                x' = x.unreal `atPrecision` p
+                θ =
+                  if
+                    | x' > 0 -> atan (y.unreal / x.unreal)
+                    | x' == 0 && y' > 0 -> piBy2
+                    | x' < 0 && y' > 0 -> pi + atan (y.unreal / x.unreal)
+                    | x' <= 0 && y' < 0 -> -atan2 (-y.unreal) x.unreal
+                    | y' == 0 && x' < 0 -> pi -- must be after the previous test on zero y
+                    | x' == 0 && y' == 0 -> 0 -- must be after the other double zero tests
+                    | otherwise -> error "Data.CReal.Internal atan2"
+             in θ `atPrecision` p
+        )
 
 data Token
   = TNumber Rational Rational
@@ -331,14 +396,14 @@ numToText n | denominator (realPart n) /= 1 = Left "Can't convert rational to st
 numToText n = Right $ go T.empty (abs . numerator . realPart $ n)
  where
   go t 0 = t
-  go t m = go (T.cons (chr . fromInteger $ (m .&. 0xff)) t) (m `shiftR` 8)
+  go t m = go (T.cons (chr . fromInteger $ (m .&. 0xff)) t) (m `B.shiftR` 8)
 
 textToNum :: Integer -> [Char] -> Integer
 textToNum n [] = n
 textToNum n (c : cs) =
   let o = ord c
       b = if o > 255 || o < 0 then ord ' ' else o
-   in textToNum (n `shiftL` 8 + toInteger b) cs
+   in textToNum (n `B.shiftL` 8 + toInteger b) cs
 
 data FormatChunk = FormatTxt Text | FormatFmt Text deriving (Show)
 
@@ -383,6 +448,6 @@ zipFormat = go T.empty
       formatted <- showComplexBase b cr
       go (acc <> formatted) fs rs
 
-data EvalState = EvalState {_maps :: Maps, _gen :: StdGen} deriving (Show)
+data EvalState = EvalState {_maps :: Maps, _gen :: StdGen, _prec :: Int} deriving (Show)
 
 makeLenses ''EvalState

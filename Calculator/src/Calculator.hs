@@ -15,7 +15,7 @@ module Calculator (
 import Calculator.Builtins (defVar, defaultMaps, funMap, names, opMap)
 import Calculator.Compiler qualified as C
 import Calculator.Css (getCss, postCss)
-import Calculator.Evaluator (MessageType (..), evalS)
+import Calculator.Evaluator (MessageType (..), applyPrecision, evalS)
 import Calculator.Lexer (tloop)
 import Calculator.Parser qualified as P
 import Calculator.Types (
@@ -102,7 +102,7 @@ parseString m s ms = case m of
 evalExprS :: Either TS.Text Expr -> EvalState -> Either (MessageType, EvalState) (Complex Rational, EvalState)
 evalExprS t es = either (Left . (,es) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
  where
-  getShit e = S.runState (runExceptT (evalS e)) es
+  getShit e = S.runState (runExceptT (evalS e >>= applyPrecision)) es
 
 type StateData = [String]
 
@@ -136,7 +136,7 @@ loop mode mps = do
       flip S.evalStateT [] $
         runInputT
           (replSettings{historyFile = Just (hd ++ "/.mycalchist")})
-          (loop' mode (EvalState mps g))
+          (loop' mode (EvalState mps g 16))
   case x of
     Left (CE.ErrorCall s) -> do
       putStrLn s
@@ -154,22 +154,22 @@ loop mode mps = do
       Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' md es) . withInterrupt $ do
         let y = parseEval md es (TS.pack x)
         case y of
-          Left (err, EvalState m ng) -> do
+          Left (err, EvalState m ng pr) -> do
             let m' = removeLocals m
             case err of
               MsgMsg msg -> liftIO $ TSIO.putStrLn msg
               ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
-            loop' md (EvalState m' ng)
-          Right (r, EvalState m ng) -> do
+            loop' md (EvalState m' ng pr)
+          Right (r, EvalState m ng pr) -> do
             let m' = removeLocals m
             liftIO . TSIO.putStrLn . showComplex $ r
-            loop' md (EvalState (m' & varmap %~ M.insert "_" r) ng)
+            loop' md (EvalState (m' & varmap %~ M.insert "_" r) ng pr)
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
 interpret path mode mps = do
   g <- initStdGen
   source <- TS.lines <$> TSIO.readFile path
-  x <- CE.try $ flip S.evalStateT [] $ loop' source mode (EvalState mps g)
+  x <- CE.try $ flip S.evalStateT [] $ loop' source mode (EvalState mps g 16)
   case x of
     Left (CE.ErrorCall s) -> do
       putStrLn s
@@ -190,9 +190,9 @@ interpret path mode mps = do
               MsgMsg msg -> liftIO $ TSIO.putStrLn msg
               ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
             loop' ls md nes
-          Right (r, EvalState m ng) -> do
+          Right (r, EvalState m ng pr) -> do
             liftIO . TSIO.putStrLn $ showComplex r
-            loop' ls md (EvalState (m & varmap %~ M.insert "_" r) ng)
+            loop' ls md (EvalState (m & varmap %~ M.insert "_" r) ng pr)
 
 data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
@@ -347,9 +347,9 @@ webLoop port mode = do
           let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
           let t = parseString mode fs ms
           g1 <- liftIO $ readIORef ref
-          let res = evalExprS t (EvalState ms g1)
+          let res = evalExprS t (EvalState ms g1 16)
           let txt =
-                let (ress, EvalState mps ng) =
+                let (ress, EvalState mps ng _) =
                       either
                         Prelude.id
                         (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . varmap %~ M.insert "_" r) mg))

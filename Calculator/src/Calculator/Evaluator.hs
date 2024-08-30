@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result, MessageType (..)) where
+module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result, MessageType (..), applyPrecision) where
 
 import Calculator.Builtins (
   defVar,
@@ -42,6 +42,7 @@ import Calculator.Types (
   maps,
   numToText,
   opmap,
+  prec,
   preprocess,
   showChair,
   showComplex,
@@ -72,9 +73,9 @@ import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Metrics (damerauLevenshteinNorm)
+import GHC.IsList qualified
 import Numeric (showBin, showHex, showInt, showOct)
 import System.Random (Random (randomR))
-import qualified GHC.IsList
 
 -- import Debug.Trace
 
@@ -180,6 +181,13 @@ pattern Undef es = Call "undef" es
 pattern Atan2 :: GHC.IsList.Item [Expr] -> GHC.IsList.Item [Expr] -> Expr
 pattern Atan2 e1 e2 = Call "atan" [Call "/" [e1, e2]]
 
+applyPrecision :: Complex Rational -> Result (Complex Rational)
+applyPrecision r = do
+  pr <- use prec
+  if pr > 0
+    then return $ (/ (10 ^ pr)) . fromInteger . truncate <$> ((*) <$> r <*> pure (10 ^ pr))
+    else return $ fromInteger . truncate <$> r
+
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
   Asgn s (ChairLit e) -> do
@@ -237,6 +245,16 @@ evalS ex = case ex of
   Debug e -> throwMsg . showT . preprocess $ e
   Undef [Id x] -> removeVar x
   Undef [Id x, e] -> evm e >>= removeFun x . fromInteger . numerator . realPart
+  Call "prec" [] -> prec .= 16 >> throwMsg "Precision is set to: 16"
+  Call "prec" [e] -> do
+    pr <- evm e
+    let num = fromInteger . numerator . realPart $ pr
+    if num >= 0 && num <= 256
+      then do
+        prec .= num
+        throwMsg $ "Precision is set to: " <> showComplex pr
+      else
+        throwErr "Precision should be between 0 and 256"
   Call "opt" [Id x] -> extractId x >>= maybe (return $ 0 :+ 0) return
   Call "opt" [e] -> evm e
   Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
@@ -249,7 +267,7 @@ evalS ex = case ex of
   Call "fmt" (Number n ni : es) -> do
     let format = numToText (n :+ ni) >>= extractFormat
     case format of
-      Left err -> throwError (ErrMsg err)
+      Left err -> throwErr err
       Right fs -> do
         rs <- traverse evm es
         case zipFormat fs rs of
@@ -415,15 +433,12 @@ evalS ex = case ex of
       FnFn (IntFn1 fun) -> evalInt1 fun (head ps)
       FnFn (IntFn2 fun) -> evalInt fun (head ps) (ps !! 1)
       FnFn (BitFn fun) -> evalBit fun (head ps)
-      FnFn (FracFn1 fun) -> evm (head ps) >>= \x -> return $ fun x
+      FnFn (FracFn1 fun) -> fun <$> evm (head ps)
       FnFn (MathFn1 fun) -> do
         n <- evm (head ps)
         let r = (\x -> if abs (realPart x) <= sin pi && imagPart x == 0 then 0 else x) . fun . fmap fromRational $ n
         return $ toRational <$> r
-      FnFn (MathFn2 fun) -> do
-        n <- evm (head ps)
-        m <- evm (ps !! 1)
-        return . fun n $ m
+      FnFn (MathFn2 fun) -> fun <$> evm (head ps) <*> evm (ps !! 1)
       ExFn expr -> either throwErr evm $ substitute (zip (params builtin_fun) ps) expr
       _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do
@@ -496,7 +511,7 @@ evalS ex = case ex of
     let builtin_op = operators M.! bop
     case oexec builtin_op of
       FnOp (CmpOp fun) -> cmp fun x y
-      FnOp (MathOp fun) -> eval' fun bop x y
+      FnOp (MathOp fun) -> fun <$> evm x <*> evm y
       FnOp (BitOp fun) -> (:+ 0) <$> bitEval fun x y
       ExOp e -> evm e
       _ -> throwError (ErrMsg "Misteriously missing operator")
@@ -516,7 +531,7 @@ evalS ex = case ex of
       else throwError (ErrMsg "Cannot perform bitwise operator on a rational")
   evm x = do
     r <- evalS x
-    if realPart r > tooBig
+    if abs (realPart r) > tooBig || abs (imagPart r) > tooBig
       then throwError (ErrMsg "Too much!")
       else return r
   evalInt f x y = do
@@ -534,14 +549,6 @@ evalS ex = case ex of
     if denominator (realPart t) == 1
       then return . toComplex $ f (numerator (realPart t))
       else throwError (ErrMsg "Cannot use bitwise function on rational numbers!")
-  eval' :: (Complex Rational -> Complex Rational -> Complex Rational) -> Text -> Expr -> Expr -> Result (Complex Rational)
-  eval' f op x y = do
-    t1 <- evm x
-    t2 <- evm y
-    if (op == "^" && logBase 10 (fromComplex t1 :: Precise) * (fromComplex t2 :: Precise) > 2408240)
-      || realPart (f t1 t2) > tooBig
-      then throwError (ErrMsg "Too much!")
-      else return $ f t1 t2
   procListElem m fun n = evalState (runExceptT (evm (Call fun [Number n 0]))) m
   findSimilar :: (Text, Int) -> [(Text, Arity)] -> ([(Text, Int)], [(Text, Int)])
   findSimilar (name, arity) funs =

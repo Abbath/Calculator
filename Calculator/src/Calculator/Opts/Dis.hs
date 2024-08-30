@@ -35,7 +35,7 @@ discordCalculator = do
     TIO.putStrLn "Started server"
     loadFile defaultConfig
     token <- fromMaybe "" <$> lookupEnv "DISCORD_TOKEN"
-    mes <- getStdGen >>= newMVar . EvalState defaultMaps
+    mes <- getStdGen >>= \g -> newMVar (EvalState defaultMaps g 16)
     userFacingError <-
         runDiscord $
             def

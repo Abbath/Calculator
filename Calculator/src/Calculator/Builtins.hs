@@ -1,10 +1,10 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DataKinds #-}
 
 module Calculator.Builtins where
 
-import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Op (..), OpMap, VarMap, Maps(..), Precise)
+import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpMap, Precise, VarMap)
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
 import Data.Complex (Complex (..), imagPart, realPart)
@@ -16,7 +16,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Numeric (expm1, log1mexp, log1p, log1pexp)
-
 
 operators :: OpMap
 operators =
@@ -181,12 +180,14 @@ pow a b
           na = numerator (realPart a)
           nb = numerator (realPart b)
        in if da == 1 && db == 1 && nb < 0
-            then (:+ 0) . toRational $ (fromRational (realPart a) :: Precise) ^^ nb
+            then toRational <$> (fromRational <$> a :: Complex Precise) ^^ nb
             else
-              if da == 1 && na == 1
+              if da == 1 && db == 1
                 then (:+ 0) . toRational $ na ^ nb
-                else (:+ 0) . toRational $ (fromRational (realPart a) :: Precise) ** (fromRational (realPart b) :: Precise)
-pow a b = toRational <$> (fromRational <$> a :: Complex Precise) ** (fromRational <$> b :: Complex Precise)
+                else pow'
+  | otherwise = pow'
+ where
+  pow' = toRational <$> (fromRational <$> a :: Complex Precise) ** (fromRational <$> b :: Complex Precise)
 
 hypot :: Complex Rational -> Complex Rational -> Complex Rational
 hypot cx cy =
