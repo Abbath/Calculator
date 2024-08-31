@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -101,16 +102,12 @@ substitute ((x, y) : xys) (Id i) =
 substitute s@((x, Id fname) : xys) (Call n e) =
   if n == x
     then Call fname <$> mapM (substitute s) e
-    else do
-      t <- mapM (substitute s) e
-      substitute xys (Call n t)
+    else mapM (substitute s) e >>= substitute xys . Call n
 substitute ((x, Id sname) : xys) (ChairSit n e) =
   if n == T.tail x
     then Right $ ChairSit sname e
     else substitute xys (ChairSit n e)
-substitute s@(_ : xys) (Call n e) = do
-  t <- mapM (substitute s) e
-  substitute xys (Call n t)
+substitute s@(_ : xys) (Call n e) = mapM (substitute s) e >>= substitute xys . Call n
 substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
@@ -120,9 +117,7 @@ localize (x : xs) (Id i) = if i == x then return $ Id (T.cons '@' i) else locali
 localize s@(x : xs) (Call nm e) =
   if nm == x
     then Call (T.cons '@' nm) <$> mapM (localize s) e
-    else do
-      t <- mapM (localize s) e
-      localize xs (Call nm t)
+    else mapM (localize s) e >>= localize xs . Call nm
 localize s ex = goInside (localize s) ex
 
 catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
@@ -184,9 +179,10 @@ pattern Atan2 e1 e2 = Call "atan" [Call "/" [e1, e2]]
 applyPrecision :: Complex Rational -> Result (Complex Rational)
 applyPrecision r = do
   pr <- use prec
-  if pr > 0
-    then return $ (/ (10 ^ pr)) . fromInteger . truncate <$> ((*) <$> r <*> pure (10 ^ pr))
-    else return $ fromInteger . truncate <$> r
+  if
+    | pr == -1 -> return r
+    | pr > 0 -> return $ (/ (10 ^ pr)) . fromInteger . truncate <$> ((*) <$> r <*> pure (10 ^ pr))
+    | otherwise -> return $ fromInteger . truncate <$> r
 
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
@@ -249,12 +245,12 @@ evalS ex = case ex of
   Call "prec" [e] -> do
     pr <- evm e
     let num = fromInteger . numerator . realPart $ pr
-    if num >= 0 && num <= 256
+    if num >= -1 && num <= 85
       then do
         prec .= num
         throwMsg $ "Precision is set to: " <> showComplex pr
       else
-        throwErr "Precision should be between 0 and 256"
+        throwErr "Precision should be between 0 and 85"
   Call "opt" [Id x] -> extractId x >>= maybe (return $ 0 :+ 0) return
   Call "opt" [e] -> evm e
   Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
@@ -420,9 +416,8 @@ evalS ex = case ex of
   Call "loop" [i, c, a] -> evm i >> evm (Call "loop" [c, a])
   Call "loop" [c, a] -> do
     n <- evm c
-    res <- evm a
     if n == 0 :+ 0
-      then return res
+      then evm a
       else evm $ Call "loop" [c, a]
   -- Call "-" [Call "^" [x, y]] -> evm $ Call "^" [Call "-" [x], y]
   Call "-" [x] -> evm $ Call "-" [Number 0 0, x]
@@ -541,9 +536,7 @@ evalS ex = case ex of
       then return . toComplex $ f (numerator (realPart t1)) (numerator (realPart t2))
       else throwError (ErrMsg "Cannot use integral function on rational numbers!")
   evalInt1 :: (Precise -> Integer) -> Expr -> Result (Complex Rational)
-  evalInt1 f x = do
-    t1 <- evm x
-    return . toComplex $ f (fromComplex t1)
+  evalInt1 f x = toComplex . f . fromComplex <$> evm x
   evalBit f x = do
     t <- evm x
     if denominator (realPart t) == 1

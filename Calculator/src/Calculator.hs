@@ -302,8 +302,7 @@ webLoop port mode = do
   WS.scotty port $ do
     WS.middleware $ NWMS.staticPolicy (NWMS.noDots NWMS.>-> NWMS.addBase "Static/images")
     WS.get "/" $ do
-      sa <- remoteHost <$> WS.request
-      liftIO $ print sa
+      WS.request >>= liftIO . print . remoteHost
       do
         y <- liftIO (abs <$> randomIO :: IO Integer)
         f <- liftIO . findFile ["."] . logName . show $ y

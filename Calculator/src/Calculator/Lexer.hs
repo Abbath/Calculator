@@ -221,5 +221,5 @@ tloop = go [] . Input 0
  where
   go acc (Input _ x) | T.null x = Right $ reverse acc
   go acc input = case runParser tokah input of
-    Left (ParserError n s) -> Left ("Error: " <> s <> " at " <> (T.pack . show $ n))
+    Left (ParserError n s) -> Left (s <> " at " <> (T.pack . show $ n))
     Right (input1, tok) -> go (tok : acc) input1

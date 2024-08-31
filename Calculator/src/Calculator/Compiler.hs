@@ -229,15 +229,11 @@ substitute ((x, y) : xs) (Id i) =
 substitute s@((x, Id fname) : xs) (Call n e) =
   if n == x
     then Call fname <$> mapM (substitute s) e
-    else do
-      t <- mapM (substitute s) e
-      substitute xs (Call n t)
+    else mapM (substitute s) e >>= substitute xs . Call n
 substitute s (Call ":=" [Id z, e]) = do
   ne <- substitute s e
   return $ Call ":=" [Id z, ne]
-substitute s@(_ : xs) (Call n e) = do
-  t <- mapM (substitute s) e
-  substitute xs (Call n t)
+substitute s@(_ : xs) (Call n e) = mapM (substitute s) e >>= substitute xs . Call n
 substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
@@ -246,9 +242,7 @@ localize (x : xs) (Id i) = if i == x then return $ Id (T.cons '@' i) else locali
 localize s@(x : xs) (Call nm e) =
   if nm == x
     then Call (T.cons '@' nm) <$> mapM (localize s) e
-    else do
-      t <- mapM (localize s) e
-      localize xs (Call nm t)
+    else mapM (localize s) e >>= localize xs . Call nm
 localize s ex = goInside (localize s) ex
 
 catchVar :: Set Text -> Maps -> Expr -> Either Text Expr
@@ -288,8 +282,7 @@ setVar = doVar OpSet
 doVar :: OpCode -> Value -> StateChunk ()
 doVar oc name = do
   emitByte oc
-  i <- findPlace name
-  emitByte i
+  findPlace name >>= emitByte
 
 findPlace :: Value -> StateChunk Int
 findPlace name = do
