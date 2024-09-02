@@ -13,6 +13,7 @@ import Calculator.Builtins (
   getPrecedences,
   maxPrecedence,
   operators,
+  unaryOperators,
  )
 import Calculator.Generator
 import Calculator.Types (
@@ -30,6 +31,7 @@ import Calculator.Types (
   FunOp (..),
   Maps (..),
   Op (..),
+  OpArity (..),
   OpMap,
   Precise,
   VarMap,
@@ -220,13 +222,13 @@ evalS ex = case ex of
       newe
   UDO n (-1) _ e@(Call op _) -> do
     mps <- use maps
-    case M.lookup op (mps ^. opmap) of
+    case M.lookup (op, Ar2) (mps ^. opmap) of
       Just o@Op{} -> do
-        maps . opmap . at n ?= o{oexec = AOp op}
+        maps . opmap . at (n, Ar2) ?= o{oexec = AOp op}
         throwMsg $ "Operator alias " <> n <> " = " <> op
       Nothing -> throwErr $ "No such operator: " <> op
   UDO n p a e
-    | M.member n operators -> throwErr $ "Can not redefine the built-in operator: " <> n
+    | M.member (n, Ar2) operators -> throwErr $ "Can not redefine the built-in operator: " <> n
     | p < 1 || p > maxPrecedence -> throwErr $ "Bad precedence: " <> showT p
     | otherwise -> do
         mps <- use maps
@@ -234,7 +236,7 @@ evalS ex = case ex of
         either
           throwErr
           ( \r -> do
-              maps . opmap . at n ?= Op{precedence = p, associativity = a, oexec = ExOp r}
+              maps . opmap . at (n, Ar2) ?= Op{precedence = p, associativity = a, oexec = ExOp r}
               throwMsg ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))
           )
           t
@@ -251,8 +253,8 @@ evalS ex = case ex of
         throwMsg $ "Precision is set to: " <> showComplex pr
       else
         throwErr "Precision should be between 0 and 85"
-  Call "opt" [Id x] -> extractId x >>= maybe (return $ 0 :+ 0) return
-  Call "opt" [e] -> evm e
+  Call f [Id x] | f `elem` (["opt", "?"] :: [Text]) -> extractId x >>= maybe (return $ 0 :+ 0) return
+  Call f [e] | f `elem` (["opt", "?"] :: [Text]) -> evm e
   Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
     case e1 of
       Id x -> do
@@ -295,6 +297,7 @@ evalS ex = case ex of
       "imag" -> return $ imagPart t1 :+ 0
       "conj" -> return $ conjugate t1
       _ -> throwErr $ "No such complex function: " <> f
+  Call "^" [Call "neg" [x], y] -> evm $ Call "neg" [Call "^" [x, y]]
   Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
     t1 <- evm e
     if denominator (realPart t1) == 1
@@ -319,14 +322,14 @@ evalS ex = case ex of
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     mps <- use maps
     let pr = getPrecedences (mps ^. opmap) <> getFakePrecedences (mps ^. funmap)
-    let a = M.lookup op1 pr
-    let b = M.lookup op2 pr
+    let a = M.lookup (op1, Ar2) pr
+    let b = M.lookup (op2, Ar2) pr
     if a == b
       then case a of
         Nothing -> throwErr $ "No such operators: " <> op1 <> " " <> op2
         Just _ -> do
-          let Op{associativity = asc1} = (mps ^. opmap) M.! op1
-          let Op{associativity = asc2} = (mps ^. opmap) M.! op2
+          let Op{associativity = asc1} = (mps ^. opmap) M.! (op1, Ar2)
+          let Op{associativity = asc2} = (mps ^. opmap) M.! (op2, Ar2)
           case (asc1, asc2) of
             (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
             (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
@@ -398,10 +401,11 @@ evalS ex = case ex of
         return n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwErr $ "Cannot assign to an expression with: " <> op
-  Call op [x, y] | M.member op operators -> evalBuiltinOp op x y
+  Call op [x] | M.member (op, Ar1) unaryOperators -> evalBuiltinOp1 (op, Ar1) x
+  Call op [x, y] | M.member (op, Ar2) operators -> evalBuiltinOp2 (op, Ar2) x y
   Call op [x, y] | isOp op -> do
     mps <- use maps
-    case (M.lookup op (mps ^. opmap) :: Maybe Op) of
+    case (M.lookup (op, Ar2) (mps ^. opmap) :: Maybe Op) of
       Just Op{oexec = ExOp expr} -> either throwErr evm $ substitute (zip ["@x", "@y"] [x, y]) expr
       Just Op{oexec = AOp aop} -> evm (Call aop [x, y])
       Nothing -> case op of
@@ -419,8 +423,7 @@ evalS ex = case ex of
     if n == 0 :+ 0
       then evm a
       else evm $ Call "loop" [c, a]
-  -- Call "-" [Call "^" [x, y]] -> evm $ Call "^" [Call "-" [x], y]
-  Call "-" [x] -> evm $ Call "-" [Number 0 0, x]
+  Call "neg" [x] -> evm $ Call "-" [Number 0 0, x]
   Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
     let builtin_fun = functions M.! (f, ArFixed . length $ ps)
     case fexec builtin_fun of
@@ -502,7 +505,12 @@ evalS ex = case ex of
         vm <- use $ maps . funmap
         maps . funmap .= M.delete (f, if a >= 0 then ArFixed a else ArVar (-a)) vm
         throwMsg $ "Removed: " <> f <> "/" <> showT a
-  evalBuiltinOp bop x y = do
+  evalBuiltinOp1 uop x = do
+    let builtin_op = unaryOperators M.! uop
+    case oexec builtin_op of
+      FnOp (UnOp fun) -> (:+ 0) . toRational . fun . numerator . realPart <$> evm x
+      _ -> throwError (ErrMsg "Misteriously missing operator")
+  evalBuiltinOp2 bop x y = do
     let builtin_op = operators M.! bop
     case oexec builtin_op of
       FnOp (CmpOp fun) -> cmp fun x y

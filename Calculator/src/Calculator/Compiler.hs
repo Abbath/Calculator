@@ -19,6 +19,7 @@ import Calculator.Types (
   FunOp (BitOp, CmpOp, MathOp),
   Maps (..),
   Op (oexec),
+  OpArity (..),
   OpMap,
   funmap,
   numToText,
@@ -430,9 +431,9 @@ run m = do
                     v1 <- pop
                     v2 <- pop
                     if
-                      | k == "/" -> do
+                      | k == ("/", Ar2) -> do
                           push . (:+ 0) $ (realPart v2 / realPart v1)
-                      | k == "%" -> do
+                      | k == ("%", Ar2) -> do
                           push . (:+ 0) $ toRational $ mod (floor . realPart $ v2 :: Integer) (floor . realPart $ v1 :: Integer)
                       | otherwise ->
                           case oexec op of
@@ -610,7 +611,7 @@ compile' m = go
       emitByte OpInternal
       let idx = fromMaybe 0 $ V.elemIndex f ["real", "imag", "conj"]
       emitByte (toEnum idx :: OpInternal)
-    Call op [x, y] | M.member op (m ^. opmap) -> do
+    Call op [x, y] | M.member (op, Ar2) (m ^. opmap) -> do
       go x
       go y
       emitByte OpBuiltin
@@ -648,7 +649,7 @@ compile' m = go
       addLabel l off
 
 op2Code :: OpMap -> Text -> Word8
-op2Code m op = toWord8 $ M.findIndex op m
+op2Code m op = toWord8 $ M.findIndex (op, Ar2) m
 
 fun2Code :: FunMap -> (Text, Arity) -> Word8
 fun2Code m (fun, l) = 0x80 .|. toWord8 (M.findIndex (fun, l) m)

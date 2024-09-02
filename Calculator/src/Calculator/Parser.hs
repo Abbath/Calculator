@@ -13,6 +13,7 @@ import Calculator.Types (
   Expr (..),
   Maps,
   Op (Op),
+  OpArity (..),
   Token (..),
   isSpaceFun,
   numToText,
@@ -45,6 +46,10 @@ inputCons x (Input loc xs) = Input (loc - 1) (x : xs)
 inputPeek :: Input -> Maybe Token
 inputPeek (Input _ []) = Nothing
 inputPeek (Input _ (x : _)) = Just x
+
+inputTail :: Input -> Input
+inputTail (Input x []) = Input x []
+inputTail (Input x (_ : xs)) = Input x xs
 
 newtype Parser a = Parser
   { runParser :: Input -> Either Text (Input, a)
@@ -80,15 +85,10 @@ instance Monad Parser where
     (i, a) <- runParser p input
     runParser (f a) i
 
-eof :: Parser ()
-eof = Parser $ \input -> case input of
-  (inputUncons -> Just _) -> Left "Extra input left"
-  _ -> return (input, ())
-
 parse :: Maps -> [Token] -> Either Text Expr
 parse m ts =
   runParser (stmt m) (Input 0 ts) >>= \(i, e) -> case i of
-    (inputUncons -> Just _) -> Left "Extra input left"
+    (inputUncons -> Just i1) -> Left $ "Extra input left " <> showT i1
     _ -> return e
 
 stmt :: Maps -> Parser Expr
@@ -236,33 +236,32 @@ expr min_bp m = Parser $
       TOp op -> case inputPeek ts of
         Just TLPar -> do
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts
-          inner_loop (Call op e) min_bp m i
+          inner_loop (Call (handleNegation op) e) i
         _ -> do
           (i, e) <- runParser (expr (prefix_binding_power op m) m) ts
-          funop <- selectOp op
-          inner_loop (Call funop [e]) min_bp m i
-      TNumber a b -> inner_loop (Number a b) min_bp m ts
+          inner_loop (Call (handleNegation op) [e]) i
+      TNumber a b -> inner_loop (Number a b) ts
       TIdent a -> case inputPeek ts of
         Just TLPar | not ("'" `T.isSuffixOf` a) -> do
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts
-          inner_loop (Call a e) min_bp m i
+          inner_loop (Call a e) i
         Just TLBracket -> do
           (i, e) <- runParser (brackets (sepBy identifier comma)) ts
-          inner_loop (ChairSit a e) min_bp m i
+          inner_loop (ChairSit a e) i
         Just x | isSpaceFun x -> do
           (i, e) <- runParser (many (eid <|> enumber <|> parens (expr 0.0 m))) ts
-          inner_loop (Call (trimTick a) e) min_bp m i
-        _ -> inner_loop (Id a) min_bp m ts
+          inner_loop (Call (trimTick a) e) i
+        _ -> inner_loop (Id a) ts
       TLPar -> do
         (i, e) <- runParser (expr 0.0 m) ts
         case i of
-          (inputUncons -> Just (TRPar, i1)) -> inner_loop (Par e) min_bp m i1
+          (inputUncons -> Just (TRPar, i1)) -> inner_loop (Par e) i1
           (inputUncons -> Just (TComma, _)) -> Left "Argument list without a function name"
           _ -> Left "No closing parenthesis"
       TLBrace -> do
         (i, e) <- runParser (keyValuePairs m) ts
         case i of
-          (inputUncons -> Just (TRBrace, i1)) -> inner_loop (ChairLit e) min_bp m i1
+          (inputUncons -> Just (TRBrace, i1)) -> inner_loop (ChairLit e) i1
           _ -> Left "No closing brace"
       TRBrace -> Left "No opening brace"
       TRBracket -> Left "No opening bracket"
@@ -270,29 +269,43 @@ expr min_bp m = Parser $
       tok -> Left ("Only numbers in the building " <> showT tok)
     _ -> Left "Expected token, but the list is empty"
  where
-  inner_loop :: Expr -> Double -> Maps -> Input -> Either Text (Input, Expr)
-  inner_loop lhs bp om ts = case ts of
+  inner_loop new_lhs = inner_loop' new_lhs min_bp m
+  inner_loop' :: Expr -> Double -> Maps -> Input -> Either Text (Input, Expr)
+  inner_loop' lhs bp om ts = case ts of
     (inputUncons -> Just (t, ts1)) -> case t of
-      TRPar -> Right (ts, lhs)
-      TRBrace -> Right (ts, lhs)
-      TRBracket -> Right (ts1, lhs)
-      TComma -> Right (ts, lhs)
-      TOp op -> case infix_binding_power op om of
-        Nothing -> Left $ "Operator does not exist: " <> showT op
-        Just (l_bp, r_bp) ->
-          if l_bp < bp
-            then Right (ts, lhs)
-            else do
-              (ts2, e) <- runParser (expr r_bp om) ts1
-              inner_loop (Call op [lhs, e]) bp om ts2
+      TRPar -> rtl
+      TRBrace -> rtl
+      TRBracket -> rtl
+      TComma -> rtl
+      TOp op -> case postfix_binding_power op om of
+        Just bp1 ->
+          if bp1 < bp
+            then rtl
+            else case inputPeek ts1 of
+              Just (TOp op1) -> il (Call (handleNegation op) [lhs]) ts1
+              Nothing -> Right (ts1, Call (handleNegation op) [lhs])
+              _ -> do
+                (ts2, e) <- runParser (expr bp1 om) ts1
+                il (Call op [lhs, e]) ts2
+        Nothing -> case infix_binding_power op om of
+          Nothing -> Left $ "Operator does not exist: " <> showT op
+          Just (l_bp, r_bp) ->
+            if l_bp < bp
+              then rtl
+              else do
+                (ts2, e) <- runParser (expr r_bp om) ts1
+                il (Call op [lhs, e]) ts2
       TLPar -> Left "Calling a ticked function as a normal one"
       tok -> Left $ "Wrong token: " <> showT tok
-    _ -> Right (ts, lhs)
+    _ -> rtl
+   where
+    rtl = Right (ts, lhs)
+    il new_lhs = inner_loop' new_lhs bp om
   infix_binding_power :: Text -> Maps -> Maybe (Double, Double)
   infix_binding_power op ms =
     if T.all (`elem` opSymbols) op
       then do
-        (Op pr asoc _) <- op `M.lookup` (ms ^. opmap)
+        (Op pr asoc _) <- (op, Ar2) `M.lookup` (ms ^. opmap)
         let p = fromIntegral pr
         return $ case asoc of
           L -> (p, p + 0.25)
@@ -300,14 +313,15 @@ expr min_bp m = Parser $
       else let mp = fromIntegral (maxPrecedence + 1) in return (mp, mp + 0.25)
   prefix_binding_power :: Text -> Maps -> Double
   prefix_binding_power op ms =
-    let (Op pr _ _) = (ms ^. opmap) M.! op
+    let (Op pr _ _) = (ms ^. opmap) M.! (op, Ar1)
      in fromIntegral pr
-  selectOp :: Text -> Either Text Text
-  selectOp op =
-    let ops = [("~", "comp"), ("!", "fact"), ("-", "-"), ("?", "opt")]
-     in case M.lookup op ops of
-          Nothing -> Left ("No such operator: " <> op)
-          Just fun -> return fun
+  postfix_binding_power :: Text -> Maps -> Maybe Double
+  postfix_binding_power op ms = do
+    (Op pr _ _) <- (op, Ar1) `M.lookup` (ms ^. opmap)
+    return $ fromIntegral pr
+  handleNegation :: Text -> Text
+  handleNegation "-" = "neg"
+  handleNegation op = op
 
 testParser :: Parser a -> Text -> Either Text (Input, a)
 testParser = flip ((>>=) . tloop) . (. Input 0) . runParser

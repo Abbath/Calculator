@@ -58,6 +58,7 @@ module Calculator.Types (
   isSpaceFun,
   Precise,
   prec,
+  OpArity (..),
 )
 where
 
@@ -193,7 +194,7 @@ instance ToJSON Expr
 
 instance FromJSON Expr
 
-type ListTuple = ([(Text, (Rational, Rational))], [((Text, Arity), ([Text], Expr))], [(Text, ((Int, Assoc), Expr))])
+type ListTuple = ([(Text, (Rational, Rational))], [((Text, Arity), ([Text], Expr))], [((Text, OpArity), ((Int, Assoc), Expr))])
 
 data FunFun
   = CmpFn (Rational -> Rational -> Bool)
@@ -217,12 +218,13 @@ instance Show FunOp where
   show (CmpOp _) = "CmpOp"
   show (MathOp _) = "MathOp"
   show (BitOp _) = "BitOp"
+  show (UnOp _) = "UnOp"
 
 data ExecFn = NFn | ExFn Expr | FnFn FunFun deriving (Show)
 
 data ExecOp = NOp | ExOp Expr | FnOp FunOp | AOp Text deriving (Show)
 
-data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer)
+data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer) | UnOp (Integer -> Integer)
 
 data Fun = Fun
   { params :: [Text]
@@ -241,6 +243,7 @@ type Chair = Map Text ChairVal
 data ChairVal = DickVal (Complex Rational) | PikeVal Chair deriving (Show)
 
 data Arity = ArFixed Int | ArVar Int deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
+data OpArity = Ar1 | Ar2 deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 ar2int :: Arity -> Int
 ar2int (ArFixed n) = n
@@ -248,7 +251,7 @@ ar2int (ArVar n) = n
 
 type FunMap = Map (Text, Arity) Fun
 type VarMap = Map Text (Complex Rational)
-type OpMap = Map Text Op
+type OpMap = Map (Text, OpArity) Op
 type ChairMap = Map Text Chair
 
 data Maps = Maps {_varmap :: VarMap, _funmap :: FunMap, _opmap :: OpMap, _chairmap :: ChairMap} deriving (Show)
@@ -263,13 +266,13 @@ unpackExOp :: ExecOp -> Expr
 unpackExOp (ExOp e) = e
 unpackExOp _ = error "Not an expression"
 
-opsToList :: OpMap -> [(Text, ((Int, Assoc), Expr))]
+opsToList :: OpMap -> [((Text, OpArity), ((Int, Assoc), Expr))]
 opsToList = map (\(k, v) -> (k, ((precedence v, associativity v), unpackExOp . oexec $ v))) . filter (\(_, v) -> isExOp . oexec $ v) . M.toList
 
-opsFromList :: [(Text, ((Int, Assoc), Expr))] -> OpMap
+opsFromList :: [((Text, OpArity), ((Int, Assoc), Expr))] -> OpMap
 opsFromList = M.fromList . map (\(k, ((p, a), e)) -> (k, Op p a (ExOp e)))
 
-getPrA :: OpMap -> Map Text (Int, Assoc)
+getPrA :: OpMap -> Map (Text, OpArity) (Int, Assoc)
 getPrA om =
   let lst = M.toList om
       ps = M.fromList $ map (second (\o -> (precedence o, associativity o))) lst

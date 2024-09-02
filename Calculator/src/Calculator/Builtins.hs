@@ -1,10 +1,11 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module Calculator.Builtins where
 
-import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpMap, Precise, VarMap)
+import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, VarMap)
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
 import Data.Complex (Complex (..), imagPart, realPart)
@@ -19,46 +20,51 @@ import Numeric (expm1, log1mexp, log1p, log1pexp)
 
 operators :: OpMap
 operators =
-  [ ("=", Op{precedence = 0, associativity = R, oexec = NOp})
-  , ("<-", Op{precedence = 0, associativity = R, oexec = NOp})
-  , ("+=", Op{precedence = 0, associativity = R, oexec = NOp})
-  , ("-=", Op{precedence = 0, associativity = R, oexec = NOp})
-  , ("*=", Op{precedence = 0, associativity = R, oexec = NOp})
-  , ("/=", Op{precedence = 0, associativity = R, oexec = NOp})
-  , ("%=", Op{precedence = 0, associativity = R, oexec = NOp})
-  , ("^=", Op{precedence = 0, associativity = R, oexec = NOp})
-  , ("|=", Op{precedence = 0, associativity = R, oexec = NOp})
-  , ("&=", Op{precedence = 0, associativity = R, oexec = NOp})
-  , (":", Op{precedence = 1, associativity = L, oexec = NOp})
-  , (":=", Op{precedence = 2, associativity = R, oexec = NOp})
-  , ("==", Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (==))})
-  , ("<=", Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (<=))})
-  , (">=", Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (>=))})
-  , ("!=", Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (/=))})
-  , ("<", Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (<))})
-  , (">", Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (>))})
-  , ("<<", Op{precedence = 4, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (fromInteger s)))})
-  , (">>", Op{precedence = 4, associativity = R, oexec = FnOp (BitOp (\n s -> shift n ((-1) * fromInteger s)))})
-  , ("+", Op{precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (+))})
-  , ("-", Op{precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (-))})
-  , ("*", Op{precedence = 6, associativity = L, oexec = FnOp (MathOp $ fmath (*))})
-  , ("/", Op{precedence = 6, associativity = L, oexec = FnOp (MathOp $ fmath (/))})
-  , ("%", Op{precedence = 6, associativity = L, oexec = FnOp (MathOp fmod)})
-  , ("^", Op{precedence = 7, associativity = R, oexec = FnOp (MathOp pow)})
-  , ("|", Op{precedence = 8, associativity = R, oexec = FnOp (BitOp (.|.))})
-  , ("&", Op{precedence = 9, associativity = R, oexec = FnOp (BitOp (.&.))})
-  , ("cmp", Op{precedence = 10, associativity = L, oexec = FnOp (MathOp fcmp)})
-  , ("|>", Op{precedence = 11, associativity = L, oexec = NOp})
-  , ("::=", Op{precedence = 12, associativity = R, oexec = NOp})
-  , ("?", Op{precedence = 13, associativity = L, oexec = NOp})
-  , ("!", Op{precedence = 13, associativity = L, oexec = NOp})
-  , ("~", Op{precedence = 13, associativity = L, oexec = NOp})
+  [ (("=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("<-", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("+=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("-=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("*=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("/=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("%=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("^=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("|=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("&=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
+  , ((":", Ar2), Op{precedence = 1, associativity = L, oexec = NOp})
+  , ((":=", Ar2), Op{precedence = 2, associativity = R, oexec = NOp})
+  , (("==", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (==))})
+  , (("<=", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (<=))})
+  , ((">=", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (>=))})
+  , (("!=", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (/=))})
+  , (("<", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (<))})
+  , ((">", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (>))})
+  , (("<<", Ar2), Op{precedence = 4, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (fromInteger s)))})
+  , ((">>", Ar2), Op{precedence = 4, associativity = R, oexec = FnOp (BitOp (\n s -> shift n ((-1) * fromInteger s)))})
+  , (("+", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (+))})
+  , (("-", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (-))})
+  , (("*", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (MathOp $ fmath (*))})
+  , (("/", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (MathOp $ fmath (/))})
+  , (("%", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (MathOp fmod)})
+  , (("^", Ar2), Op{precedence = 7, associativity = R, oexec = FnOp (MathOp pow)})
+  , (("|", Ar2), Op{precedence = 8, associativity = R, oexec = FnOp (BitOp (.|.))})
+  , (("&", Ar2), Op{precedence = 9, associativity = R, oexec = FnOp (BitOp (.&.))})
+  , (("<=>", Ar2), Op{precedence = 10, associativity = L, oexec = FnOp (MathOp fcmp)})
+  , (("|>", Ar2), Op{precedence = 11, associativity = L, oexec = NOp})
+  , (("::=", Ar2), Op{precedence = 12, associativity = R, oexec = NOp})
+  ]
+
+unaryOperators :: OpMap
+unaryOperators =
+  [ (("?", Ar1), Op{precedence = maxPrecedence + 1, associativity = L, oexec = NOp})
+  , (("!", Ar1), Op{precedence = maxPrecedence + 1, associativity = L, oexec = FnOp (UnOp prod)})
+  , (("~", Ar1), Op{precedence = maxPrecedence + 1, associativity = L, oexec = FnOp (UnOp complement)})
+  , (("-", Ar1), Op{precedence = maxPrecedence + 1, associativity = L, oexec = NOp})
   ]
 
 maxPrecedence :: Int
 maxPrecedence = precedence . snd $ maximumBy (\a b -> precedence (snd a) `compare` precedence (snd b)) (M.toList operators)
 
-linearOperators :: V.Vector (Text, Op)
+linearOperators :: V.Vector ((Text, OpArity), Op)
 linearOperators = V.fromList $ M.assocs operators
 
 functions :: FunMap
@@ -79,6 +85,7 @@ functions =
   , (("undef", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("opt", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("opt", ArFixed 2), Fun{params = [], fexec = NFn})
+  , (("neg", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("lt", ArFixed 2), Fun{params = [], fexec = FnFn (CmpFn (<))})
   , (("gt", ArFixed 2), Fun{params = [], fexec = FnFn (CmpFn (>))})
   , (("eq", ArFixed 2), Fun{params = [], fexec = FnFn (CmpFn (==))})
@@ -149,7 +156,7 @@ prod :: Integer -> Integer
 prod = product . enumFromTo 1
 
 opMap :: OpMap
-opMap = operators
+opMap = operators <> unaryOperators
 
 funMap :: FunMap
 funMap = functions
@@ -207,7 +214,7 @@ log2 :: Complex Rational -> Complex Rational -> Complex Rational
 log2 = wrapRealFun2 logBase
 
 names :: [String]
-names = T.unpack <$> M.keys operators ++ map fst (M.keys functions)
+names = T.unpack <$> map fst (M.keys operators) ++ map fst (M.keys functions)
 
 defVar :: VarMap
 defVar =
@@ -223,11 +230,11 @@ defVar =
 defaultMaps :: Maps
 defaultMaps = Maps defVar funMap opMap M.empty
 
-getPrecedences :: OpMap -> Map Text Int
+getPrecedences :: OpMap -> Map (Text, OpArity) Int
 getPrecedences = M.fromList . map (second precedence) . M.toList
 
-getFakePrecedences :: FunMap -> Map Text Int
-getFakePrecedences = M.fromList . map (second $ const (maxPrecedence + 1)) . filter ((== ArFixed 2) . snd) . M.keys
+getFakePrecedences :: FunMap -> Map (Text, OpArity) Int
+getFakePrecedences = M.fromList . map (\(t, _) -> ((t, Ar2), maxPrecedence + 1)) . filter ((== ArFixed 2) . snd) . M.keys
 
 derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of
