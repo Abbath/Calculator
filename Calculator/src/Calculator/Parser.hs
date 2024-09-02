@@ -237,9 +237,11 @@ expr min_bp m = Parser $
         Just TLPar -> do
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts
           inner_loop (Call (handleNegation op) e) i
-        _ -> do
-          (i, e) <- runParser (expr (prefix_binding_power op m) m) ts
-          inner_loop (Call (handleNegation op) [e]) i
+        _ -> case prefix_binding_power op m of
+          Just bp1 -> do
+            (i, e) <- runParser (expr bp1 m) ts
+            inner_loop (Call (handleNegation op) [e]) i
+          Nothing -> Left $ "No such operator: " <> op
       TNumber a b -> inner_loop (Number a b) ts
       TIdent a -> case inputPeek ts of
         Just TLPar | not ("'" `T.isSuffixOf` a) -> do
@@ -311,10 +313,10 @@ expr min_bp m = Parser $
           L -> (p, p + 0.25)
           R -> (p + 0.25, p)
       else let mp = fromIntegral (maxPrecedence + 1) in return (mp, mp + 0.25)
-  prefix_binding_power :: Text -> Maps -> Double
-  prefix_binding_power op ms =
-    let (Op pr _ _) = (ms ^. opmap) M.! (op, Ar1)
-     in fromIntegral pr
+  prefix_binding_power :: Text -> Maps -> Maybe Double
+  prefix_binding_power op ms = do
+    (Op pr _ _) <- (op, Ar1) `M.lookup` (ms ^. opmap)
+    return $ fromIntegral pr
   postfix_binding_power :: Text -> Maps -> Maybe Double
   postfix_binding_power op ms = do
     (Op pr _ _) <- (op, Ar1) `M.lookup` (ms ^. opmap)
