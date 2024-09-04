@@ -65,7 +65,7 @@ makeLenses ''AppState
 raylibLoop :: IO ()
 raylibLoop = do
   g <- getStdGen
-  let des = EvalState defaultMaps g
+  let des = EvalState defaultMaps g 16
   evalStateT raylibLoop' (AS "" [] des 0 (Zip [] []))
 
 raylibLoop' :: StateT AppState IO ()

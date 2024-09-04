@@ -29,7 +29,7 @@ data Action
 -- | Bot application.
 bot :: Mode -> StdGen -> BotApp Model Action
 bot mode gen = BotApp
-  { botInitialModel = Model (EvalState defaultMaps gen)
+  { botInitialModel = Model (EvalState defaultMaps gen 16)
   , botAction = flip handleUpdate
   , botHandler = handleAction mode
   , botJobs = []
@@ -51,7 +51,7 @@ handleAction mode (Reply msg) model = model2 <# do
   where (response, model2) = second Model $ either
           Prelude.id
           (first (MsgMsg . showComplex))
-          (let (EvalState mps rgen) = getMaps model in parseEval mode (EvalState mps rgen) msg)
+          (let (EvalState mps rgen pr) = getMaps model in parseEval mode (EvalState mps rgen pr) msg)
 
 -- | Run bot with a given 'Telegram.Token'.
 run :: Mode -> Telegram.Token -> IO ()
