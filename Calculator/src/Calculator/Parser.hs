@@ -271,38 +271,36 @@ expr min_bp m = Parser $
       tok -> Left ("Only numbers in the building " <> showT tok)
     _ -> Left "Expected token, but the list is empty"
  where
-  inner_loop new_lhs = inner_loop' new_lhs min_bp m
-  inner_loop' :: Expr -> Double -> Maps -> Input -> Either Text (Input, Expr)
-  inner_loop' lhs bp om ts = case ts of
+  inner_loop :: Expr -> Input -> Either Text (Input, Expr)
+  inner_loop lhs ts = case ts of
     (inputUncons -> Just (t, ts1)) -> case t of
       TRPar -> rtl
       TRBrace -> rtl
       TRBracket -> rtl
       TComma -> rtl
-      TOp op -> case postfix_binding_power op om of
-        Just bp1 ->
-          if bp1 < bp
+      TOp op -> case postfix_binding_power op m of
+        Just bp ->
+          if bp < min_bp
             then rtl
             else case inputPeek ts1 of
-              Just (TOp op1) -> il (Call (handleNegation op) [lhs]) ts1
+              Just (TOp op1) -> inner_loop (Call (handleNegation op) [lhs]) ts1
               Nothing -> Right (ts1, Call (handleNegation op) [lhs])
               _ -> do
-                (ts2, e) <- runParser (expr bp1 om) ts1
-                il (Call op [lhs, e]) ts2
-        Nothing -> case infix_binding_power op om of
+                (ts2, e) <- runParser (expr bp m) ts1
+                inner_loop (Call op [lhs, e]) ts2
+        Nothing -> case infix_binding_power op m of
           Nothing -> Left $ "Operator does not exist: " <> showT op
           Just (l_bp, r_bp) ->
-            if l_bp < bp
+            if l_bp < min_bp
               then rtl
               else do
-                (ts2, e) <- runParser (expr r_bp om) ts1
-                il (Call op [lhs, e]) ts2
+                (ts2, e) <- runParser (expr r_bp m) ts1
+                inner_loop (Call op [lhs, e]) ts2
       TLPar -> Left "Calling a ticked function as a normal one"
       tok -> Left $ "Wrong token: " <> showT tok
     _ -> rtl
    where
     rtl = Right (ts, lhs)
-    il new_lhs = inner_loop' new_lhs bp om
   infix_binding_power :: Text -> Maps -> Maybe (Double, Double)
   infix_binding_power op ms =
     if T.all (`elem` opSymbols) op
