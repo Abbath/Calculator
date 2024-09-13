@@ -59,6 +59,8 @@ module Calculator.Types (
   Precise,
   prec,
   OpArity (..),
+  renderToken,
+  renderTokens,
 )
 where
 
@@ -69,7 +71,7 @@ import Data.Bits as B (bit, shiftL, shiftR, unsafeShiftL, (.&.))
 import Data.CReal (CReal)
 import Data.CReal.Internal as CRI (atPrecision, atanBounded, crMemoize, crealPrecision, recipBounded, shiftL)
 import Data.Char (chr, ord)
-import Data.Complex (Complex, imagPart, realPart)
+import Data.Complex (Complex (..), imagPart, realPart)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe)
@@ -143,6 +145,30 @@ instance RealFloat Precise where
              in θ `atPrecision` p
         )
 
+showT :: (Show a) => a -> Text
+showT = T.pack . show
+
+showScientific :: S.Scientific -> Text
+showScientific = T.pack . S.formatScientific S.Fixed Nothing
+
+showRational :: Rational -> Text
+showRational r =
+  if denominator r == 1
+    then showT $ numerator r
+    else case S.fromRationalRepetend (Just 1024) r of
+      Left (s, rest) -> showT s
+      Right (s, Nothing) -> showT s
+      Right (s, Just n) ->
+        let st = showScientific s
+            idx = (+ (n + 1)) . fromMaybe 0 . T.findIndex (== '.') $ st
+         in T.take idx st <> "(" <> T.drop idx st <> ")"
+
+showComplex :: Complex Rational -> Text
+showComplex c =
+  let cr = realPart c
+      ci = imagPart c
+   in showRational cr <> if ci /= 0 then "j" <> showRational ci else ""
+
 data Token
   = TNumber Rational Rational
   | TLPar
@@ -158,6 +184,24 @@ data Token
   | TLabel Text
   | TDots
   deriving (Show, Eq)
+
+renderToken :: Token -> Text
+renderToken (TNumber n d) = showComplex $ n :+ d
+renderToken TLPar = "("
+renderToken TRPar = ")"
+renderToken TLBrace = "{"
+renderToken TRBrace = "}"
+renderToken TLBracket = "["
+renderToken TRBracket = "]"
+renderToken (TIdent i) = i
+renderToken (TOp o) = o
+renderToken TComma = ","
+renderToken TEqual = "="
+renderToken (TLabel l) = l
+renderToken TDots = "..."
+
+renderTokens :: [Token] -> Text
+renderTokens = T.concat . map renderToken
 
 isSpaceFun :: Token -> Bool
 isSpaceFun (TIdent _) = True
@@ -292,9 +336,6 @@ funsToList = map (\(k, v) -> (k, (params v, unpackExFn . fexec $ v))) . filter (
 funsFromList :: [((Text, Arity), ([Text], Expr))] -> FunMap
 funsFromList = M.fromList . map (\(k, (p, e)) -> (k, Fun p (ExFn e)))
 
-showT :: (Show a) => a -> Text
-showT = T.pack . show
-
 exprToString :: Expr -> Text
 exprToString ex = case ex of
   UDF n a e -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
@@ -350,21 +391,6 @@ simplifyExpr ex = case ex of
   Call name e -> Call name (map simplifyExpr e)
   x -> x
 
-showScientific :: S.Scientific -> Text
-showScientific = T.pack . S.formatScientific S.Fixed Nothing
-
-showRational :: Rational -> Text
-showRational r =
-  if denominator r == 1
-    then showT $ numerator r
-    else case S.fromRationalRepetend (Just 1024) r of
-      Left (s, rest) -> showT s
-      Right (s, Nothing) -> showT s
-      Right (s, Just n) ->
-        let st = showScientific s
-            idx = (+ (n + 1)) . fromMaybe 0 . T.findIndex (== '.') $ st
-         in T.take idx st <> "(" <> T.drop idx st <> ")"
-
 showFraction :: Rational -> Text
 showFraction t = showT (numerator t) <> " / " <> showT (denominator t)
 
@@ -382,12 +408,6 @@ showComplexBase base cr
         else Left "Can't show fractions yet"
 showComplexBase _ cr = Right $ showComplex cr
 
-showComplex :: Complex Rational -> Text
-showComplex c =
-  let cr = realPart c
-      ci = imagPart c
-   in showRational cr <> if ci /= 0 then "j" <> showRational ci else ""
-
 showChair :: Chair -> Text
 showChair ch = "{" <> T.intercalate ", " (map (\(k, v) -> k <> " => " <> showElem v) . M.toList $ ch) <> "}"
  where
@@ -399,7 +419,7 @@ numToText n | denominator (realPart n) /= 1 = Left "Can't convert rational to st
 numToText n = Right $ go T.empty (abs . numerator . realPart $ n)
  where
   go t 0 = t
-  go t m = go (T.cons (chr . fromInteger $ (m .&. 0xff)) t) (m `B.shiftR` 8)
+  go t m = go (T.singleton (chr . fromInteger $ (m .&. 0xff)) <> t) (m `B.shiftR` 8)
 
 textToNum :: Integer -> [Char] -> Integer
 textToNum n [] = n

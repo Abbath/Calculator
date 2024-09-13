@@ -19,6 +19,7 @@ import Calculator.Types (
   numToText,
   opSymbols,
   opmap,
+  renderTokens,
   showT,
  )
 import Control.Applicative (Alternative (..))
@@ -87,9 +88,9 @@ instance Monad Parser where
 
 parse :: Maps -> [Token] -> Either Text Expr
 parse m ts =
-  runParser (stmt m) (Input 0 ts) >>= \(i, e) -> case i of
-    (inputUncons -> Just i1) -> Left $ "Extra input left " <> showT i1
-    _ -> return e
+  runParser (stmt m) (Input 0 ts) >>= \(Input n ts1, e) -> case ts1 of
+    [] -> return e
+    _ -> Left $ "Extra input at " <> showT n <> ": " <> renderTokens ts1
 
 stmt :: Maps -> Parser Expr
 stmt m = udfStmt m <|> udoStmt m <|> assignStmt m <|> labelStmt <|> opAliasStmt <|> imprtStmt <|> expr 0.0 m

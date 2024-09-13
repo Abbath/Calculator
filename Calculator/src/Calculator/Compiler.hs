@@ -6,7 +6,11 @@
 
 module Calculator.Compiler where
 
-import Calculator.Builtins
+import Calculator.Builtins (
+  derivative,
+  functions,
+  linearOperators,
+ )
 import Calculator.Types (
   Arity (ArFixed),
   Assoc,
@@ -27,27 +31,35 @@ import Calculator.Types (
   showT,
   varmap,
  )
+import Calculator.Utils (attify)
 import Control.Lens (makeLenses, use, uses, (%=), (%~), (+=), (.=), (^.))
 import Control.Monad (when)
-import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad.Except (
+  ExceptT,
+  MonadError (throwError),
+  liftEither,
+  runExceptT,
+ )
+import Control.Monad.State (State, gets, runState)
 import Data.Aeson qualified as AE
-import Data.Bits
+import Data.Bits (
+  Bits (bit, shiftL, shiftR, testBit, (.&.), (.|.)),
+ )
 import Data.ByteString.Lazy qualified as B
-import Data.Complex
+import Data.Complex (Complex (..), conjugate, imagPart, realPart)
 import Data.Foldable (forM_)
 import Data.Map (Map)
 import Data.Map qualified as M
 import Data.Maybe (fromMaybe)
-import Data.Ratio
+import Data.Ratio (numerator, (%))
 import Data.Set (Set)
 import Data.Set qualified as S
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Lens (unpacked)
 import Data.Vector qualified as V
-import Data.Word
-import GHC.Generics
+import Data.Word (Word8)
+import GHC.Generics (Generic)
 import System.Random (Random (randomR), StdGen)
 
 -- import Debug.Trace
@@ -239,10 +251,10 @@ substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
 localize [] e = return e
-localize (x : xs) (Id i) = if i == x then return $ Id (T.cons '@' i) else localize xs (Id i)
+localize (x : xs) (Id i) = if i == x then return $ Id (attify i) else localize xs (Id i)
 localize s@(x : xs) (Call nm e) =
   if nm == x
-    then Call (T.cons '@' nm) <$> mapM (localize s) e
+    then Call (attify nm) <$> mapM (localize s) e
     else mapM (localize s) e >>= localize xs . Call nm
 localize s ex = goInside (localize s) ex
 
@@ -302,7 +314,7 @@ addFun :: Maps -> Text -> [Text] -> Expr -> StateChunk ()
 addFun ms name args expr = do
   new_expr <- liftEither $ localize args expr >>= catchVar S.empty ms
   let chunk = compile ms expr
-  either throwError (\c -> umaps . ufuns %= M.insert (name, length args) (UF (map (T.cons '@') args) new_expr c)) chunk
+  either throwError (\c -> umaps . ufuns %= M.insert (name, length args) (UF (map attify args) new_expr c)) chunk
 
 addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
 addOp ms name opprec assoc expr = do

@@ -55,6 +55,7 @@ import Calculator.Types (
   varmap,
   zipFormat,
  )
+import Calculator.Utils (attify)
 import Control.Applicative (asum)
 import Control.Arrow (Arrow (second))
 import Control.Lens (at, use, (.=), (?=), (^.))
@@ -114,11 +115,11 @@ substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
 localize [] e = return e
-localize _ (Id i) | "v." `T.isPrefixOf` i = return $ Id (T.cons '@' i)
-localize (x : xs) (Id i) = if i == x then return $ Id (T.cons '@' i) else localize xs (Id i)
+localize _ (Id i) | "v." `T.isPrefixOf` i = return $ Id (attify i)
+localize (x : xs) (Id i) = if i == x then return $ Id (attify i) else localize xs (Id i)
 localize s@(x : xs) (Call nm e) =
   if nm == x
-    then Call (T.cons '@' nm) <$> mapM (localize s) e
+    then Call (attify nm) <$> mapM (localize s) e
     else mapM (localize s) e >>= localize xs . Call nm
 localize s ex = goInside (localize s) ex
 
@@ -216,7 +217,7 @@ evalS ex = case ex of
     either
       throwErr
       ( \r -> do
-          maps . funmap . at (f, arity) ?= Fun (map (T.cons '@') args) (ExFn r)
+          maps . funmap . at (f, arity) ?= Fun (map attify args) (ExFn r)
           throwMsg ("Function " <> f <> "/" <> showT (ar2int arity))
       )
       newe

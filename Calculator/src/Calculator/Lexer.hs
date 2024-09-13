@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Calculator.Lexer (tloop) where
 
-import Calculator.Types (Token (..), opSymbols, textToNum)
+import Calculator.Types (Token (..), opSymbols, showT, textToNum)
 import Control.Applicative (Alternative (..))
 import Data.Char (
   isAlpha,
@@ -32,6 +33,15 @@ data ParserError = ParserError Int Text deriving (Show)
 newtype Parser a = Parser
   { runParser :: Input -> Either ParserError (Input, a)
   }
+
+instance (Semigroup a) => Semigroup (Parser a) where
+  (Parser p1) <> (Parser p2) = Parser $ \input -> do
+    (input', a1) <- p1 input
+    (input'', a2) <- p2 input'
+    return (input'', a1 <> a2)
+
+instance (Monoid a) => Monoid (Parser a) where
+  mempty = Parser $ \input -> pure (input, mempty)
 
 instance Functor Parser where
   fmap f (Parser p) =
@@ -142,8 +152,25 @@ binLiteral =
  where
   binDigitOrUnderscore = some $ parseIf "bin digit or underscore" (`elem` ("01_" :: String))
 
+specialCharacters :: Parser Char -> Parser Char
+specialCharacters p = f <$> p
+ where
+  f '"' = '"'
+  f 'n' = '\n'
+  f 't' = '\t'
+  f _ = error "Unacceptable character"
+
 stringLiteral :: Parser Rational
-stringLiteral = charP '"' *> (fromInteger . textToNum 0 <$> many (parseIf "anything except \"" (/= '"'))) <* charP '"'
+stringLiteral =
+  charP '"'
+    *> ( fromInteger . textToNum 0
+          <$> many
+            ( charP '\\'
+                *> specialCharacters (parseIf "\"nt" (`elem` ("\"nt" :: String)))
+                  <|> parseIf "anything except \"" (/= '"')
+            )
+       )
+    <* charP '"'
 
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
@@ -196,7 +223,7 @@ alfaNumDot :: Parser Char
 alfaNumDot = alfaNum <|> parseIf "dot" (== '.')
 
 ident :: Parser Token
-ident = TIdent <$> wsBracket (T.cons <$> alfa <*> (T.pack <$> ((++) <$> many alfaNumDot <*> ((: []) <$> charP '\'' <|> pure []))))
+ident = TIdent <$> wsBracket ((T.singleton <$> alfa) <> (T.pack <$> ((<>) <$> many alfaNumDot <*> ((: []) <$> charP '\'' <|> pure []))))
 
 label :: Parser Token
 label = TLabel <$> wsBracket (T.pack <$> many alfaNum <* parseIf ":" (== ':'))
@@ -221,5 +248,5 @@ tloop = go [] . Input 0
  where
   go acc (Input _ x) | T.null x = Right $ reverse acc
   go acc input = case runParser tokah input of
-    Left (ParserError n s) -> Left (s <> " at " <> (T.pack . show $ n))
+    Left (ParserError n s) -> Left (s <> " at " <> showT n)
     Right (input1, tok) -> go (tok : acc) input1
