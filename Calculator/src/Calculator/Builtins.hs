@@ -116,6 +116,8 @@ functions =
   , (("atan2", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 atan3)})
   , (("log2", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 log2)})
   , (("pow", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 pow)})
+  , (("rad", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "*" [Id "x", Call "/" [Id "m.pi", Number 180 0]])})
+  , (("deg", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "*" [Id "x", Call "/" [Number 180 0, Id "m.pi"]])})
   , (("cot", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "tan" [Id "x"]])})
   , (("sec", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "sin" [Id "x"]])})
   , (("csc", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "cos" [Id "x"]])})
