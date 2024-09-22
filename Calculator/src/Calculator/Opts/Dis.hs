@@ -3,9 +3,9 @@
 module Calculator.Opts.Dis where
 
 import Calculator (Mode (..), parseEval)
-import Calculator.Builtins (defaultMaps)
+import Calculator.Builtins (defaultMaps, defaultEvalState)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
-import Calculator.Types (EvalState (EvalState), showComplex)
+import Calculator.Types (EvalState (..), showComplex, gen)
 import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Maybe (fromMaybe)
@@ -35,7 +35,7 @@ discordCalculator = do
     TIO.putStrLn "Started server"
     loadFile defaultConfig
     token <- fromMaybe "" <$> lookupEnv "DISCORD_TOKEN"
-    mes <- getStdGen >>= \g -> newMVar (EvalState defaultMaps g 16)
+    mes <- getStdGen >>= \g -> newMVar defaultEvalState{_gen = g}
     userFacingError <-
         runDiscord $
             def

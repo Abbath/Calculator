@@ -29,7 +29,7 @@ data Action
 -- | Bot application.
 bot :: Mode -> StdGen -> BotApp Model Action
 bot mode gen = BotApp
-  { botInitialModel = Model (EvalState defaultMaps gen 16)
+  { botInitialModel = Model defaultEvalState{_gen = gen}
   , botAction = flip handleUpdate
   , botHandler = handleAction mode
   , botJobs = []

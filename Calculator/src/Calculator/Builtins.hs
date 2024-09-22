@@ -5,11 +5,12 @@
 
 module Calculator.Builtins where
 
-import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, VarMap)
+import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, VarMap, EvalState (EvalState))
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
 import Data.Complex (Complex (..), imagPart, realPart)
 import Data.Foldable (maximumBy)
+import Data.Function (on)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.Ratio (denominator, numerator, (%))
@@ -17,6 +18,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Numeric (expm1, log1mexp, log1p, log1pexp)
+import System.Random (mkStdGen)
 
 operators :: OpMap
 operators =
@@ -62,7 +64,7 @@ unaryOperators =
   ]
 
 maxPrecedence :: Int
-maxPrecedence = precedence . snd $ maximumBy (\a b -> precedence (snd a) `compare` precedence (snd b)) (M.toList operators)
+maxPrecedence = precedence . snd $ maximumBy (compare `on` precedence . snd) (M.toList operators)
 
 linearOperators :: V.Vector ((Text, OpArity), Op)
 linearOperators = V.fromList $ M.assocs operators
@@ -231,6 +233,9 @@ defVar =
 
 defaultMaps :: Maps
 defaultMaps = Maps defVar funMap opMap M.empty
+
+defaultEvalState :: EvalState
+defaultEvalState = EvalState defaultMaps (mkStdGen 0) 16
 
 getPrecedences :: OpMap -> Map (Text, OpArity) Int
 getPrecedences = M.fromList . map (second precedence) . M.toList

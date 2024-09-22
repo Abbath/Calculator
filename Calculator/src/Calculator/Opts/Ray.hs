@@ -4,7 +4,7 @@
 module Calculator.Opts.Ray where
 
 import Calculator (Mode (..), parseEval)
-import Calculator.Builtins (defaultMaps)
+import Calculator.Builtins (defaultEvalState)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
 import Calculator.Types (EvalState (..), showComplex)
 import Control.Lens (makeLenses, use, (%=), (.=))
@@ -65,7 +65,7 @@ makeLenses ''AppState
 raylibLoop :: IO ()
 raylibLoop = do
   g <- getStdGen
-  let des = EvalState defaultMaps g 16
+  let des = defaultEvalState{_gen = g}
   evalStateT raylibLoop' (AS "" [] des 0 (Zip [] []))
 
 raylibLoop' :: StateT AppState IO ()
