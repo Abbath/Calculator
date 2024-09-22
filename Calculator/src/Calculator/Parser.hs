@@ -9,7 +9,7 @@ module Calculator.Parser where
 import Calculator.Builtins (maxPrecedence)
 import Calculator.Lexer (tloop)
 import Calculator.Types (
-  Assoc (L, R),
+  Assoc (..),
   Expr (..),
   Maps,
   Op (Op),
@@ -200,7 +200,7 @@ udoStmt m = do
   (a, _) <- number
   void parRight
   void eq2
-  UDO name (fromInteger . numerator $ p) (if a == 0 then L else R) <$> expr 0.0 m
+  UDO name (fromInteger . numerator $ p) (toEnum (fromInteger $ numerator a)) <$> expr 0.0 m
 
 assignStmt :: Maps -> Parser Expr
 assignStmt m = do
@@ -311,6 +311,7 @@ expr min_bp m = Parser $
         return $ case asoc of
           L -> (p, p + 0.25)
           R -> (p + 0.25, p)
+          N -> (p - 0.25, p + 0.25)
       else let mp = fromIntegral (maxPrecedence + 1) in return (mp, mp + 0.25)
   prefix_binding_power :: Text -> Maps -> Maybe Double
   prefix_binding_power op ms = do

@@ -55,10 +55,10 @@ operators =
 
 unaryOperators :: OpMap
 unaryOperators =
-  [ (("?", Ar1), Op{precedence = maxPrecedence + 1, associativity = L, oexec = NOp})
-  , (("!", Ar1), Op{precedence = maxPrecedence + 1, associativity = L, oexec = FnOp (UnOp prod)})
-  , (("~", Ar1), Op{precedence = maxPrecedence + 1, associativity = L, oexec = FnOp (UnOp complement)})
-  , (("-", Ar1), Op{precedence = maxPrecedence + 1, associativity = L, oexec = NOp})
+  [ (("?", Ar1), Op{precedence = maxPrecedence + 1, associativity = N, oexec = NOp})
+  , (("!", Ar1), Op{precedence = maxPrecedence + 1, associativity = N, oexec = FnOp (UnOp prod)})
+  , (("~", Ar1), Op{precedence = maxPrecedence + 1, associativity = N, oexec = FnOp (UnOp complement)})
+  , (("-", Ar1), Op{precedence = maxPrecedence + 1, associativity = N, oexec = NOp})
   ]
 
 maxPrecedence :: Int

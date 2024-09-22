@@ -229,16 +229,16 @@ evalS ex = case ex of
         throwMsg $ "Operator alias " <> n <> " = " <> op
       Nothing -> throwErr $ "No such operator: " <> op
   UDO n p a e
-    | M.member (n, Ar2) operators -> throwErr $ "Can not redefine the built-in operator: " <> n
+    | M.member (n, Ar2) operators || M.member (n, Ar1) unaryOperators -> throwErr $ "Can not redefine the built-in operator: " <> n
     | p < 1 || p > maxPrecedence -> throwErr $ "Bad precedence: " <> showT p
     | otherwise -> do
         mps <- use maps
-        let t = localize ["x", "y"] e >>= catchVar (mps ^. varmap, mps ^. funmap)
+        let t = localize (if a == N then ["x"] else ["x", "y"]) e >>= catchVar (mps ^. varmap, mps ^. funmap)
         either
           throwErr
           ( \r -> do
-              maps . opmap . at (n, Ar2) ?= Op{precedence = p, associativity = a, oexec = ExOp r}
-              throwMsg ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else "right"))
+              maps . opmap . at (n, if a == N then Ar1 else Ar2) ?= Op{precedence = p, associativity = a, oexec = ExOp r}
+              throwMsg ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else (if a == R then "right" else "none")))
           )
           t
   Debug e -> throwMsg . showT . preprocess $ e
@@ -404,6 +404,15 @@ evalS ex = case ex of
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwErr $ "Cannot assign to an expression with: " <> op
   Call op [x] | M.member (op, Ar1) unaryOperators -> evalBuiltinOp1 (op, Ar1) x
   Call op [x, y] | M.member (op, Ar2) operators -> evalBuiltinOp2 (op, Ar2) x y
+  Call op [x] | isOp op -> do
+    mps <- use maps
+    case (M.lookup (op, Ar1) (mps ^. opmap) :: Maybe Op) of
+      Just Op{oexec = ExOp expr} -> either throwErr evm $ substitute (zip ["@x"] [x]) expr
+      Just Op{oexec = AOp aop} -> evm (Call aop [x])
+      Nothing -> case op of
+        opn | T.head opn == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail opn <> "/1"
+        _ -> throwErr $ "No such operator: " <> op <> "/1"
+      _ -> throwErr $ "Suspicious operator: " <> op
   Call op [x, y] | isOp op -> do
     mps <- use maps
     case (M.lookup (op, Ar2) (mps ^. opmap) :: Maybe Op) of

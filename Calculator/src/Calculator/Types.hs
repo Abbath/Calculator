@@ -209,7 +209,7 @@ isSpaceFun (TNumber _ _) = True
 isSpaceFun TLPar = True
 isSpaceFun _ = False
 
-data Assoc = L | R deriving (Show, Read, Eq, Ord, Generic, ToJSON, FromJSON)
+data Assoc = L | R | N deriving (Show, Read, Eq, Ord, Enum, Generic, ToJSON, FromJSON)
 
 data Expr
   = Number Rational Rational
