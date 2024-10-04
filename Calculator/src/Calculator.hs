@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BlockArguments #-}
 
 module Calculator (
   Mode (..),
@@ -143,10 +144,10 @@ loop mode mps = do
       Calculator.loop mode mps
     Right _ -> return ()
  where
-  removeLocals = varmap %~ M.filterWithKey (\k v -> not $ "_." `TS.isInfixOf` k)
+  removeLocals = varmap %~ M.filterWithKey \k v -> not $ "_." `TS.isInfixOf` k
   loop' :: Mode -> EvalState -> InputT (StateT StateData IO) ()
   loop' md es = do
-    S.lift $ S.modify (\s -> s `union` extractNames (es ^. maps))
+    S.lift $ S.modify \s -> s `union` extractNames (es ^. maps)
     input <- getInputLine "> "
     case input of
       Nothing -> return ()
@@ -179,7 +180,7 @@ interpret path mode mps = do
   loop' :: [TS.Text] -> Mode -> EvalState -> StateT StateData IO ()
   loop' [] _ _ = return ()
   loop' src@(l : ls) md es = do
-    S.modify (\s -> s `union` extractNames (es ^. maps))
+    S.modify \s -> s `union` extractNames (es ^. maps)
     case l of
       "quit" -> return ()
       x -> do

@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE BlockArguments #-}
 
 module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result, MessageType (..), applyPrecision) where
 
@@ -262,7 +263,7 @@ evalS ex = case ex of
         res <- evm e2
         extractId x >>= maybe (return res) return
       _ -> evm e1
-  Call "str" [e] -> evm e >>= (either throwErr (throwMsg . (\s -> "\"" <> s <> "\"")) . numToText)
+  Call "str" [e] -> evm e >>= (either throwErr (throwMsg . \s -> "\"" <> s <> "\"") . numToText)
   Call "fmt" (Number n ni : es) -> do
     let format = numToText (n :+ ni) >>= extractFormat
     case format of
@@ -333,9 +334,9 @@ evalS ex = case ex of
           let Op{associativity = asc2} = (mps ^. opmap) M.! (op2, Ar2)
           case (asc1, asc2) of
             (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
-            (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
+            (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realPart c) (imagPart c)
             _ -> throwErr $ "Operators with a different associativity: " <> op1 <> " and " <> op2
-      else evm s >>= evm . (\yy -> Call op1 [x, yy]) . (\c -> Number (realPart c) (imagPart c))
+      else evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realPart c) (imagPart c)
   oc@(Call "/" [x, y]) -> do
     n <- evm y
     n1 <- evm x
@@ -487,7 +488,7 @@ evalS ex = case ex of
   Label _ -> throwErr "Label are not supported in this mode!"
  where
   evalChairLit :: [(Text, Expr)] -> Result [(Text, ChairVal)]
-  evalChairLit = mapM (\(k, v) -> (k,) . DickVal <$> evm v)
+  evalChairLit = mapM \(k, v) -> (k,) . DickVal <$> evm v
   extractId s = do
     chairs <- use $ maps . chairmap
     vars <- use $ maps . varmap

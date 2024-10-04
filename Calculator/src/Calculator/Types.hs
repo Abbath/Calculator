@@ -5,6 +5,8 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE BlockArguments #-}
+
 
 module Calculator.Types (
   Expr (..),
@@ -314,7 +316,7 @@ opsToList :: OpMap -> [((Text, OpArity), ((Int, Assoc), Expr))]
 opsToList = map (\(k, v) -> (k, ((precedence v, associativity v), unpackExOp . oexec $ v))) . filter (\(_, v) -> isExOp . oexec $ v) . M.toList
 
 opsFromList :: [((Text, OpArity), ((Int, Assoc), Expr))] -> OpMap
-opsFromList = M.fromList . map (\(k, ((p, a), e)) -> (k, Op p a (ExOp e)))
+opsFromList = M.fromList . map \(k, ((p, a), e)) -> (k, Op p a (ExOp e))
 
 getPrA :: OpMap -> Map (Text, OpArity) (Int, Assoc)
 getPrA om =
@@ -334,7 +336,7 @@ funsToList :: FunMap -> [((Text, Arity), ([Text], Expr))]
 funsToList = map (\(k, v) -> (k, (params v, unpackExFn . fexec $ v))) . filter (\(_, v) -> isExFn . fexec $ v) . M.toList
 
 funsFromList :: [((Text, Arity), ([Text], Expr))] -> FunMap
-funsFromList = M.fromList . map (\(k, (p, e)) -> (k, Fun p (ExFn e)))
+funsFromList = M.fromList . map \(k, (p, e)) -> (k, Fun p (ExFn e))
 
 exprToString :: Expr -> Text
 exprToString ex = case ex of

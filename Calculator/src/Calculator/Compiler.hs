@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE BlockArguments #-}
 
 module Calculator.Compiler where
 
@@ -462,7 +463,7 @@ run m = do
   runNext = run m
   push v = stack %= (v :)
   readWord = do
-    oc <- gets (\vm -> (vm ^. chunke . code) V.! (vm ^. ip))
+    oc <- gets \vm -> (vm ^. chunke . code) V.! (vm ^. ip)
     step
     return oc
   readOffset = do

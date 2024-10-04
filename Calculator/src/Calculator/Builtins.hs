@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BlockArguments #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module Calculator.Builtins where
@@ -40,8 +41,8 @@ operators =
   , (("!=", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (/=))})
   , (("<", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (<))})
   , ((">", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (CmpOp (>))})
-  , (("<<", Ar2), Op{precedence = 4, associativity = R, oexec = FnOp (BitOp (\n s -> shift n (fromInteger s)))})
-  , ((">>", Ar2), Op{precedence = 4, associativity = R, oexec = FnOp (BitOp (\n s -> shift n ((-1) * fromInteger s)))})
+  , (("<<", Ar2), Op{precedence = 4, associativity = R, oexec = FnOp (BitOp \n s -> shift n (fromInteger s))})
+  , ((">>", Ar2), Op{precedence = 4, associativity = R, oexec = FnOp (BitOp \n s -> shift n ((-1) * fromInteger s))})
   , (("+", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (+))})
   , (("-", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (-))})
   , (("*", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (MathOp $ fmath (*))})
