@@ -13,7 +13,7 @@ import Telegram.Bot.Simple
 import Telegram.Bot.Simple.UpdateParser ( parseUpdate, text )
 import Calculator (Mode (..), parseEval)
 import Calculator.Types (EvalState (..), showComplex)
-import Calculator.Builtins (defaultMaps)
+import Calculator.Builtins (defaultEvalState)
 import Data.Text qualified as TS
 import System.Random
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
