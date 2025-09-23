@@ -257,13 +257,20 @@ evalS ex = case ex of
         throwMsg $ "Precision is set to: " <> showComplex pr
       else
         throwErr "Precision should be between 0 and 85"
-  Call f [Id x] | f `elem` (["opt", "?"] :: [Text]) -> extractId x >>= maybe (return $ 0 :+ 0) return
+  Call f [Id x]
+    | f `elem` (["opt", "?"] :: [Text]) ->
+        if x == "m.r"
+          then evm (Id "m.r")
+          else extractId x >>= maybe (return $ 0 :+ 0) return
   Call f [e] | f `elem` (["opt", "?"] :: [Text]) -> evm e
   Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
     case e1 of
-      Id x -> do
-        res <- evm e2
-        extractId x >>= maybe (return res) return
+      Id x ->
+        if x == "m.r"
+          then evm (Id "m.r")
+          else do
+            res <- evm e2
+            extractId x >>= maybe (return res) return
       _ -> evm e1
   Call "str" [e] -> evm e >>= (either throwErr (throwMsg . \s -> "\"" <> s <> "\"") . numToText)
   Call "fmt" (Number n ni : es) -> do
