@@ -10,6 +10,7 @@ import Calculator.Builtins (
   defVar,
   derivative,
   divide,
+  fmod,
   functions,
   getFakePrecedences,
   getPrecedences,
@@ -347,9 +348,9 @@ evalS ex = case ex of
   oc@(Call "%" [x, y]) -> do
     n <- evm y
     n1 <- evm x
-    if n == 0 :+ 0
+    if realPart n == 0
       then throwErr $ "Division by zero: " <> exprToString oc
-      else return ((:+ 0) . toRational $ mod (floor . realPart $ n1 :: Integer) (floor . realPart $ n :: Integer))
+      else return $ n1 `fmod` n
   Call "|>" [x, Id y] -> evm $ Call y [x]
   Call ":=" [ChairSit a xs, ChairSit b ys] -> do
     chair1 <- use $ maps . chairmap . at a

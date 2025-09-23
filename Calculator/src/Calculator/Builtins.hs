@@ -167,7 +167,10 @@ funMap :: FunMap
 funMap = functions
 
 fmod :: Complex Rational -> Complex Rational -> Complex Rational
-fmod x y = (:+ 0) . fromInteger $ mod (floor . realPart $ x) (floor . realPart $ y)
+fmod x y =
+  let a = realPart x
+      b = realPart y
+   in (:+ 0) $ a - fromInteger (truncate (a / b)) * b
 
 fcmp :: Complex Rational -> Complex Rational -> Complex Rational
 fcmp x y =
