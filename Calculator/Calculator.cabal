@@ -1,6 +1,6 @@
 cabal-version:        3.4
 name:                 Calculator
-version:              12.10.0
+version:              12.10.1
 synopsis:             Calculator
 -- description:
 -- license:
@@ -77,13 +77,14 @@ library
     exposed-modules:  Calculator.Opts.Tel
     cpp-options:     -DTELEGRAM
   if flag(raylib)
-    build-depends:    h-raylib
+    build-depends:    h-raylib < 5.5.3
     exposed-modules:  Calculator.Opts.Ray
     cpp-options:     -DRAYLIB
   if flag(discord)
     build-depends:    discord-haskell >= 1.16.0
                     , dotenv
                     , unliftio
+                    , req >= 3.13.4
     exposed-modules:  Calculator.Opts.Dis
     cpp-options:     -DDISCORD
 

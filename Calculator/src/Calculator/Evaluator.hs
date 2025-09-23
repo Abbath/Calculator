@@ -1,8 +1,8 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE BlockArguments #-}
 
 module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result, MessageType (..), applyPrecision) where
 
@@ -337,7 +337,7 @@ evalS ex = case ex of
             (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realPart c) (imagPart c)
             _ -> throwErr $ "Operators with a different associativity: " <> op1 <> " and " <> op2
       else evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realPart c) (imagPart c)
-  oc@(Call "/" [x, y]) -> do
+  oc@(Call op [x, y]) | op `elem` (["/", "div"] :: [Text]) -> do
     n <- evm y
     n1 <- evm x
     if n == 0 :+ 0
