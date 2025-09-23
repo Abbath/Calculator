@@ -62,50 +62,60 @@ data AppState = AS
 
 makeLenses ''AppState
 
+width :: Int
+width = 800
+
+height :: Int
+height = 600
+
+fps :: Int
+fps = 60
+
+fontSize :: Int
+fontSize = 40
+
 raylibLoop :: IO ()
 raylibLoop = do
   g <- getStdGen
   let des = defaultEvalState{_gen = g}
+  wr <- RL.initWindow width height "Calculator"
+  RL.setTargetFPS fps
+  RL.setTextLineSpacing 1
+  RL.setWindowState [RL.WindowResizable]
   evalStateT raylibLoop' (AS "" [] des 0 (Zip [] []))
 
 raylibLoop' :: StateT AppState IO ()
 raylibLoop' = do
-  let width = 800
-  let height = 600
-  let fps = 60
-  let fontSize = 40
-  RL.withWindow width height "Calculator" fps $ \wr -> do
-    liftIO $ do
-      RL.setWindowState [RL.WindowResizable]
-      RL.setTextLineSpacing 1
-    RL.whileWindowOpen0 $ do
-      [w, h, c] <- liftIO $ sequence [RL.getRenderWidth, RL.getRenderHeight, RL.getCharPressed]
-      prompt %= if c /= 0 then flip TS.snoc (chr c) else id
-      [bp, up, down, ep] <- liftIO $ mapM RL.isKeyPressed [RL.KeyBackspace, RL.KeyUp, RL.KeyDown, RL.KeyEnter]
-      prompt %= \pr -> if bp && not (TS.null pr) then TS.init pr else pr
-      tw <- use prompt >>= liftIO . flip RL.measureText fontSize . TS.unpack
-      checkHistory up down
-      pr <- use prompt
-      rt <- use results
-      frame_counter <- use fc
-      liftIO $ RL.drawing $ do
-        RL.clearBackground RL.darkGray
-        RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral w - 20) (fromIntegral fontSize)) 0.5 10 RL.gray
-        RL.drawText (TS.unpack pr) 15 10 fontSize RL.lightGray
-        when (frame_counter `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (17 + tw) 10 2 fontSize RL.lightGray
-        forM_ (zip rt [0 ..]) (\(r, i) -> RL.drawText (TS.unpack r) 15 (fontSize + 12 + i * (fontSize + 2)) fontSize RL.lightGray)
-      when ep $ do
-        es <- use estate
-        let y = parseEval Internal es pr
-        let (res, es1) = case y of
-              Right (r, es0) -> (showComplex r, es0)
-              Left (ErrMsg m, _) -> (m, es)
-              Left (MsgMsg m, es0) -> (m, es0)
-        prompt .= ""
-        results .= take ((h - (fontSize + 12)) `div` (fontSize + 2)) (res : rt)
-        estate .= es1
-        phist %= zipPut pr
-      fc %= (+ 1)
+  wsc <- liftIO RL.windowShouldClose
+  unless wsc $ do
+    [w, h, c] <- liftIO $ sequence [RL.getRenderWidth, RL.getRenderHeight, RL.getCharPressed]
+    prompt %= if c /= 0 then flip TS.snoc (chr c) else id
+    [bp, up, down, ep] <- liftIO $ mapM RL.isKeyPressed [RL.KeyBackspace, RL.KeyUp, RL.KeyDown, RL.KeyEnter]
+    prompt %= \pr -> if bp && not (TS.null pr) then TS.init pr else pr
+    tw <- use prompt >>= liftIO . flip RL.measureText fontSize . TS.unpack
+    checkHistory up down
+    pr <- use prompt
+    rt <- use results
+    frame_counter <- use fc
+    liftIO $ RL.drawing $ do
+      RL.clearBackground RL.darkGray
+      RL.drawRectangleRounded (RL.Rectangle 10 10 (fromIntegral w - 20) (fromIntegral fontSize)) 0.5 10 RL.gray
+      RL.drawText (TS.unpack pr) 15 10 fontSize RL.lightGray
+      when (frame_counter `mod` toInteger fps < toInteger fps `div` 2) $ RL.drawRectangle (17 + tw) 10 2 fontSize RL.lightGray
+      forM_ (zip rt [0 ..]) (\(r, i) -> RL.drawText (TS.unpack r) 15 (fontSize + 12 + i * (fontSize + 2)) fontSize RL.lightGray)
+    when ep $ do
+      es <- use estate
+      let y = parseEval Internal es pr
+      let (res, es1) = case y of
+            Right (r, es0) -> (showComplex r, es0)
+            Left (ErrMsg m, _) -> (m, es)
+            Left (MsgMsg m, es0) -> (m, es0)
+      prompt .= ""
+      results .= take ((h - (fontSize + 12)) `div` (fontSize + 2)) (res : rt)
+      estate .= es1
+      phist %= zipPut pr
+    fc %= (+ 1)
+    raylibLoop'
  where
   checkHistory up down = do
     zt <- use phist
