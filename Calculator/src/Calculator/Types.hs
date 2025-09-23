@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
@@ -5,8 +6,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE BlockArguments #-}
-
 
 module Calculator.Types (
   Expr (..),
@@ -343,7 +342,7 @@ exprToString ex = case ex of
   UDF n a e -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
   UDO n p a e -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Precise else 1) <> ")" <> " = " <> exprToString e
   Asgn i e -> i <> " = " <> exprToString e
-  Number x _ -> showT . (fromRational :: Rational -> Precise) $ x
+  Number x y -> (showT . (fromRational :: Rational -> Precise) $ x) <> (if y == 0 then "" else ("j" <>) . showT . (fromRational :: Rational -> Precise) $ y)
   Par e -> "(" <> exprToString e <> ")"
   Call op [e] | isOp op -> "(" <> op <> exprToString e <> ")"
   Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
@@ -352,7 +351,7 @@ exprToString ex = case ex of
   Seq es -> T.intercalate "\n" (map exprToString es)
   Imprt t -> "import " <> t
   Label l -> l <> ":"
-  ChairLit _ -> "{}"
+  ChairLit xs -> "{" <> T.intercalate ", " (map (\(key, value) -> key <> " => " <> exprToString value) xs) <> "}"
   ChairSit a x -> a <> "[" <> T.intercalate "," x <> "]"
 
 opSymbols :: String

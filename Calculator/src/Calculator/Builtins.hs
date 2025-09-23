@@ -1,12 +1,12 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE BlockArguments #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module Calculator.Builtins where
 
-import Calculator.Types (Arity (..), Assoc (..), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, VarMap, EvalState (EvalState))
+import Calculator.Types (Arity (..), Assoc (..), EvalState (EvalState), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, VarMap)
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
 import Data.Complex (Complex (..), imagPart, realPart)
@@ -45,8 +45,8 @@ operators =
   , ((">>", Ar2), Op{precedence = 4, associativity = R, oexec = FnOp (BitOp \n s -> shift n ((-1) * fromInteger s))})
   , (("+", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (+))})
   , (("-", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (MathOp $ fmath (-))})
-  , (("*", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (MathOp $ fmath (*))})
-  , (("/", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (MathOp $ fmath (/))})
+  , (("*", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (MathOp mult)})
+  , (("/", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (MathOp divide)})
   , (("%", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (MathOp fmod)})
   , (("^", Ar2), Op{precedence = 7, associativity = R, oexec = FnOp (MathOp pow)})
   , (("|", Ar2), Op{precedence = 8, associativity = R, oexec = FnOp (BitOp (.|.))})
@@ -183,6 +183,12 @@ frac x = let rp = realPart x in (rp - toRational @Integer (floor rp)) :+ 0
 
 fmath :: (Rational -> Rational -> Rational) -> Complex Rational -> Complex Rational -> Complex Rational
 fmath op x y = op <$> x <*> y
+
+mult :: Complex Rational -> Complex Rational -> Complex Rational
+mult (a :+ b) (c :+ d) = (a * c - b * d) :+ (a * d + b * c)
+
+divide :: Complex Rational -> Complex Rational -> Complex Rational
+divide (a :+ b) (c :+ d) = let dm = c * c + d * d in (a * c + b * d) / dm :+ (b * c - a * d) / dm
 
 pow :: Complex Rational -> Complex Rational -> Complex Rational
 pow a b

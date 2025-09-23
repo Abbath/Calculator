@@ -9,6 +9,7 @@ module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result, Message
 import Calculator.Builtins (
   defVar,
   derivative,
+  divide,
   functions,
   getFakePrecedences,
   getPrecedences,
@@ -342,7 +343,7 @@ evalS ex = case ex of
     n1 <- evm x
     if n == 0 :+ 0
       then throwErr $ "Division by zero: " <> exprToString oc
-      else return . toComplex $ (realPart n1 / realPart n)
+      else return $ n1 `divide` n
   oc@(Call "%" [x, y]) -> do
     n <- evm y
     n1 <- evm x
