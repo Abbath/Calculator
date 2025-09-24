@@ -65,7 +65,7 @@ unaryOperators =
   ]
 
 maxPrecedence :: Int
-maxPrecedence = precedence . snd $ maximumBy (compare `on` precedence . snd) (M.toList operators)
+maxPrecedence = precedence $ maximumBy (compare `on` precedence) (M.elems operators)
 
 linearOperators :: V.Vector ((Text, OpArity), Op)
 linearOperators = V.fromList $ M.assocs operators
