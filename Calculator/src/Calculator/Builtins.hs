@@ -115,6 +115,7 @@ functions =
   , (("asinh", ArFixed 1), Fun{params = [], fexec = FnFn (MathFn1 asinh)})
   , (("acosh", ArFixed 1), Fun{params = [], fexec = FnFn (MathFn1 acosh)})
   , (("atanh", ArFixed 1), Fun{params = [], fexec = FnFn (MathFn1 atanh)})
+  , (("sign", ArFixed 1), Fun{params = [], fexec = FnFn (MathFn1 signum)})
   , (("hypot", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 hypot)})
   , (("atan2", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 atan3)})
   , (("log2", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 log2)})
