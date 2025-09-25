@@ -44,7 +44,6 @@ data Options = Options {
       source      :: !FilePath,
       compileMode :: !String,
       frontend    :: !String,
-      backend     :: !String,
       test        :: !Bool,
       raylib      :: !Bool,
       discord     :: !Bool,
@@ -58,7 +57,6 @@ options = Options
           <*> strOption (long "source" <> short 's' <> help "Source file" <> metavar "SOURCE" <> value "")
           <*> strOption (long "compile-mode" <> short 'c' <> help "Compile mode (S, L, R)" <> metavar "COMPILE_MODE" <> value "R")
           <*> strOption (long "frontend" <> short 'f' <> help "Frontend (C, W, T)" <> metavar "FRONTEND" <> value "C")
-          <*> strOption (long "backend" <> short 'b' <> help "Backend (I)" <> metavar "BACKEND" <> value "I")
           <*> switch (long "test" <> short 't' <> help "Run tests")
           <*> switch (long "raylib" <> short 'r' <> help "Raylib GUI")
           <*> switch (long "discord" <> short 'd' <> help "Discord bot")
@@ -85,18 +83,14 @@ main = do
         "R" -> CompRead
         _ -> CompRead
     | otherwise -> do
-      let f = selectBack $ backend opts2
       case map toLower $ frontend opts2 of
-        "c"  -> evalLoop f
-        "w"  -> webLoop (port opts2) f
+        "c"  -> evalLoop Internal
+        "w"  -> webLoop (port opts2) Internal
 #ifdef TELEGRAM
         "t"  -> telegramSimple f
 #endif
-        _    -> webLoop (port opts2) f
+        _    -> webLoop (port opts2) Internal
       where opts = info (helper <*> options)
               ( fullDesc
                 <> progDesc "Reads a character string and prints the result of calculation"
                 <> header "Calculator - a simple string calculator" )
-            selectBack s = case map toLower s of
-              "i" -> Internal
-              _ -> Internal

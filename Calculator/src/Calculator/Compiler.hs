@@ -1,14 +1,16 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE BlockArguments #-}
 
 module Calculator.Compiler where
 
 import Calculator.Builtins (
   derivative,
+  divide,
+  fmod,
   functions,
   linearOperators,
  )
@@ -445,9 +447,9 @@ run m = do
                     v2 <- pop
                     if
                       | k == ("/", Ar2) -> do
-                          push . (:+ 0) $ (realPart v2 / realPart v1)
+                          push $ v2 `divide` v1
                       | k == ("%", Ar2) -> do
-                          push . (:+ 0) $ toRational $ mod (floor . realPart $ v2 :: Integer) (floor . realPart $ v1 :: Integer)
+                          push $ v2 `fmod` v1
                       | otherwise ->
                           case oexec op of
                             FnOp (CmpOp o) -> do

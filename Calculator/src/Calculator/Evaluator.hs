@@ -351,7 +351,10 @@ evalS ex = case ex of
     n1 <- evm x
     if n == 0 :+ 0
       then throwErr $ "Division by zero: " <> exprToString oc
-      else return $ n1 `divide` n
+      else
+        if op == "/"
+          then return $ n1 `divide` n
+          else return . (:+ 0) . toRational $ (toInteger . numerator . realPart $ n1) `div` (toInteger . numerator . realPart $ n)
   oc@(Call "%" [x, y]) -> do
     n <- evm y
     n1 <- evm x
