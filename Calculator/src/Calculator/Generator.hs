@@ -102,7 +102,7 @@ generate' expr = do
     (Par e) -> do
       generate' e
     _ -> throwError "Not supported"
-  return ()
+  pure ()
  where
   t = ("t" <>) . showT
   do_a_barrel_roll n = do

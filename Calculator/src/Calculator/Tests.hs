@@ -25,7 +25,7 @@ data Backend = Internal deriving (Show)
 type Tests = [(Text, Either MessageType (Complex Rational))]
 
 loop :: Tests -> Maps -> StdGen -> Backend -> Int -> IO Int
-loop [] _ _ _ n = return n
+loop [] _ _ _ n = pure n
 loop (x : xs) mps rgen bk n = do
   let sample = fst x
   if not $ T.null sample
@@ -41,10 +41,10 @@ loop (x : xs) mps rgen bk n = do
           if tt == snd x
             then do
               TIO.putStrLn $ "Passed: " <> sample
-              return 0
+              pure 0
             else do
               TIO.putStrLn $ "Failed: " <> sample <> " expected: " <> showT x <> " received: " <> showT t
-              return 1
+              pure 1
         let (m, g) = case t of
               (Right r, EvalState m_ g_ _) -> (m_ & varmap %~ M.insert "_" r, g_)
               (Left _, EvalState m_ g_ _) -> (m_, g_)

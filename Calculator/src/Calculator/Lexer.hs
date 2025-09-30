@@ -38,7 +38,7 @@ instance (Semigroup a) => Semigroup (Parser a) where
   (Parser p1) <> (Parser p2) = Parser $ \input -> do
     (input', a1) <- p1 input
     (input'', a2) <- p2 input'
-    return (input'', a1 <> a2)
+    pure (input'', a1 <> a2)
 
 instance (Monoid a) => Monoid (Parser a) where
   mempty = Parser $ \input -> pure (input, mempty)
@@ -47,7 +47,7 @@ instance Functor Parser where
   fmap f (Parser p) =
     Parser $ \input -> do
       (input', x) <- p input
-      return (input', f x)
+      pure (input', f x)
 
 instance Applicative Parser where
   pure x = Parser $ \input -> Right (input, x)
@@ -55,7 +55,7 @@ instance Applicative Parser where
     Parser $ \input -> do
       (input', f) <- p1 input
       (input'', a) <- p2 input'
-      return (input'', f a)
+      pure (input'', f a)
 
 instance {-# OVERLAPPING #-} Alternative (Either ParserError) where
   empty = Left $ ParserError 0 "empty"

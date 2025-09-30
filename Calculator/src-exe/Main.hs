@@ -87,7 +87,7 @@ main = do
         "c"  -> evalLoop Internal
         "w"  -> webLoop (port opts2) Internal
 #ifdef TELEGRAM
-        "t"  -> telegramSimple f
+        "t"  -> telegramSimple Internal
 #endif
         _    -> webLoop (port opts2) Internal
       where opts = info (helper <*> options)

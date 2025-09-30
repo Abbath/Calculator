@@ -258,34 +258,34 @@ derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of
   Par ex -> Par <$> derivative ex x
   Call "-" [ex] -> Call "-" . (: []) <$> derivative ex x
-  Number _ _ -> return $ Number 0 0
-  i@(Id _) | i == x -> return $ Number 1 0
-  (Id _) -> return $ Number 0 0
+  Number _ _ -> pure $ Number 0 0
+  i@(Id _) | i == x -> pure $ Number 1 0
+  (Id _) -> pure $ Number 0 0
   Call "^" [i, Number n _]
     | i == x ->
-        return $ Call "*" [Number n 0, Call "^" [i, Number (n - 1) 0]]
-  Call "^" [Number a _, i] | i == x -> return $ Call "*" [e, Call "log" [Number a 0]]
+        pure $ Call "*" [Number n 0, Call "^" [i, Number (n - 1) 0]]
+  Call "^" [Number a _, i] | i == x -> pure $ Call "*" [e, Call "log" [Number a 0]]
   Call op [ex1, ex2] | op == "-" || op == "+" -> do
     a1 <- derivative ex1 x
     a2 <- derivative ex2 x
-    return $ Call op [a1, a2]
+    pure $ Call op [a1, a2]
   Call "*" [ex1, ex2] -> do
     d1 <- derivative ex1 x
     d2 <- derivative ex2 x
-    return $ Call "+" [Call "*" [d1, ex2], Call "*" [d2, ex1]]
+    pure $ Call "+" [Call "*" [d1, ex2], Call "*" [d2, ex1]]
   Call "/" [ex1, ex2] -> do
     d1 <- derivative ex1 x
     d2 <- derivative ex2 x
-    return $ Call "/" [Call "-" [Call "*" [d1, ex2], Call "*" [d2, ex1]], Call "^" [ex2, Number 2 0]]
-  ex@(Call "exp" [i]) | i == x -> return ex
-  Call "log" [i] | i == x -> return $ Call "/" [Number 1 0, i]
-  Call "sin" [i] | i == x -> return $ Call "cos" [i]
-  Call "cos" [i] | i == x -> return $ Call "-" [Call "sin" [i]]
+    pure $ Call "/" [Call "-" [Call "*" [d1, ex2], Call "*" [d2, ex1]], Call "^" [ex2, Number 2 0]]
+  ex@(Call "exp" [i]) | i == x -> pure ex
+  Call "log" [i] | i == x -> pure $ Call "/" [Number 1 0, i]
+  Call "sin" [i] | i == x -> pure $ Call "cos" [i]
+  Call "cos" [i] | i == x -> pure $ Call "-" [Call "sin" [i]]
   Call "tan" [i]
     | i == x ->
-        return $ Call "/" [Number 1 0, Call "^" [Call "cos" [i], Number 2 0]]
+        pure $ Call "/" [Number 1 0, Call "^" [Call "cos" [i], Number 2 0]]
   ex@(Call _ [i]) -> do
     a1 <- derivative ex i
     a2 <- derivative i x
-    return $ Call "*" [a1, a2]
+    pure $ Call "*" [a1, a2]
   _ -> Left "No such derivative"

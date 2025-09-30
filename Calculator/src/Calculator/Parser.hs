@@ -60,7 +60,7 @@ instance Functor Parser where
   fmap f (Parser p) =
     Parser $ \input -> do
       (input', x) <- p input
-      return (input', f x)
+      pure (input', f x)
 
 instance Applicative Parser where
   pure x = Parser $ \input -> Right (input, x)
@@ -68,7 +68,7 @@ instance Applicative Parser where
     Parser $ \input -> do
       (input', f) <- p1 input
       (input'', a) <- p2 input'
-      return (input'', f a)
+      pure (input'', f a)
 
 instance {-# OVERLAPPING #-} Alternative (Either Text) where
   empty = Left "empty"
@@ -89,7 +89,7 @@ instance Monad Parser where
 parse :: Maps -> [Token] -> Either Text Expr
 parse m ts =
   runParser (stmt m) (Input 0 ts) >>= \(Input n ts1, e) -> case ts1 of
-    [] -> return e
+    [] -> pure e
     _ -> Left $ "Extra input at " <> showT n <> ": " <> renderTokens ts1
 
 stmt :: Maps -> Parser Expr
@@ -114,7 +114,7 @@ opAliasStmt = do
   op1 <- operator
   void eq
   op2 <- operator
-  return $ UDO op1 (-1) L (Call op2 [Id "@x", Id "@y"])
+  pure $ UDO op1 (-1) L (Call op2 [Id "@x", Id "@y"])
 
 operator :: Parser Text
 operator = extractOp <$> parseIf "operator" isTOp
@@ -212,14 +212,14 @@ imprtStmt :: Parser Expr
 imprtStmt = do
   void $ parseIf "import" (== TIdent "import")
   (n1, n2) <- number
-  return $ Imprt . either id id . numToText $ (n1 :+ n2)
+  pure $ Imprt . either id id . numToText $ (n1 :+ n2)
 
 keyValuePair :: Maps -> Parser (Text, Expr)
 keyValuePair m = do
   i <- identifier
   void $ parseIf "=>" (== TOp "=>")
   e <- expr 0.0 m
-  return (i, e)
+  pure (i, e)
 
 keyValuePairs :: Maps -> Parser [(Text, Expr)]
 keyValuePairs = flip sepBy comma . keyValuePair
@@ -308,19 +308,19 @@ expr min_bp m = Parser $
       then do
         (Op pr asoc _) <- (op, Ar2) `M.lookup` (ms ^. opmap)
         let p = fromIntegral pr
-        return $ case asoc of
+        pure $ case asoc of
           L -> (p, p + 0.25)
           R -> (p + 0.25, p)
           N -> (p - 0.25, p + 0.25)
-      else let mp = fromIntegral (maxPrecedence + 1) in return (mp, mp + 0.25)
+      else let mp = fromIntegral (maxPrecedence + 1) in pure (mp, mp + 0.25)
   prefix_binding_power :: Text -> Maps -> Maybe Double
   prefix_binding_power op ms = do
     (Op pr _ _) <- (op, Ar1) `M.lookup` (ms ^. opmap)
-    return $ fromIntegral pr
+    pure $ fromIntegral pr
   postfix_binding_power :: Text -> Maps -> Maybe Double
   postfix_binding_power op ms = do
     (Op pr _ _) <- (op, Ar1) `M.lookup` (ms ^. opmap)
-    return $ fromIntegral pr
+    pure $ fromIntegral pr
   handleNegation :: Text -> Text
   handleNegation "-" = "neg"
   handleNegation op = op

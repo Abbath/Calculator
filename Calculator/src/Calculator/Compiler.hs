@@ -163,7 +163,7 @@ instance AE.FromJSON Value where
   parseJSON = AE.withObject "Value" $ \v -> do
     tag :: String <- v AE..: "tag"
     value <- v AE..: "value"
-    return $ case tag of
+    pure $ case tag of
       "num" -> NumVal $ parseComplex value
       "str" -> StrVal value
       _ -> error "AAAAA"
@@ -230,13 +230,13 @@ goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
   (Par e) -> Par <$> f e
   (Call n e) -> Call n <$> mapM f e
-  e -> return e
+  e -> pure e
 
 substitute :: [(Text, Expr)] -> Expr -> Either Text Expr
-substitute [] e = return e
+substitute [] e = pure e
 substitute ((x, y) : xs) (Id i) =
   if i == x
-    then return $ case y of
+    then pure $ case y of
       Number _ _ -> y
       Id _ -> y
       Par _ -> y
@@ -248,13 +248,13 @@ substitute s@((x, Id fname) : xs) (Call n e) =
     else mapM (substitute s) e >>= substitute xs . Call n
 substitute s (Call ":=" [Id z, e]) = do
   ne <- substitute s e
-  return $ Call ":=" [Id z, ne]
+  pure $ Call ":=" [Id z, ne]
 substitute s@(_ : xs) (Call n e) = mapM (substitute s) e >>= substitute xs . Call n
 substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
-localize [] e = return e
-localize (x : xs) (Id i) = if i == x then return $ Id (attify i) else localize xs (Id i)
+localize [] e = pure e
+localize (x : xs) (Id i) = if i == x then pure $ Id (attify i) else localize xs (Id i)
 localize s@(x : xs) (Call nm e) =
   if nm == x
     then Call (attify nm) <$> mapM (localize s) e
@@ -265,20 +265,20 @@ catchVar :: Set Text -> Maps -> Expr -> Either Text Expr
 catchVar locals ms ex = case ex of
   (Call ":=" [Id nm, e]) -> do
     ne <- goInside (catchVar (S.insert nm locals) ms) e
-    return $ Call ":=" [Id nm, ne]
-  (Id i) | T.head i == '@' -> return $ Id i
+    pure $ Call ":=" [Id nm, ne]
+  (Id i) | T.head i == '@' -> pure $ Id i
   (Id i) ->
     let a = M.lookup i (ms ^. varmap) :: Maybe (Complex Rational)
         getNames = map (\(f, _) -> (f, f)) . M.keys
         b = lookup i (getNames (ms ^. funmap) ++ getNames functions) :: Maybe Text
         c = S.member i locals
      in case a of
-          Just n -> return $ randomCheck n i
+          Just n -> pure $ randomCheck n i
           Nothing -> case b of
-            Just s -> return $ Id s
+            Just s -> pure $ Id s
             Nothing ->
               if c
-                then return $ Id i
+                then pure $ Id i
                 else Left $ "No such variable: " <> i
    where
     randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number (realPart n) (imagPart n)
@@ -307,8 +307,8 @@ findPlace name = do
     Nothing -> do
       let i = V.length (unarray s)
       chunkc .= Chunk c (writeValueArray s name)
-      return i
-    Just idx -> return idx
+      pure i
+    Just idx -> pure idx
 
 addVar :: Text -> Expr -> StateChunk ()
 addVar name expr = umaps . uvars %= M.insert name (UV expr)
@@ -370,17 +370,17 @@ run m = do
     else do
       opcode <- readOpcode
       case fromWord8 opcode of
-        OpCall -> return IrOk
+        OpCall -> pure IrOk
         OpEject -> do
           n <- fromWord8 <$> readWord
           case n of
             OpFmt -> do
               n1 <- readWord
               n2 <- readConstant n1
-              return . IrIO OpFmt . Just $ case n2 of
+              pure . IrIO OpFmt . Just $ case n2 of
                 StrVal s -> s
                 NumVal num -> either id id $ numToText num
-            op -> return $ IrIO op Nothing
+            op -> pure $ IrIO op Nothing
         OpInternal -> do
           n <- readWord
           handleInternal (fromWord8 n)
@@ -400,7 +400,7 @@ run m = do
             NumVal _ -> throwError "Not a var name"
             StrVal name -> getvar name >>= push
           runNext
-        OpReturn -> return IrOk
+        OpReturn -> pure IrOk
         OpConstant -> do
           n <- readWord
           c <- readConstant n
@@ -467,26 +467,26 @@ run m = do
   readWord = do
     oc <- gets \vm -> (vm ^. chunke . code) V.! (vm ^. ip)
     step
-    return oc
+    pure oc
   readOffset = do
     msb <- extendWord8 <$> readWord
     lsb <- extendWord8 <$> readWord
-    return $ (shiftL (msb .&. 0x7f) 8 .|. lsb) * if testBit msb 7 then -1 else 1
+    pure $ (shiftL (msb .&. 0x7f) 8 .|. lsb) * if testBit msb 7 then -1 else 1
   pop = do
     s <- use stack
     if null s
       then throwError "Stack underflow!"
       else do
         stack .= tail s
-        return . head $ s
+        pure . head $ s
   peek = do
     s <- use stack
     if null s
       then throwError "Stack underflow!"
-      else return . head $ s
+      else pure . head $ s
   peekSafe = do
     s <- use stack
-    return $
+    pure $
       if null s
         then 0 :+ 0
         else head s
@@ -495,13 +495,13 @@ run m = do
   sanityCheck = do
     i <- use ip
     l <- uses (chunke . code) V.length
-    return $ i < l
+    pure $ i < l
   readConstant n = gets $ (V.! fromWord8 n) . unarray . (^. chunke . constants)
   getvar name = do
     mv <- uses vars $ M.lookup name
     case mv of
       Nothing -> throwError $ "No such variable: " <> name
-      Just v -> return v
+      Just v -> pure v
   setvar name val = vars %= M.insert name val
   handleInternal op = do
     case op of
@@ -563,9 +563,9 @@ compile' :: Maps -> Expr -> StateChunk ()
 compile' m = go
  where
   go ex = case ex of
-    Imprt filename -> return ()
-    ChairLit _ -> return ()
-    ChairSit _ _ -> return ()
+    Imprt filename -> pure ()
+    ChairLit _ -> pure ()
+    ChairSit _ _ -> pure ()
     Asgn name expr -> go expr >> setVar (StrVal name)
     UDF name args (Call "df" [body, var]) -> case derivative body var of
       Left err -> throwError err

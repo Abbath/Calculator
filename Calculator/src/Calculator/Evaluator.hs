@@ -93,13 +93,13 @@ goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
   (Par e) -> Par <$> f e
   (Call n e) -> Call n <$> mapM f e
-  e -> return e
+  e -> pure e
 
 substitute :: [(Text, Expr)] -> Expr -> Either Text Expr
-substitute [] e = return e
+substitute [] e = pure e
 substitute ((x, y) : xys) (Id i) =
   if i == x
-    then return $ case y of
+    then pure $ case y of
       (Number _ _) -> y
       (Id _) -> y
       (Par _) -> y
@@ -117,9 +117,9 @@ substitute s@(_ : xys) (Call n e) = mapM (substitute s) e >>= substitute xys . C
 substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
-localize [] e = return e
-localize _ (Id i) | "v." `T.isPrefixOf` i = return $ Id (attify i)
-localize (x : xs) (Id i) = if i == x then return $ Id (attify i) else localize xs (Id i)
+localize [] e = pure e
+localize _ (Id i) | "v." `T.isPrefixOf` i = pure $ Id (attify i)
+localize (x : xs) (Id i) = if i == x then pure $ Id (attify i) else localize xs (Id i)
 localize s@(x : xs) (Call nm e) =
   if nm == x
     then Call (attify nm) <$> mapM (localize s) e
@@ -128,16 +128,16 @@ localize s ex = goInside (localize s) ex
 
 catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
 catchVar (vm, fm) ex = case ex of
-  (Id i) | T.head i == '@' -> return $ Id i
+  (Id i) | T.head i == '@' -> pure $ Id i
   (Id i) ->
     let a = M.lookup i vm :: Maybe (Complex Rational)
         getNames = map (\(f, _) -> (f, f)) . M.keys
         fNames = getNames functions
         b = lookup i (funNames fm ++ fNames) :: Maybe Text
      in case a of
-          Just n -> return $ randomCheck (realPart n) i
+          Just n -> pure $ randomCheck (realPart n) i
           Nothing -> case b of
-            Just s -> return $ Id s
+            Just s -> pure $ Id s
             Nothing -> Left $ "No such variable: " <> i
    where
     randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number n 0
@@ -186,9 +186,9 @@ applyPrecision :: Complex Rational -> Result (Complex Rational)
 applyPrecision r = do
   pr <- use prec
   if
-    | pr == -1 -> return r
-    | pr > 0 -> return $ (/ (10 ^ pr)) . fromInteger . truncate <$> ((*) <$> r <*> pure (10 ^ pr))
-    | otherwise -> return $ fromInteger . truncate <$> r
+    | pr == -1 -> pure r
+    | pr > 0 -> pure $ (/ (10 ^ pr)) . fromInteger . truncate <$> ((*) <$> r <*> pure (10 ^ pr))
+    | otherwise -> pure $ fromInteger . truncate <$> r
 
 evalS :: Expr -> Result (Complex Rational)
 evalS ex = case ex of
@@ -261,7 +261,7 @@ evalS ex = case ex of
     | f `elem` (["opt", "?"] :: [Text]) ->
         if x == "m.r"
           then evm (Id "m.r")
-          else extractId x >>= maybe (return $ 0 :+ 0) return
+          else extractId x >>= maybe (pure $ 0 :+ 0) pure
   Call f [e] | f `elem` (["opt", "?"] :: [Text]) -> evm e
   Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
     case e1 of
@@ -270,7 +270,7 @@ evalS ex = case ex of
           then evm (Id "m.r")
           else do
             res <- evm e2
-            extractId x >>= maybe (return res) return
+            extractId x >>= maybe (pure res) pure
       _ -> evm e1
   Call "str" [e] -> evm e >>= (either throwErr (throwMsg . \s -> "\"" <> s <> "\"") . numToText)
   Call "fmt" (Number n ni : es) -> do
@@ -281,7 +281,7 @@ evalS ex = case ex of
         rs <- traverse evm es
         case zipFormat fs rs of
           Left err -> throwError (ErrMsg err)
-          Right t -> return . (:+ 0) . (% 1) . textToNum 0 $ T.unpack t
+          Right t -> pure . (:+ 0) . (% 1) . textToNum 0 $ T.unpack t
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
   Call "df" [a, x] -> either throwErr (throwMsg . exprToString . preprocess) $ derivative a x
@@ -291,22 +291,22 @@ evalS ex = case ex of
     a1 <- evm a
     b1 <- evm b
     e1 <- evm eps
-    return $ integrate (realPart . fromRight (0 :+ 0) . procListElem mps fun) (realPart a1) (realPart b1) (realPart e1)
+    pure $ integrate (realPart . fromRight (0 :+ 0) . procListElem mps fun) (realPart a1) (realPart b1) (realPart e1)
   Atan2 e1 e2 -> do
     t1 <- evm e1
     t2 <- evm e2
-    return $ toComplex $ atan2 (fromComplex t1 :: Precise) (fromComplex t2 :: Precise)
+    pure $ toComplex $ atan2 (fromComplex t1 :: Precise) (fromComplex t2 :: Precise)
   Call "log" [e1, e2] -> do
     t1 <- evm e1
     t2 <- evm e2
-    return $ toRational <$> logBase (fromRational <$> t1 :: Complex Precise) (fromRational <$> t2 :: Complex Precise)
+    pure $ toRational <$> logBase (fromRational <$> t1 :: Complex Precise) (fromRational <$> t2 :: Complex Precise)
   Call "prat" [e] -> evm e >>= throwMsg . showFraction . realPart
   Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text]) -> do
     t1 <- evm e
     case f of
-      "real" -> return $ realPart t1 :+ 0
-      "imag" -> return $ imagPart t1 :+ 0
-      "conj" -> return $ conjugate t1
+      "real" -> pure $ realPart t1 :+ 0
+      "imag" -> pure $ imagPart t1 :+ 0
+      "conj" -> pure $ conjugate t1
       _ -> throwErr $ "No such complex function: " <> f
   Call "^" [Call "neg" [x], y] -> evm $ Call "neg" [Call "^" [x, y]]
   Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
@@ -353,14 +353,14 @@ evalS ex = case ex of
       then throwErr $ "Division by zero: " <> exprToString oc
       else
         if op == "/"
-          then return $ n1 `divide` n
-          else return . (:+ 0) . toRational $ (toInteger . numerator . realPart $ n1) `div` (toInteger . numerator . realPart $ n)
+          then pure $ n1 `divide` n
+          else pure . (:+ 0) . toRational $ (toInteger . numerator . realPart $ n1) `div` (toInteger . numerator . realPart $ n)
   oc@(Call "%" [x, y]) -> do
     n <- evm y
     n1 <- evm x
     if realPart n == 0
       then throwErr $ "Division by zero: " <> exprToString oc
-      else return $ n1 `fmod` n
+      else pure $ n1 `fmod` n
   Call "|>" [x, Id y] -> evm $ Call y [x]
   Call ":=" [ChairSit a xs, ChairSit b ys] -> do
     chair1 <- use $ maps . chairmap . at a
@@ -390,7 +390,7 @@ evalS ex = case ex of
         case chair of
           Nothing -> throwMsg "No such chair"
           Just ch -> do
-            return $ fromMaybe (PikeVal M.empty) (extractChair ys ch)
+            pure $ fromMaybe (PikeVal M.empty) (extractChair ys ch)
       _ -> DickVal <$> evm y
     chair <- use $ maps . chairmap . at a
     case chair of
@@ -412,7 +412,7 @@ evalS ex = case ex of
                 else "_." <> x
             )
           ?= n
-        return n
+        pure n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwErr $ "Cannot assign to an expression with: " <> op
   Call op [x] | M.member (op, Ar1) unaryOperators -> evalBuiltinOp1 (op, Ar1) x
@@ -458,7 +458,7 @@ evalS ex = case ex of
       FnFn (MathFn1 fun) -> do
         n <- evm (head ps)
         let r = (\x -> if abs (realPart x) <= sin pi && imagPart x == 0 then 0 else x) . fun . fmap fromRational $ n
-        return $ toRational <$> r
+        pure $ toRational <$> r
       FnFn (MathFn2 fun) -> fun <$> evm (head ps) <*> evm (ps !! 1)
       ExFn expr -> either throwErr evm $ substitute (zip (params builtin_fun) ps) expr
       _ -> throwError (ErrMsg "Misteriously missing function")
@@ -482,18 +482,18 @@ evalS ex = case ex of
     rgen <- use gen
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Precise) rgen
     gen .= newGen
-    return . (:+ 0) . toRational $ randomNumber
-  Id s -> extractId s >>= maybe (throwError (ErrMsg $ "No such variable : " <> s)) return
-  ChairLit _ -> return $ 0 :+ 0
+    pure . (:+ 0) . toRational $ randomNumber
+  Id s -> extractId s >>= maybe (throwError (ErrMsg $ "No such variable : " <> s)) pure
+  ChairLit _ -> pure $ 0 :+ 0
   ChairSit a xs -> do
     val <- use $ maps . chairmap . at a
     case val of
       Nothing -> throwErr "No such chair!"
       Just ch -> case extractChair xs ch of
         Nothing -> throwErr "No such key!"
-        Just (DickVal d) -> return d
+        Just (DickVal d) -> pure d
         Just (PikeVal d) -> throwMsg $ showChair d
-  Number x xi -> return $ x :+ xi
+  Number x xi -> pure $ x :+ xi
   Par e -> evm e
   Seq _ -> throwErr "Sequences are not supported in this mode!"
   Imprt _ -> throwErr "Imports are not supported in this mode!"
@@ -509,7 +509,7 @@ evalS ex = case ex of
         throwMsg $ showChair (chairs M.! s)
       else do
         let val = asum ([M.lookup ("_." <> s) vars, M.lookup s vars] :: [Maybe (Complex Rational)])
-        return val
+        pure val
   createVar f e = do
     r <- evm e
     maps . varmap . at f ?= r
@@ -545,7 +545,7 @@ evalS ex = case ex of
   cmp fun x y = do
     n <- evm x
     n1 <- evm y
-    return $
+    pure $
       if fun (realPart n) (realPart n1)
         then 1 :+ 0
         else 0 :+ 0
@@ -553,25 +553,25 @@ evalS ex = case ex of
     n <- evm x
     n1 <- evm y
     if denominator (realPart n) == 1 && denominator (realPart n1) == 1
-      then return . toRational $ op (numerator (realPart n)) (numerator (realPart n1))
+      then pure . toRational $ op (numerator (realPart n)) (numerator (realPart n1))
       else throwError (ErrMsg "Cannot perform bitwise operator on a rational")
   evm x = do
     r <- evalS x
     if abs (realPart r) > tooBig || abs (imagPart r) > tooBig
       then throwError (ErrMsg "Too much!")
-      else return r
+      else pure r
   evalInt f x y = do
     t1 <- evm x
     t2 <- evm y
     if denominator (realPart t1) == 1 && denominator (realPart t2) == 1
-      then return . toComplex $ f (numerator (realPart t1)) (numerator (realPart t2))
+      then pure . toComplex $ f (numerator (realPart t1)) (numerator (realPart t2))
       else throwError (ErrMsg "Cannot use integral function on rational numbers!")
   evalInt1 :: (Precise -> Integer) -> Expr -> Result (Complex Rational)
   evalInt1 f x = toComplex . f . fromComplex <$> evm x
   evalBit f x = do
     t <- evm x
     if denominator (realPart t) == 1
-      then return . toComplex $ f (numerator (realPart t))
+      then pure . toComplex $ f (numerator (realPart t))
       else throwError (ErrMsg "Cannot use bitwise function on rational numbers!")
   procListElem m fun n = evalState (runExceptT (evm (Call fun [Number n 0]))) m
   findSimilar :: (Text, Int) -> [(Text, Arity)] -> ([(Text, Int)], [(Text, Int)])

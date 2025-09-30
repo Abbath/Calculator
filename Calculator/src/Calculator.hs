@@ -1,7 +1,7 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE BlockArguments #-}
 
 module Calculator (
   Mode (..),
@@ -110,7 +110,7 @@ type StateData = [String]
 completionGenerator :: String -> StateT StateData IO [Completion]
 completionGenerator s = do
   sd <- S.get
-  return $
+  pure $
     map (\x -> Completion{replacement = x, display = x, isFinished = False}) $
       filter (isPrefixOf s) (names `union` sd)
 
@@ -142,7 +142,7 @@ loop mode mps = do
     Left (CE.ErrorCall s) -> do
       putStrLn s
       Calculator.loop mode mps
-    Right _ -> return ()
+    Right _ -> pure ()
  where
   removeLocals = varmap %~ M.filterWithKey \k v -> not $ "_." `TS.isInfixOf` k
   loop' :: Mode -> EvalState -> InputT (StateT StateData IO) ()
@@ -150,8 +150,8 @@ loop mode mps = do
     S.lift $ S.modify \s -> s `union` extractNames (es ^. maps)
     input <- getInputLine "> "
     case input of
-      Nothing -> return ()
-      Just "quit" -> return ()
+      Nothing -> pure ()
+      Just "quit" -> pure ()
       Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' md es) . withInterrupt $ do
         let y = parseEval md es (TS.pack x)
         case y of
@@ -178,11 +178,11 @@ interpret path mode mps = do
     Right _ -> exitSuccess
  where
   loop' :: [TS.Text] -> Mode -> EvalState -> StateT StateData IO ()
-  loop' [] _ _ = return ()
+  loop' [] _ _ = pure ()
   loop' src@(l : ls) md es = do
     S.modify \s -> s `union` extractNames (es ^. maps)
     case l of
-      "quit" -> return ()
+      "quit" -> pure ()
       x -> do
         let y = parseEval md es x
         case y of
@@ -357,7 +357,7 @@ webLoop port mode = do
                  in do
                       storeMaps storagename mps
                       liftIO $ writeIORef ref ng
-                      return $ (fs, unpackMsg ress) : lg
+                      pure $ (fs, unpackMsg ress) : lg
           rtxt <- liftIO txt
           liftIO $ BS.writeFile logname . B.toStrict . encode $ rtxt
           WS.html $

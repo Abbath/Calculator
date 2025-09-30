@@ -59,7 +59,7 @@ eventHandler mes event = case event of
       Right (r, nes) -> do
         putMVar mes nes
         respond m $ showComplex r
-  _ -> return ()
+  _ -> pure ()
  where
   respond m rsp =
     void $
