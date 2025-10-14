@@ -233,6 +233,7 @@ evalS ex = case ex of
       Nothing -> throwErr $ "No such operator: " <> op
   UDO n p a e
     | M.member (n, Ar2) operators || M.member (n, Ar1) unaryOperators -> throwErr $ "Can not redefine the built-in operator: " <> n
+    | p == -2 -> throwErr "Operator does not exist"
     | p < 1 || p > maxPrecedence -> throwErr $ "Bad precedence: " <> showT p
     | otherwise -> do
         mps <- use maps

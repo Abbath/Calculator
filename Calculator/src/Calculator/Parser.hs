@@ -199,7 +199,7 @@ copyPrec m = do
   let p1 = precedence <$> (m ^. (opmap . at (name, Ar1)))
   let p2 = precedence <$> (m ^. (opmap . at (name, Ar2)))
   pure . (,0) . toRational $ case (p1, p2) of
-    (Nothing, Nothing) -> 1
+    (Nothing, Nothing) -> -2
     (Just p, Nothing) -> p
     (Nothing, Just p) -> p
     (Just _, Just p) -> p
@@ -212,11 +212,11 @@ copyAssoc m = do
   void parRight
   let p1 = associativity <$> (m ^. (opmap . at (name, Ar1)))
   let p2 = associativity <$> (m ^. (opmap . at (name, Ar2)))
-  pure . (,0) $ case (p1, p2) of
-    (Nothing, Nothing) -> 1
-    (Just p, Nothing) -> toRational . fromEnum $ p
-    (Nothing, Just p) -> toRational . fromEnum $ p
-    (Just _, Just p) -> toRational . fromEnum $ p
+  pure . (,0) . toRational . fromEnum $ case (p1, p2) of
+    (Nothing, Nothing) -> N
+    (Just p, Nothing) -> p
+    (Nothing, Just p) -> p
+    (Just _, Just p) -> p
 
 assocLetter :: Parser (Rational, Rational)
 assocLetter = do
@@ -232,7 +232,7 @@ udoStmt m = do
   void parLeft
   (p, _) <- number <|> copyPrec m
   void comma
-  (a, _) <- number <|> assocLetter <|> copyAssoc m
+  (a, _) <- number <|> copyAssoc m <|> assocLetter
   void parRight
   void eq2
   UDO name (fromInteger . numerator $ p) (toEnum (fromInteger $ numerator a)) <$> expr 0.0 m
