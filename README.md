@@ -1,5 +1,6 @@
 # Calculator
 [![CircleCI](https://circleci.com/gh/Abbath/Calculator.svg?style=shield)](https://circleci.com/gh/Abbath/Calculator)
+[![GitHub CI](https://github.com/Abbath/Calculator/workflows/CI/badge.svg)](https://github.com/Abbath/Calculator/actions)
 
 A simple calculator
 
