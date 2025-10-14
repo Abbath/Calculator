@@ -198,11 +198,11 @@ copyPrec m = do
   void parRight
   let p1 = precedence <$> (m ^. (opmap . at (name, Ar1)))
   let p2 = precedence <$> (m ^. (opmap . at (name, Ar2)))
-  pure . (,0) $ case (p1, p2) of
+  pure . (,0) . toRational $ case (p1, p2) of
     (Nothing, Nothing) -> 1
-    (Just p, Nothing) -> toRational p
-    (Nothing, Just p) -> toRational p
-    (Just _, Just p) -> toRational p
+    (Just p, Nothing) -> p
+    (Nothing, Just p) -> p
+    (Just _, Just p) -> p
 
 copyAssoc :: Maps -> Parser (Rational, Rational)
 copyAssoc m = do
