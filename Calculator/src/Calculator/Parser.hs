@@ -12,7 +12,7 @@ import Calculator.Types (
   Assoc (..),
   Expr (..),
   Maps,
-  Op (Op),
+  Op (Op, associativity, precedence),
   OpArity (..),
   Token (..),
   isSpaceFun,
@@ -23,10 +23,9 @@ import Calculator.Types (
   showT,
  )
 import Control.Applicative (Alternative (..))
-import Control.Lens ((^.))
+import Control.Lens (at, (^.))
 import Control.Monad (void)
 import Data.Complex
-import Data.Map.Strict qualified as M
 import Data.Ratio (numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -191,13 +190,49 @@ udfStmt m = do
   void eq2
   UDF (trimTick name) args <$> expr 0.0 m
 
+copyPrec :: Maps -> Parser (Rational, Rational)
+copyPrec m = do
+  void $ parseIf "p" (== TIdent "p")
+  void parLeft
+  name <- operator
+  void parRight
+  let p1 = precedence <$> (m ^. (opmap . at (name, Ar1)))
+  let p2 = precedence <$> (m ^. (opmap . at (name, Ar2)))
+  pure . (,0) $ case (p1, p2) of
+    (Nothing, Nothing) -> 1
+    (Just p, Nothing) -> toRational p
+    (Nothing, Just p) -> toRational p
+    (Just _, Just p) -> toRational p
+
+copyAssoc :: Maps -> Parser (Rational, Rational)
+copyAssoc m = do
+  void $ parseIf "a" (== TIdent "a")
+  void parLeft
+  name <- operator
+  void parRight
+  let p1 = associativity <$> (m ^. (opmap . at (name, Ar1)))
+  let p2 = associativity <$> (m ^. (opmap . at (name, Ar2)))
+  pure . (,0) $ case (p1, p2) of
+    (Nothing, Nothing) -> 1
+    (Just p, Nothing) -> toRational . fromEnum $ p
+    (Nothing, Just p) -> toRational . fromEnum $ p
+    (Just _, Just p) -> toRational . fromEnum $ p
+
+assocLetter :: Parser (Rational, Rational)
+assocLetter = do
+  name <- identifier
+  pure . (,0) $ case name of
+    "L" -> 0
+    "R" -> 1
+    _ -> 2
+
 udoStmt :: Maps -> Parser Expr
 udoStmt m = do
   name <- operator
   void parLeft
-  (p, _) <- number
+  (p, _) <- number <|> copyPrec m
   void comma
-  (a, _) <- number
+  (a, _) <- number <|> assocLetter <|> copyAssoc m
   void parRight
   void eq2
   UDO name (fromInteger . numerator $ p) (toEnum (fromInteger $ numerator a)) <$> expr 0.0 m
@@ -306,7 +341,7 @@ expr min_bp m = Parser $
   infix_binding_power op ms =
     if T.all (`elem` opSymbols) op
       then do
-        (Op pr asoc _) <- (op, Ar2) `M.lookup` (ms ^. opmap)
+        (Op pr asoc _) <- ms ^. (opmap . at (op, Ar2))
         let p = fromIntegral pr
         pure $ case asoc of
           L -> (p, p + 0.25)
@@ -315,11 +350,11 @@ expr min_bp m = Parser $
       else let mp = fromIntegral (maxPrecedence + 1) in pure (mp, mp + 0.25)
   prefix_binding_power :: Text -> Maps -> Maybe Double
   prefix_binding_power op ms = do
-    (Op pr _ _) <- (op, Ar1) `M.lookup` (ms ^. opmap)
+    (Op pr _ _) <- ms ^. (opmap . at (op, Ar1))
     pure $ fromIntegral pr
   postfix_binding_power :: Text -> Maps -> Maybe Double
   postfix_binding_power op ms = do
-    (Op pr _ _) <- (op, Ar1) `M.lookup` (ms ^. opmap)
+    (Op pr _ _) <- ms ^. (opmap . at (op, Ar1))
     pure $ fromIntegral pr
   handleNegation :: Text -> Text
   handleNegation "-" = "neg"

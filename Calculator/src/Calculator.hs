@@ -157,9 +157,9 @@ loop mode mps = do
         case y of
           Left (err, EvalState m ng pr) -> do
             let m' = removeLocals m
-            case err of
-              MsgMsg msg -> liftIO $ TSIO.putStrLn msg
-              ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
+            liftIO . TSIO.putStrLn $ case err of
+              MsgMsg msg -> msg
+              ErrMsg emsg -> "Error: " <> emsg
             loop' md (EvalState m' ng pr)
           Right (r, EvalState m ng pr) -> do
             let m' = removeLocals m
@@ -187,9 +187,9 @@ interpret path mode mps = do
         let y = parseEval md es x
         case y of
           Left (err, nes) -> do
-            case err of
-              MsgMsg msg -> liftIO $ TSIO.putStrLn msg
-              ErrMsg emsg -> liftIO $ TSIO.putStrLn ("Error: " <> emsg)
+            liftIO . TSIO.putStrLn $ case err of
+              MsgMsg msg -> msg
+              ErrMsg emsg -> "Error: " <> emsg
             loop' ls md nes
           Right (r, EvalState m ng pr) -> do
             liftIO . TSIO.putStrLn $ showComplex r
@@ -199,9 +199,11 @@ data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
 parseNumber :: TS.Text -> Complex Rational
 parseNumber t = case TS.split (== 'j') t of
-  [r, i] -> (toRational . read @Double . TS.unpack $ r) :+ (toRational . read @Double . TS.unpack $ i)
-  [r] -> (:+ 0) . toRational . read @Double . TS.unpack $ r
+  [r, i] -> parseRational r :+ parseRational i
+  [r] -> (:+ 0) . parseRational $ r
   _ -> 0 :+ 0
+ where
+  parseRational = toRational . read @Double . TS.unpack
 
 compileAndRun :: FilePath -> CompileMode -> Maps -> IO ()
 compileAndRun path mode mps = case mode of

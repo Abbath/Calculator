@@ -75,7 +75,7 @@ tests =
   , ("$(1,0) = x - y", Left . MsgMsg $ "Operator $ p=1 a=left")
   , ("2$2$2$2", R (-4))
   , ("2$2-2$2", R 0)
-  , ("$(7,0) = x - y", Left . MsgMsg $ "Operator $ p=7 a=left")
+  , ("$(p(-),L) = x - y", Left . MsgMsg $ "Operator $ p=7 a=left")
   , ("2$2-2$2", R (-4))
   , ("2^3^4", R 2417851639229258349412352)
   , ("2+2*2", R 6)
