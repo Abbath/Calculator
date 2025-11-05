@@ -6,7 +6,7 @@
 
 module Calculator.Builtins where
 
-import Calculator.Types (Arity (..), Assoc (..), EvalState (EvalState), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, VarMap)
+import Calculator.Types (Arity (..), Assoc (..), EvalState (EvalState), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, Unit (..), VarMap, unitlessValue)
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
 import Data.Complex (Complex (..), imagPart, realPart)
@@ -120,26 +120,26 @@ functions =
   , (("atan2", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 atan3)})
   , (("log2", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 log2)})
   , (("pow", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 pow)})
-  , (("rad", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "*" [Id "x", Call "/" [Id "m.pi", Number 180 0]])})
-  , (("deg", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "*" [Id "x", Call "/" [Number 180 0, Id "m.pi"]])})
-  , (("cot", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "tan" [Id "x"]])})
-  , (("sec", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "sin" [Id "x"]])})
-  , (("csc", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "cos" [Id "x"]])})
-  , (("coth", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "tanh" [Id "x"]])})
-  , (("sech", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "sinh" [Id "x"]])})
-  , (("csch", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0, Call "cosh" [Id "x"]])})
-  , (("acot", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "atan" [Call "/" [Number 1 0, Id "x"]])})
-  , (("asec", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "acos" [Call "/" [Number 1 0, Id "x"]])})
-  , (("acsc", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "asin" [Call "/" [Number 1 0, Id "x"]])})
-  , (("acoth", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "atanh" [Call "/" [Number 1 0, Id "x"]])})
-  , (("asech", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "acosh" [Call "/" [Number 1 0, Id "x"]])})
-  , (("acsch", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "asinh" [Call "/" [Number 1 0, Id "x"]])})
-  , (("sinc", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0], Call "/" [Call "sin" [Id "x"], Id "x"], Number 1 0])})
-  , (("cosc", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0], Call "-" [Call "/" [Call "cos" [Id "x"], Id "x"], Call "/" [Call "sin" [Id "x"], Call "^" [Id "x", Number 2 0]]], Number 1 0])})
-  , (("sincn", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0], Call "/" [Call "sin" [Call "*" [Id "m.pi", Id "x"]], Par (Call "*" [Id "m.pi", Id "x"])], Number 1 0])})
-  , (("coscn", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0], Call "-" [Call "/" [Call "cos" [Call "*" [Id "m.pi", Id "x"]], Id "x"], Call "/" [Call "sin" [Call "*" [Id "m.pi", Id "x"]], Par (Call "*" [Id "m.pi", Call "^" [Id "x", Number 2 0]])]], Number 1 0])})
-  , (("hav", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Call "-" [Number 1 0, Call "cos" [Id "x"]], Number 2 0])})
-  , (("ahav", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "*" [Number 2 0, Call "asin" [Call "sqrt" [Id "x"]]])})
+  , (("rad", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "*" [Id "x", Call "/" [Id "m.pi", Number 180 0 Unitless]])})
+  , (("deg", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "*" [Id "x", Call "/" [Number 180 0 Unitless, Id "m.pi"]])})
+  , (("cot", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0 Unitless, Call "tan" [Id "x"]])})
+  , (("sec", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0 Unitless, Call "sin" [Id "x"]])})
+  , (("csc", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0 Unitless, Call "cos" [Id "x"]])})
+  , (("coth", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0 Unitless, Call "tanh" [Id "x"]])})
+  , (("sech", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0 Unitless, Call "sinh" [Id "x"]])})
+  , (("csch", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Number 1 0 Unitless, Call "cosh" [Id "x"]])})
+  , (("acot", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "atan" [Call "/" [Number 1 0 Unitless, Id "x"]])})
+  , (("asec", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "acos" [Call "/" [Number 1 0 Unitless, Id "x"]])})
+  , (("acsc", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "asin" [Call "/" [Number 1 0 Unitless, Id "x"]])})
+  , (("acoth", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "atanh" [Call "/" [Number 1 0 Unitless, Id "x"]])})
+  , (("asech", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "acosh" [Call "/" [Number 1 0 Unitless, Id "x"]])})
+  , (("acsch", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "asinh" [Call "/" [Number 1 0 Unitless, Id "x"]])})
+  , (("sinc", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0 Unitless], Call "/" [Call "sin" [Id "x"], Id "x"], Number 1 0 Unitless])})
+  , (("cosc", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0 Unitless], Call "-" [Call "/" [Call "cos" [Id "x"], Id "x"], Call "/" [Call "sin" [Id "x"], Call "^" [Id "x", Number 2 0 Unitless]]], Number 1 0 Unitless])})
+  , (("sincn", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0 Unitless], Call "/" [Call "sin" [Call "*" [Id "m.pi", Id "x"]], Par (Call "*" [Id "m.pi", Id "x"])], Number 1 0 Unitless])})
+  , (("coscn", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", Number 0 0 Unitless], Call "-" [Call "/" [Call "cos" [Call "*" [Id "m.pi", Id "x"]], Id "x"], Call "/" [Call "sin" [Call "*" [Id "m.pi", Id "x"]], Par (Call "*" [Id "m.pi", Call "^" [Id "x", Number 2 0 Unitless]])]], Number 1 0 Unitless])})
+  , (("hav", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "/" [Call "-" [Number 1 0 Unitless, Call "cos" [Id "x"]], Number 2 0 Unitless])})
+  , (("ahav", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "*" [Number 2 0 Unitless, Call "asin" [Call "sqrt" [Id "x"]]])})
   , (("trunc", ArFixed 1), Fun{params = [], fexec = FnFn (IntFn1 truncate)})
   , (("round", ArFixed 1), Fun{params = [], fexec = FnFn (IntFn1 round)})
   , (("floor", ArFixed 1), Fun{params = [], fexec = FnFn (IntFn1 floor)})
@@ -155,7 +155,7 @@ functions =
   , (("pop", ArFixed 1), Fun{params = [], fexec = FnFn (BitFn $ fromIntegral . popCount)})
   , (("comp", ArFixed 1), Fun{params = [], fexec = FnFn (BitFn complement)})
   , (("fact", ArFixed 1), Fun{params = [], fexec = FnFn (BitFn prod)})
-  , (("not", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Id "x", Number 0 0, Number 1 0])})
+  , (("not", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Id "x", Number 0 0 Unitless, Number 1 0 Unitless])})
   ]
 
 prod :: Integer -> Integer
@@ -233,13 +233,13 @@ names = T.unpack <$> map fst (M.keys operators) ++ map fst (M.keys functions)
 
 defVar :: VarMap
 defVar =
-  [ ("m.pi", toRational (pi :: Precise) :+ 0)
-  , ("m.e", (toRational . exp $ (1 :: Precise)) :+ 0)
-  , ("m.phi", toRational ((1 + sqrt 5) / 2 :: Precise) :+ 0)
-  , ("m.r", 0.0 :+ 0)
-  , ("b.true", 1.0 :+ 0)
-  , ("b.false", 0.0 :+ 0)
-  , ("_", 0.0 :+ 0)
+  [ ("m.pi", unitlessValue $ toRational (pi :: Precise) :+ 0)
+  , ("m.e", unitlessValue $ (toRational . exp $ (1 :: Precise)) :+ 0)
+  , ("m.phi", unitlessValue $ toRational ((1 + sqrt 5) / 2 :: Precise) :+ 0)
+  , ("m.r", unitlessValue $ 0.0 :+ 0)
+  , ("b.true", unitlessValue $ 1.0 :+ 0)
+  , ("b.false", unitlessValue $ 0.0 :+ 0)
+  , ("_", unitlessValue $ 0.0 :+ 0)
   ]
 
 defaultMaps :: Maps
@@ -258,13 +258,13 @@ derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of
   Par ex -> Par <$> derivative ex x
   Call "-" [ex] -> Call "-" . (: []) <$> derivative ex x
-  Number _ _ -> pure $ Number 0 0
-  i@(Id _) | i == x -> pure $ Number 1 0
-  (Id _) -> pure $ Number 0 0
-  Call "^" [i, Number n _]
+  Number{} -> pure $ Number 0 0 Unitless
+  i@(Id _) | i == x -> pure $ Number 1 0 Unitless
+  (Id _) -> pure $ Number 0 0 Unitless
+  Call "^" [i, Number n _ _]
     | i == x ->
-        pure $ Call "*" [Number n 0, Call "^" [i, Number (n - 1) 0]]
-  Call "^" [Number a _, i] | i == x -> pure $ Call "*" [e, Call "log" [Number a 0]]
+        pure $ Call "*" [Number n 0 Unitless, Call "^" [i, Number (n - 1) 0 Unitless]]
+  Call "^" [Number a _ _, i] | i == x -> pure $ Call "*" [e, Call "log" [Number a 0 Unitless]]
   Call op [ex1, ex2] | op == "-" || op == "+" -> do
     a1 <- derivative ex1 x
     a2 <- derivative ex2 x
@@ -276,14 +276,14 @@ derivative e x = case e of
   Call "/" [ex1, ex2] -> do
     d1 <- derivative ex1 x
     d2 <- derivative ex2 x
-    pure $ Call "/" [Call "-" [Call "*" [d1, ex2], Call "*" [d2, ex1]], Call "^" [ex2, Number 2 0]]
+    pure $ Call "/" [Call "-" [Call "*" [d1, ex2], Call "*" [d2, ex1]], Call "^" [ex2, Number 2 0 Unitless]]
   ex@(Call "exp" [i]) | i == x -> pure ex
-  Call "log" [i] | i == x -> pure $ Call "/" [Number 1 0, i]
+  Call "log" [i] | i == x -> pure $ Call "/" [Number 1 0 Unitless, i]
   Call "sin" [i] | i == x -> pure $ Call "cos" [i]
   Call "cos" [i] | i == x -> pure $ Call "-" [Call "sin" [i]]
   Call "tan" [i]
     | i == x ->
-        pure $ Call "/" [Number 1 0, Call "^" [Call "cos" [i], Number 2 0]]
+        pure $ Call "/" [Number 1 0 Unitless, Call "^" [Call "cos" [i], Number 2 0 Unitless]]
   ex@(Call _ [i]) -> do
     a1 <- derivative ex i
     a2 <- derivative i x

@@ -24,6 +24,7 @@ import Calculator.Types (
   Expr (Imprt, Seq),
   ListTuple,
   Maps (..),
+  Value (..),
   extractFormat,
   funmap,
   funsFromList,
@@ -34,6 +35,7 @@ import Calculator.Types (
   opsFromList,
   opsToList,
   showComplex,
+  unitlessValue,
   varmap,
   zipFormat,
  )
@@ -164,7 +166,7 @@ loop mode mps = do
           Right (r, EvalState m ng pr) -> do
             let m' = removeLocals m
             liftIO . TSIO.putStrLn . showComplex $ r
-            loop' md (EvalState (m' & varmap %~ M.insert "_" r) ng pr)
+            loop' md (EvalState (m' & varmap %~ M.insert "_" (unitlessValue r)) ng pr)
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
 interpret path mode mps = do
@@ -193,7 +195,7 @@ interpret path mode mps = do
             loop' ls md nes
           Right (r, EvalState m ng pr) -> do
             liftIO . TSIO.putStrLn $ showComplex r
-            loop' ls md (EvalState (m & varmap %~ M.insert "_" r) ng pr)
+            loop' ls md (EvalState (m & varmap %~ M.insert "_" (unitlessValue r)) ng pr)
 
 data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
@@ -354,7 +356,7 @@ webLoop port mode = do
                 let (ress, EvalState mps ng _) =
                       either
                         Prelude.id
-                        (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . varmap %~ M.insert "_" r) mg))
+                        (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . varmap %~ M.insert "_" (unitlessValue r)) mg))
                         res
                  in do
                       storeMaps storagename mps
@@ -370,13 +372,13 @@ webLoop port mode = do
                   H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/" iD) $
                     H.input H.! type_ "input" H.! name "foo" H.! autofocus "autofocus"
                   H.form H.! method "post" H.! enctype "multipart/form-data" H.! action (H.toValue $ T.append "/clear/" iD) $
-                    H.input H.! type_ "submit" H.! value "Clear history"
+                    H.input H.! type_ "submit" H.! Text.Blaze.Html5.Attributes.value "Clear history"
                   H.table $ mapM_ (\(x, y) -> H.tr $ (H.td . H.toHtml $ x) >> (H.td . H.toHtml $ y)) rtxt
                   H.style $ H.toHtml . render $ postCss
  where
   storeMaps s = BS.writeFile s . B.toStrict . encode . mapsToLists
   mapsToLists ms = (remapComplex . M.toList $ (ms ^. varmap), funsToList (ms ^. funmap), opsToList (ms ^. opmap))
-  remapComplex = map $ \(k, v) -> (k, (realPart v, imagPart v))
-  listsToMaps (a, b, c) = Maps (M.fromList . map (\(k, (vr, vi)) -> (k, vr :+ vi)) $ a) (M.union funMap $ funsFromList b) (M.union opMap $ opsFromList c) M.empty
+  remapComplex = map $ \(k, Value v _) -> (k, (realPart v, imagPart v))
+  listsToMaps (a, b, c) = Maps (M.fromList . map (\(k, (vr, vi)) -> (k, unitlessValue $ vr :+ vi)) $ a) (M.union funMap $ funsFromList b) (M.union opMap $ opsFromList c) M.empty
   unpackMsg (MsgMsg m) = m
   unpackMsg (ErrMsg e) = e

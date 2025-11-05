@@ -8,7 +8,7 @@ import Calculator.Builtins (defaultMaps)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg), evalS)
 import Calculator.Lexer (tloop)
 import Calculator.Parser qualified as P
-import Calculator.Types (EvalState (..), Maps (..), showT, varmap)
+import Calculator.Types (EvalState (..), Maps (..), showT, unitlessValue, varmap)
 import Control.Lens ((%~), (&))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State (runState)
@@ -46,7 +46,7 @@ loop (x : xs) mps rgen bk n = do
               TIO.putStrLn $ "Failed: " <> sample <> " expected: " <> showT x <> " received: " <> showT t
               pure 1
         let (m, g) = case t of
-              (Right r, EvalState m_ g_ _) -> (m_ & varmap %~ M.insert "_" r, g_)
+              (Right r, EvalState m_ g_ _) -> (m_ & varmap %~ M.insert "_" (unitlessValue r), g_)
               (Left _, EvalState m_ g_ _) -> (m_, g_)
         loop xs m g bk (n + new_n)
     else do

@@ -37,6 +37,8 @@ import Calculator.Types (
   OpArity (..),
   OpMap,
   Precise,
+  Unit (Unitless),
+  Value (..),
   VarMap,
   ar2int,
   chairmap,
@@ -55,10 +57,11 @@ import Calculator.Types (
   showFraction,
   showT,
   textToNum,
+  unitlessValue,
   varmap,
   zipFormat,
  )
-import Calculator.Utils (attify)
+import Calculator.Utils (hashify)
 import Control.Applicative (asum)
 import Control.Arrow (Arrow (second))
 import Control.Lens (at, use, (.=), (?=), (^.))
@@ -100,7 +103,7 @@ substitute [] e = pure e
 substitute ((x, y) : xys) (Id i) =
   if i == x
     then pure $ case y of
-      (Number _ _) -> y
+      Number{} -> y
       (Id _) -> y
       (Par _) -> y
       t -> Par t
@@ -118,29 +121,29 @@ substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
 localize [] e = pure e
-localize _ (Id i) | "v." `T.isPrefixOf` i = pure $ Id (attify i)
-localize (x : xs) (Id i) = if i == x then pure $ Id (attify i) else localize xs (Id i)
+localize _ (Id i) | "v." `T.isPrefixOf` i = pure $ Id (hashify i)
+localize (x : xs) (Id i) = if i == x then pure $ Id (hashify i) else localize xs (Id i)
 localize s@(x : xs) (Call nm e) =
   if nm == x
-    then Call (attify nm) <$> mapM (localize s) e
+    then Call (hashify nm) <$> mapM (localize s) e
     else mapM (localize s) e >>= localize xs . Call nm
 localize s ex = goInside (localize s) ex
 
 catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
 catchVar (vm, fm) ex = case ex of
-  (Id i) | T.head i == '@' -> pure $ Id i
+  (Id i) | T.head i == '#' -> pure $ Id i
   (Id i) ->
-    let a = M.lookup i vm :: Maybe (Complex Rational)
+    let a = M.lookup i vm :: Maybe Value
         getNames = map (\(f, _) -> (f, f)) . M.keys
         fNames = getNames functions
         b = lookup i (funNames fm ++ fNames) :: Maybe Text
-     in case a of
+     in case value <$> a of
           Just n -> pure $ randomCheck (realPart n) i
           Nothing -> case b of
             Just s -> pure $ Id s
             Nothing -> Left $ "No such variable: " <> i
    where
-    randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number n 0
+    randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number n 0 Unitless
   e -> goInside st e
    where
     st = catchVar (vm, fm)
@@ -171,8 +174,8 @@ turboZip t e = turboZip' 0 t e
  where
   turboZip' :: Int -> [Text] -> [Expr] -> [(Text, Expr)]
   turboZip' _ [] [] = []
-  turboZip' n (x : xs) [] = (x, Number 0 0) : turboZip' n xs []
-  turboZip' n [] (y : ys) = ("@v." <> showT n, y) : turboZip' (n + 1) [] ys
+  turboZip' n (x : xs) [] = (x, Number 0 0 Unitless) : turboZip' n xs []
+  turboZip' n [] (y : ys) = ("#v." <> showT n, y) : turboZip' (n + 1) [] ys
   turboZip' n (x : xs) (y : ys) = (x, y) : turboZip' n xs ys
 
 pattern Debug :: GHC.IsList.Item [Expr] -> Expr
@@ -197,7 +200,7 @@ evalS ex = case ex of
     maps . chairmap . at s ?= M.fromList es
     throwMsg "New chair"
   Asgn s _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
-  Asgn f e@(Call "/" [Id g, Number n _]) -> do
+  Asgn f e@(Call "/" [Id g, Number n _ _]) -> do
     let n1 = ArFixed . fromInteger . numerator $ n
     fm <- use (maps . funmap)
     if M.member (g, n1) fm
@@ -220,7 +223,7 @@ evalS ex = case ex of
     either
       throwErr
       ( \r -> do
-          maps . funmap . at (f, arity) ?= Fun (map attify args) (ExFn r)
+          maps . funmap . at (f, arity) ?= Fun (map hashify args) (ExFn r)
           throwMsg ("Function " <> f <> "/" <> showT (ar2int arity))
       )
       newe
@@ -274,7 +277,7 @@ evalS ex = case ex of
             extractId x >>= maybe (pure res) pure
       _ -> evm e1
   Call "str" [e] -> evm e >>= (either throwErr (throwMsg . \s -> "\"" <> s <> "\"") . numToText)
-  Call "fmt" (Number n ni : es) -> do
+  Call "fmt" (Number n ni _ : es) -> do
     let format = numToText (n :+ ni) >>= extractFormat
     case format of
       Left err -> throwErr err
@@ -286,7 +289,7 @@ evalS ex = case ex of
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
   Call "df" [a, x] -> either throwErr (throwMsg . exprToString . preprocess) $ derivative a x
-  Call "int" [Id fun, a, b] -> evm $ Call "int" [Id fun, a, b, Number 1e-10 0]
+  Call "int" [Id fun, a, b] -> evm $ Call "int" [Id fun, a, b, Number 1e-10 0 Unitless]
   Call "int" [Id fun, a, b, eps] -> do
     mps <- get
     a1 <- evm a
@@ -344,9 +347,9 @@ evalS ex = case ex of
           let Op{associativity = asc2} = (mps ^. opmap) M.! (op2, Ar2)
           case (asc1, asc2) of
             (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
-            (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realPart c) (imagPart c)
+            (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realPart c) (imagPart c) Unitless
             _ -> throwErr $ "Operators with a different associativity: " <> op1 <> " and " <> op2
-      else evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realPart c) (imagPart c)
+      else evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realPart c) (imagPart c) Unitless
   oc@(Call op [x, y]) | op `elem` (["/", "div"] :: [Text]) -> do
     n <- evm y
     n1 <- evm x
@@ -379,7 +382,7 @@ evalS ex = case ex of
       Nothing -> throwErr "No such chair"
       Just ch -> case extractChair xs ch of
         Nothing -> throwErr "No such key"
-        Just (DickVal v) -> evm $ Call ":=" [Id x, Number (realPart v) (imagPart v)]
+        Just (DickVal v) -> evm $ Call ":=" [Id x, Number (realPart v) (imagPart v) Unitless]
         Just (PikeVal v) -> do
           maps . chairmap . at x ?= v
           throwMsg "Sitting chair"
@@ -412,7 +415,7 @@ evalS ex = case ex of
                 then x
                 else "_." <> x
             )
-          ?= n
+          ?= unitlessValue n
         pure n
   Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwErr $ "Cannot assign to an expression with: " <> op
@@ -421,19 +424,19 @@ evalS ex = case ex of
   Call op [x] | isOp op -> do
     mps <- use maps
     case (M.lookup (op, Ar1) (mps ^. opmap) :: Maybe Op) of
-      Just Op{oexec = ExOp expr} -> either throwErr evm $ substitute (zip ["@x"] [x]) expr
+      Just Op{oexec = ExOp expr} -> either throwErr evm $ substitute (zip ["#x"] [x]) expr
       Just Op{oexec = AOp aop} -> evm (Call aop [x])
       Nothing -> case op of
-        opn | T.head opn == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail opn <> "/1"
+        opn | T.head opn == '#' -> throwErr $ "Expression instead of a function name: " <> T.tail opn <> "/1"
         _ -> throwErr $ "No such operator: " <> op <> "/1"
       _ -> throwErr $ "Suspicious operator: " <> op
   Call op [x, y] | isOp op -> do
     mps <- use maps
     case (M.lookup (op, Ar2) (mps ^. opmap) :: Maybe Op) of
-      Just Op{oexec = ExOp expr} -> either throwErr evm $ substitute (zip ["@x", "@y"] [x, y]) expr
+      Just Op{oexec = ExOp expr} -> either throwErr evm $ substitute (zip ["#x", "#y"] [x, y]) expr
       Just Op{oexec = AOp aop} -> evm (Call aop [x, y])
       Nothing -> case op of
-        opn | T.head opn == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail opn <> "/2"
+        opn | T.head opn == '#' -> throwErr $ "Expression instead of a function name: " <> T.tail opn <> "/2"
         _ -> throwErr $ "No such operator: " <> op <> "/2"
       _ -> throwErr $ "Suspicious operator: " <> op
   Call "if" [a, b, c] -> do
@@ -447,7 +450,7 @@ evalS ex = case ex of
     if n == 0 :+ 0
       then evm a
       else evm $ Call "loop" [c, a]
-  Call "neg" [x] -> evm $ Call "-" [Number 0 0, x]
+  Call "neg" [x] -> evm $ Call "-" [Number 0 0 Unitless, x]
   Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
     let builtin_fun = functions M.! (f, ArFixed . length $ ps)
     case fexec builtin_fun of
@@ -466,9 +469,9 @@ evalS ex = case ex of
   Call name e -> do
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
-      Just (Fun al (ExFn expr)) -> either throwErr evm $ substitute (("@v.n", Number (fromIntegral . length $ e) 0) : turboZip al e) expr
+      Just (Fun al (ExFn expr)) -> either throwErr evm $ substitute (("#v.n", Number (fromIntegral . length $ e) 0 Unitless) : turboZip al e) expr
       Nothing -> case name of
-        x | T.head x == '@' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
+        x | T.head x == '#' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ ->
           let (wa, wn) = findSimilar (name, length e) (M.keys (mps ^. funmap))
               cvt_nls txt nls =
@@ -494,7 +497,7 @@ evalS ex = case ex of
         Nothing -> throwErr "No such key!"
         Just (DickVal d) -> pure d
         Just (PikeVal d) -> throwMsg $ showChair d
-  Number x xi -> pure $ x :+ xi
+  Number x xi _ -> pure $ x :+ xi
   Par e -> evm e
   Seq _ -> throwErr "Sequences are not supported in this mode!"
   Imprt _ -> throwErr "Imports are not supported in this mode!"
@@ -509,11 +512,11 @@ evalS ex = case ex of
       then
         throwMsg $ showChair (chairs M.! s)
       else do
-        let val = asum ([M.lookup ("_." <> s) vars, M.lookup s vars] :: [Maybe (Complex Rational)])
-        pure val
+        let val = asum ([M.lookup ("_." <> s) vars, M.lookup s vars] :: [Maybe Value])
+        pure (value <$> val)
   createVar f e = do
     r <- evm e
-    maps . varmap . at f ?= r
+    maps . varmap . at f ?= unitlessValue r
     throwMsg ((if "c." `T.isPrefixOf` f then "Constant " else "Variable ") <> f <> "=" <> showComplex r)
   removeVar f =
     if M.member f defVar
@@ -574,7 +577,7 @@ evalS ex = case ex of
     if denominator (realPart t) == 1
       then pure . toComplex $ f (numerator (realPart t))
       else throwError (ErrMsg "Cannot use bitwise function on rational numbers!")
-  procListElem m fun n = evalState (runExceptT (evm (Call fun [Number n 0]))) m
+  procListElem m fun n = evalState (runExceptT (evm (Call fun [Number n 0 Unitless]))) m
   findSimilar :: (Text, Int) -> [(Text, Arity)] -> ([(Text, Int)], [(Text, Int)])
   findSimilar (name, arity) funs =
     let extractArity = map (second ar2int)

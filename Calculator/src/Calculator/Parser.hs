@@ -15,6 +15,7 @@ import Calculator.Types (
   Op (Op, associativity, precedence),
   OpArity (..),
   Token (..),
+  Unit (Unitless),
   isSpaceFun,
   numToText,
   opSymbols,
@@ -113,7 +114,7 @@ opAliasStmt = do
   op1 <- operator
   void eq
   op2 <- operator
-  pure $ UDO op1 (-1) L (Call op2 [Id "@x", Id "@y"])
+  pure $ UDO op1 (-1) L (Call op2 [Id "#x", Id "#y"])
 
 operator :: Parser Text
 operator = extractOp <$> parseIf "operator" isTOp
@@ -263,7 +264,7 @@ eid :: Parser Expr
 eid = Id <$> identifier
 
 enumber :: Parser Expr
-enumber = uncurry Number <$> number
+enumber = uncurry Number <$> number <*> pure Unitless
 
 expr :: Double -> Maps -> Parser Expr
 expr min_bp m = Parser $
@@ -278,7 +279,9 @@ expr min_bp m = Parser $
             (i, e) <- runParser (expr bp1 m) ts
             inner_loop (Call (handleNegation op) [e]) i
           Nothing -> Left $ "No such operator: " <> op
-      TNumber a b -> inner_loop (Number a b) ts
+      TNumber a b -> case inputPeek ts of
+        Just (TUnit u) -> inner_loop (Number a b u) (inputTail ts)
+        _ -> inner_loop (Number a b Unitless) ts
       TIdent a -> case inputPeek ts of
         Just TLPar | not ("'" `T.isSuffixOf` a) -> do
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts

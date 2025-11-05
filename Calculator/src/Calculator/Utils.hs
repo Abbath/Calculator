@@ -1,6 +1,6 @@
-module Calculator.Utils where
+module Calculator.Utils (hashify) where
 
 import Data.Text as T (Text, singleton)
 
-attify :: Text -> Text
-attify = (T.singleton '@' <>)
+hashify :: Text -> Text
+hashify = (T.singleton '#' <>)

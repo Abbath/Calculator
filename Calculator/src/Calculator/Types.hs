@@ -62,6 +62,9 @@ module Calculator.Types (
   OpArity (..),
   renderToken,
   renderTokens,
+  Unit (..),
+  Value (..),
+  unitlessValue,
 )
 where
 
@@ -84,6 +87,12 @@ import GHC.Generics (Generic)
 import GHC.Real (Ratio (..))
 import Numeric (showBin, showHex, showOct)
 import System.Random (Random, StdGen)
+
+data Unit = Unitless | Unit Text Int | UProd Unit Unit deriving (Show, Eq, Read, Generic, ToJSON, FromJSON)
+data Value = Value {value :: Complex Rational, unit :: Unit} deriving (Show, Eq)
+
+unitlessValue :: Complex Rational -> Value
+unitlessValue cr = Value cr Unitless
 
 newtype Precise = Precise {unreal :: CReal 256}
   deriving (Show, Eq, Ord)
@@ -164,6 +173,10 @@ showRational r =
             idx = (+ (n + 1)) . fromMaybe 0 . T.findIndex (== '.') $ st
          in T.take idx st <> "(" <> T.drop idx st <> ")"
 
+showValue :: Value -> Text
+showValue (Value cr Unitless) = showComplex cr
+showValue (Value cr u) = showComplex cr <> "@" <> showT u
+
 showComplex :: Complex Rational -> Text
 showComplex c =
   let cr = realPart c
@@ -184,22 +197,25 @@ data Token
   | TEqual
   | TLabel Text
   | TDots
+  | TUnit Unit
   deriving (Show, Eq)
 
 renderToken :: Token -> Text
-renderToken (TNumber n d) = showComplex $ n :+ d
-renderToken TLPar = "("
-renderToken TRPar = ")"
-renderToken TLBrace = "{"
-renderToken TRBrace = "}"
-renderToken TLBracket = "["
-renderToken TRBracket = "]"
-renderToken (TIdent i) = i
-renderToken (TOp o) = o
-renderToken TComma = ","
-renderToken TEqual = "="
-renderToken (TLabel l) = l
-renderToken TDots = "..."
+renderToken token = case token of
+  (TNumber n d) -> showComplex $ n :+ d
+  TLPar -> "("
+  TRPar -> ")"
+  TLBrace -> "{"
+  TRBrace -> "}"
+  TLBracket -> "["
+  TRBracket -> "]"
+  (TIdent i) -> i
+  (TOp o) -> o
+  TComma -> ","
+  TEqual -> "="
+  (TLabel l) -> l
+  TDots -> "..."
+  (TUnit u) -> showT u
 
 renderTokens :: [Token] -> Text
 renderTokens = T.concat . map renderToken
@@ -213,7 +229,7 @@ isSpaceFun _ = False
 data Assoc = L | R | N deriving (Show, Read, Eq, Ord, Enum, Generic, ToJSON, FromJSON)
 
 data Expr
-  = Number Rational Rational
+  = Number Rational Rational Unit
   | ChairLit [(Text, Expr)]
   | ChairSit Text [Text]
   | Imprt Text
@@ -228,7 +244,7 @@ data Expr
   deriving (Eq, Show, Read, Generic)
 
 isNumber :: Expr -> Bool
-isNumber (Number _ _) = True
+isNumber Number{} = True
 isNumber _ = False
 
 isId :: Expr -> Bool
@@ -295,7 +311,7 @@ ar2int (ArFixed n) = n
 ar2int (ArVar n) = n
 
 type FunMap = Map (Text, Arity) Fun
-type VarMap = Map Text (Complex Rational)
+type VarMap = Map Text Value
 type OpMap = Map (Text, OpArity) Op
 type ChairMap = Map Text Chair
 
@@ -342,7 +358,7 @@ exprToString ex = case ex of
   UDF n a e -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
   UDO n p a e -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Precise else 1) <> ")" <> " = " <> exprToString e
   Asgn i e -> i <> " = " <> exprToString e
-  Number x y -> (showT . (fromRational :: Rational -> Precise) $ x) <> (if y == 0 then "" else ("j" <>) . showT . (fromRational :: Rational -> Precise) $ y)
+  Number x y u -> (showT . (fromRational :: Rational -> Precise) $ x) <> (if y == 0 then "" else ("j" <>) . showT . (fromRational :: Rational -> Precise) $ y) <> (if u == Unitless then "" else showT u)
   Par e -> "(" <> exprToString e <> ")"
   Call op [e] | isOp op -> "(" <> op <> exprToString e <> ")"
   Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
@@ -376,19 +392,19 @@ simplifyExpr ex = case ex of
   UDO n p a e -> UDO n p a (simplifyExpr e)
   Par (Par e) -> Par (simplifyExpr e)
   Par e -> Par (simplifyExpr e)
-  Call "+" [Number 0.0 0.0, n] -> simplifyExpr n
-  Call "+" [n, Number 0.0 0.0] -> simplifyExpr n
-  Call op [n, Number 0.0 0.0] | op `elem` ["+", "-"] -> simplifyExpr n
-  Call "*" [Number 1.0 0.0, n] -> simplifyExpr n
-  Call "*" [Number 0.0 0.0, n] -> Number 0.0 0.0
-  Call "*" [n, Number 1.0 0.0] -> simplifyExpr n
-  Call "*" [n, Number 0.0 0.0] -> Number 0.0 0.0
-  Call op [n, Number 1.0 0.0] | op `elem` ["*", "/", "%"] -> simplifyExpr n
-  Call "^" [n, Number 1.0 0.0] -> simplifyExpr n
-  Call "^" [Call "sqrt" [e], Number 2.0 0.0] -> simplifyExpr e
+  Call "+" [Number 0.0 0.0 _, n] -> simplifyExpr n
+  Call "+" [n, Number 0.0 0.0 _] -> simplifyExpr n
+  Call op [n, Number 0.0 0.0 _] | op `elem` ["+", "-"] -> simplifyExpr n
+  Call "*" [Number 1.0 0.0 _, n] -> simplifyExpr n
+  Call "*" [Number 0.0 0.0 _, n] -> Number 0.0 0.0 Unitless
+  Call "*" [n, Number 1.0 0.0 _] -> simplifyExpr n
+  Call "*" [n, Number 0.0 0.0 _] -> Number 0.0 0.0 Unitless
+  Call op [n, Number 1.0 0.0 _] | op `elem` ["*", "/", "%"] -> simplifyExpr n
+  Call "^" [n, Number 1.0 0.0 _] -> simplifyExpr n
+  Call "^" [Call "sqrt" [e], Number 2.0 0.0 _] -> simplifyExpr e
   Call "exp" [Call "log" [e]] -> simplifyExpr e
   Call "log" [Call "exp" [e]] -> simplifyExpr e
-  Call "sqrt" [Call "^" [e, Number 2.0 0.0]] -> simplifyExpr e
+  Call "sqrt" [Call "^" [e, Number 2.0 0.0 _]] -> simplifyExpr e
   Call name e -> Call name (map simplifyExpr e)
   x -> x
 

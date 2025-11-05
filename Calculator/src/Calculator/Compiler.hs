@@ -28,13 +28,15 @@ import Calculator.Types (
   Op (oexec),
   OpArity (..),
   OpMap,
+  Unit (Unitless),
+  Value (..),
   funmap,
   numToText,
   opmap,
   showT,
   varmap,
  )
-import Calculator.Utils (attify)
+import Calculator.Utils (hashify)
 import Control.Lens (makeLenses, use, uses, (%=), (%~), (+=), (.=), (^.))
 import Control.Monad (when)
 import Control.Monad.Except (
@@ -67,11 +69,11 @@ import System.Random (Random (randomR), StdGen)
 
 -- import Debug.Trace
 
-data Value = NumVal (Complex Rational) | StrVal Text deriving (Show, Eq, Generic)
+data DataValue = NumVal (Complex Rational) | StrVal Text deriving (Show, Eq, Generic)
 
 type Val = Complex Rational
 
-newtype ValueArray = ValueArray {unarray :: V.Vector Value} deriving (Show, Generic)
+newtype ValueArray = ValueArray {unarray :: V.Vector DataValue} deriving (Show, Generic)
 
 data Chunk = Chunk {_code :: V.Vector Word8, _constants :: ValueArray} deriving (Show, Generic)
 
@@ -145,7 +147,7 @@ instance AE.ToJSON UserOp
 
 instance AE.ToJSON UserFun
 
-instance AE.ToJSON Value where
+instance AE.ToJSON DataValue where
   toJSON (NumVal n) = AE.object ["tag" AE..= ("num" :: String), "value" AE..= (show (realPart n) <> "j" <> show (imagPart n))]
   toJSON (StrVal s) = AE.object ["tag" AE..= ("str" :: String), "value" AE..= s]
 
@@ -159,7 +161,7 @@ parseComplex t = case T.split (== 'j') t of
   [r, i] -> read (r ^. unpacked) :+ read (i ^. unpacked)
   _ -> error "AAAA"
 
-instance AE.FromJSON Value where
+instance AE.FromJSON DataValue where
   parseJSON = AE.withObject "Value" $ \v -> do
     tag :: String <- v AE..: "tag"
     value <- v AE..: "value"
@@ -220,10 +222,10 @@ disassembleChunk v = case V.uncons v of
           OpCall -> disassembleChunk ns
       | otherwise -> "err (unknown)"
 
-writeValueArray :: ValueArray -> Value -> ValueArray
+writeValueArray :: ValueArray -> DataValue -> ValueArray
 writeValueArray (ValueArray v) w = ValueArray (V.snoc v w)
 
-indexValueArray :: ValueArray -> Value -> Maybe Int
+indexValueArray :: ValueArray -> DataValue -> Maybe Int
 indexValueArray (ValueArray v) val = V.elemIndex val v
 
 goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
@@ -237,7 +239,7 @@ substitute [] e = pure e
 substitute ((x, y) : xs) (Id i) =
   if i == x
     then pure $ case y of
-      Number _ _ -> y
+      Number{} -> y
       Id _ -> y
       Par _ -> y
       t -> Par t
@@ -254,10 +256,10 @@ substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
 localize [] e = pure e
-localize (x : xs) (Id i) = if i == x then pure $ Id (attify i) else localize xs (Id i)
+localize (x : xs) (Id i) = if i == x then pure $ Id (hashify i) else localize xs (Id i)
 localize s@(x : xs) (Call nm e) =
   if nm == x
-    then Call (attify nm) <$> mapM (localize s) e
+    then Call (hashify nm) <$> mapM (localize s) e
     else mapM (localize s) e >>= localize xs . Call nm
 localize s ex = goInside (localize s) ex
 
@@ -268,11 +270,11 @@ catchVar locals ms ex = case ex of
     pure $ Call ":=" [Id nm, ne]
   (Id i) | T.head i == '@' -> pure $ Id i
   (Id i) ->
-    let a = M.lookup i (ms ^. varmap) :: Maybe (Complex Rational)
+    let a = M.lookup i (ms ^. varmap) :: Maybe Value
         getNames = map (\(f, _) -> (f, f)) . M.keys
         b = lookup i (getNames (ms ^. funmap) ++ getNames functions) :: Maybe Text
         c = S.member i locals
-     in case a of
+     in case value <$> a of
           Just n -> pure $ randomCheck n i
           Nothing -> case b of
             Just s -> pure $ Id s
@@ -281,26 +283,26 @@ catchVar locals ms ex = case ex of
                 then pure $ Id i
                 else Left $ "No such variable: " <> i
    where
-    randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number (realPart n) (imagPart n)
+    randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number (realPart n) (imagPart n) Unitless
   e -> goInside st e
    where
     st = catchVar locals ms
 
-addConstant :: Value -> StateChunk ()
+addConstant :: DataValue -> StateChunk ()
 addConstant = doVar OpConstant
 
-getVar :: Value -> StateChunk ()
+getVar :: DataValue -> StateChunk ()
 getVar = doVar OpGet
 
-setVar :: Value -> StateChunk ()
+setVar :: DataValue -> StateChunk ()
 setVar = doVar OpSet
 
-doVar :: OpCode -> Value -> StateChunk ()
+doVar :: OpCode -> DataValue -> StateChunk ()
 doVar oc name = do
   emitByte oc
   findPlace name >>= emitByte
 
-findPlace :: Value -> StateChunk Int
+findPlace :: DataValue -> StateChunk Int
 findPlace name = do
   (Chunk c s) <- use chunkc
   case indexValueArray s name of
@@ -317,7 +319,7 @@ addFun :: Maps -> Text -> [Text] -> Expr -> StateChunk ()
 addFun ms name args expr = do
   new_expr <- liftEither $ localize args expr >>= catchVar S.empty ms
   let chunk = compile ms expr
-  either throwError (\c -> umaps . ufuns %= M.insert (name, length args) (UF (map attify args) new_expr c)) chunk
+  either throwError (\c -> umaps . ufuns %= M.insert (name, length args) (UF (map hashify args) new_expr c)) chunk
 
 addOp :: Maps -> Text -> Int -> Assoc -> Expr -> StateChunk ()
 addOp ms name opprec assoc expr = do
@@ -519,7 +521,7 @@ emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty)
 
 emptyCompileState :: CompileState
-emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV $ Number 0 0)] M.empty)
+emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV $ Number 0 0 Unitless)] M.empty)
 
 compile :: Maps -> Expr -> Either Text Chunk
 compile m e =
@@ -586,7 +588,7 @@ compile' m = go
       go x
       emitByte OpEject
       emitByte OpOutput
-    Call "print" (Number n ni : values) -> do
+    Call "print" (Number n ni _ : values) -> do
       let format = numToText (n :+ ni)
       forM_ values go
       emitByte OpEject
@@ -594,7 +596,7 @@ compile' m = go
       findPlace (StrVal $ either id id format) >>= emitByte
     Call "atan" [Call "/" [x, y]] -> go $ Call "atan2" [x, y]
     Call "log" [x, y] -> go $ Call "log2" [x, y]
-    Call "if" [cond, t] -> go (Call "if" [cond, t, Number 0 0])
+    Call "if" [cond, t] -> go (Call "if" [cond, t, Number 0 0 Unitless])
     Call "if" [cond, t, f] -> do
       go cond
       off1 <- unfinishedJump
@@ -644,17 +646,17 @@ compile' m = go
             go ne
         | (M.member callee om) -> do
             let UO _ _ e = om M.! callee
-            ne <- liftEither $ substitute (zip ["@x", "@y"] args) e
+            ne <- liftEither $ substitute (zip ["#x", "#y"] args) e
             go ne
-        | (callee == "-" && length args == 1) -> go (Call "-" [Number 0 0, head args])
+        | (callee == "-" && length args == 1) -> go (Call "-" [Number 0 0 Unitless, head args])
         | (callee == "~" && length args == 1) -> go (Call "comp" args)
         | (callee == "!" && length args == 1) -> go (Call "fact" args)
         | otherwise -> throwError $ "Callee does not exist: " <> callee
-    Number a b -> addConstant (NumVal $ a :+ b)
+    Number a b _ -> addConstant (NumVal $ a :+ b)
     Id a -> do
       if
         | a == "m.r" -> emitByte OpInternal >> emitByte OpRandom
-        | M.member a (m ^. varmap) && a /= "_" -> addConstant (NumVal $ (m ^. varmap) M.! a)
+        | M.member a (m ^. varmap) && a /= "_" -> addConstant (NumVal . value $ (m ^. varmap) M.! a)
         | otherwise -> getVar (StrVal a)
     Seq es -> forM_ es $ \e -> do
       go e

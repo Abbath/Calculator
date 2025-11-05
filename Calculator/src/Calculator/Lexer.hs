@@ -4,7 +4,7 @@
 
 module Calculator.Lexer (tloop) where
 
-import Calculator.Types (Token (..), opSymbols, showT, textToNum)
+import Calculator.Types (Token (..), Unit (..), opSymbols, showT, textToNum)
 import Control.Applicative (Alternative (..))
 import Data.Char (
   isAlpha,
@@ -240,8 +240,11 @@ comma = TComma <$ wsBracket (charP ',')
 dots :: Parser Token
 dots = TDots <$ wsBracket (charP '.' <* charP '.' <* charP '.')
 
+unit :: Parser Token
+unit = TUnit <$> (charP '@' *> (Unit . T.pack <$> some (alfaNum <|> charP '-') <*> pure 1))
+
 tokah :: Parser Token
-tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> operata <|> numba <|> label <|> ident <|> dots
+tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> operata <|> numba <|> label <|> ident <|> dots <|> unit
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0

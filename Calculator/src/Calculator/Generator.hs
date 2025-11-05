@@ -36,12 +36,12 @@ instance Show Tac where
 type ResultG = ExceptT Text (State (Int, Int, [Tac]))
 
 isFinal :: Expr -> Bool
-isFinal (Number _ _) = True
+isFinal Number{} = True
 isFinal (Id _) = True
 isFinal _ = False
 
 extractFinal :: Expr -> Text
-extractFinal (Number a _) = showT @Double (fromRational a)
+extractFinal (Number a _ _) = showT @Double (fromRational a)
 extractFinal (Id a) = a
 extractFinal _ = error "Extraction is impossible"
 
@@ -116,7 +116,7 @@ type QbeState = ExceptT Text (State Text)
 
 generateQbe :: Expr -> QbeState ()
 generateQbe expr = case expr of
-  (Number a b) -> modify (<> ("d_" <> showComplex (a :+ b)))
+  (Number a b _) -> modify (<> ("d_" <> showComplex (a :+ b)))
   (Call "+" [a, b]) -> do
     modify (<> "add ")
     generateQbe a
