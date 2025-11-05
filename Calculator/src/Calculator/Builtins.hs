@@ -7,6 +7,7 @@
 module Calculator.Builtins where
 
 import Calculator.Types (Arity (..), Assoc (..), EvalState (EvalState), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, Unit (..), VarMap, unitlessNumber, unitlessOne, unitlessValue, unitlessZero)
+import Control.Applicative ((<|>))
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
 import Data.Complex (Complex (..), imagPart, realPart)
@@ -55,6 +56,12 @@ operators =
   , (("|>", Ar2), Op{precedence = 12, associativity = L, oexec = NOp})
   , (("::=", Ar2), Op{precedence = 13, associativity = R, oexec = NOp})
   ]
+
+opMember :: Text -> Bool
+opMember op = M.member (op, Ar2) operators || M.member (op, Ar1) unaryOperators
+
+opLookup :: Text -> Maybe Op
+opLookup op = M.lookup (op, Ar2) operators <|> M.lookup (op, Ar1) unaryOperators
 
 unaryOperators :: OpMap
 unaryOperators =
