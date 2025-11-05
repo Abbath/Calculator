@@ -34,6 +34,7 @@ import Calculator.Types (
   numToText,
   opmap,
   showT,
+  unitlessZero,
   varmap,
  )
 import Calculator.Utils (hashify)
@@ -521,7 +522,7 @@ emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty)
 
 emptyCompileState :: CompileState
-emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV $ Number 0 0 Unitless)] M.empty)
+emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV $ unitlessZero)] M.empty)
 
 compile :: Maps -> Expr -> Either Text Chunk
 compile m e =
@@ -596,7 +597,7 @@ compile' m = go
       findPlace (StrVal $ either id id format) >>= emitByte
     Call "atan" [Call "/" [x, y]] -> go $ Call "atan2" [x, y]
     Call "log" [x, y] -> go $ Call "log2" [x, y]
-    Call "if" [cond, t] -> go (Call "if" [cond, t, Number 0 0 Unitless])
+    Call "if" [cond, t] -> go (Call "if" [cond, t, unitlessZero])
     Call "if" [cond, t, f] -> do
       go cond
       off1 <- unfinishedJump
@@ -648,7 +649,7 @@ compile' m = go
             let UO _ _ e = om M.! callee
             ne <- liftEither $ substitute (zip ["#x", "#y"] args) e
             go ne
-        | (callee == "-" && length args == 1) -> go (Call "-" [Number 0 0 Unitless, head args])
+        | (callee == "-" && length args == 1) -> go (Call "-" [unitlessZero, head args])
         | (callee == "~" && length args == 1) -> go (Call "comp" args)
         | (callee == "!" && length args == 1) -> go (Call "fact" args)
         | otherwise -> throwError $ "Callee does not exist: " <> callee

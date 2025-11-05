@@ -57,7 +57,9 @@ import Calculator.Types (
   showFraction,
   showT,
   textToNum,
+  unitlessNumber,
   unitlessValue,
+  unitlessZero,
   varmap,
   zipFormat,
  )
@@ -174,7 +176,7 @@ turboZip t e = turboZip' 0 t e
  where
   turboZip' :: Int -> [Text] -> [Expr] -> [(Text, Expr)]
   turboZip' _ [] [] = []
-  turboZip' n (x : xs) [] = (x, Number 0 0 Unitless) : turboZip' n xs []
+  turboZip' n (x : xs) [] = (x, unitlessZero) : turboZip' n xs []
   turboZip' n [] (y : ys) = ("#v." <> showT n, y) : turboZip' (n + 1) [] ys
   turboZip' n (x : xs) (y : ys) = (x, y) : turboZip' n xs ys
 
@@ -289,21 +291,14 @@ evalS ex = case ex of
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
   Call "df" [a, x] -> either throwErr (throwMsg . exprToString . preprocess) $ derivative a x
-  Call "int" [Id fun, a, b] -> evm $ Call "int" [Id fun, a, b, Number 1e-10 0 Unitless]
+  Call "int" [Id fun, a, b] -> evm $ Call "int" [Id fun, a, b, unitlessNumber 1e-10]
   Call "int" [Id fun, a, b, eps] -> do
     mps <- get
     a1 <- evm a
     b1 <- evm b
     e1 <- evm eps
     pure $ integrate (realPart . fromRight (0 :+ 0) . procListElem mps fun) (realPart a1) (realPart b1) (realPart e1)
-  Atan2 e1 e2 -> do
-    t1 <- evm e1
-    t2 <- evm e2
-    pure $ toComplex $ atan2 (fromComplex t1 :: Precise) (fromComplex t2 :: Precise)
-  Call "log" [e1, e2] -> do
-    t1 <- evm e1
-    t2 <- evm e2
-    pure $ toRational <$> logBase (fromRational <$> t1 :: Complex Precise) (fromRational <$> t2 :: Complex Precise)
+  Atan2 e1 e2 -> evm $ Call "atan2" [e1, e2]
   Call "prat" [e] -> evm e >>= throwMsg . showFraction . realPart
   Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text]) -> do
     t1 <- evm e
@@ -450,7 +445,7 @@ evalS ex = case ex of
     if n == 0 :+ 0
       then evm a
       else evm $ Call "loop" [c, a]
-  Call "neg" [x] -> evm $ Call "-" [Number 0 0 Unitless, x]
+  Call "neg" [x] -> evm $ Call "-" [unitlessZero, x]
   Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
     let builtin_fun = functions M.! (f, ArFixed . length $ ps)
     case fexec builtin_fun of

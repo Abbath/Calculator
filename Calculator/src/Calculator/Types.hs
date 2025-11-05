@@ -65,6 +65,9 @@ module Calculator.Types (
   Unit (..),
   Value (..),
   unitlessValue,
+  unitlessZero,
+  unitlessOne,
+  unitlessNumber,
 )
 where
 
@@ -88,7 +91,7 @@ import GHC.Real (Ratio (..))
 import Numeric (showBin, showHex, showOct)
 import System.Random (Random, StdGen)
 
-data Unit = Unitless | Unit Text Int | UProd Unit Unit deriving (Show, Eq, Read, Generic, ToJSON, FromJSON)
+data Unit = Unitless | Unit Text Int | UProd [Unit] deriving (Show, Eq, Read, Generic, ToJSON, FromJSON)
 data Value = Value {value :: Complex Rational, unit :: Unit} deriving (Show, Eq)
 
 unitlessValue :: Complex Rational -> Value
@@ -242,6 +245,15 @@ data Expr
   | Seq [Expr]
   | Label Text
   deriving (Eq, Show, Read, Generic)
+
+unitlessZero :: Expr
+unitlessZero = Number 0 0 Unitless
+
+unitlessOne :: Expr
+unitlessOne = Number 1 0 Unitless
+
+unitlessNumber :: Rational -> Expr
+unitlessNumber n = Number n 0 Unitless
 
 isNumber :: Expr -> Bool
 isNumber Number{} = True
