@@ -22,6 +22,7 @@ import Calculator.Types (
   opmap,
   renderTokens,
   showT,
+  unitlessValue,
  )
 import Control.Applicative (Alternative (..))
 import Control.Lens (at, (^.))
@@ -248,7 +249,7 @@ imprtStmt :: Parser Expr
 imprtStmt = do
   void $ parseIf "import" (== TIdent "import")
   (n1, n2) <- number
-  pure $ Imprt . either id id . numToText $ (n1 :+ n2)
+  pure $ Imprt . either id id . numToText $ unitlessValue (n1 :+ n2)
 
 keyValuePair :: Maps -> Parser (Text, Expr)
 keyValuePair m = do

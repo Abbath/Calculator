@@ -5,7 +5,7 @@ module Calculator.Opts.Dis where
 import Calculator (Mode (..), parseEval)
 import Calculator.Builtins (defaultEvalState)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
-import Calculator.Types (EvalState (..), showComplex)
+import Calculator.Types (EvalState (..), showValue)
 import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Maybe (fromMaybe)
@@ -58,7 +58,7 @@ eventHandler mes event = case event of
       Left (ErrMsg msg, _) -> respond m msg
       Right (r, nes) -> do
         putMVar mes nes
-        respond m $ showComplex r
+        respond m $ showValue r
   _ -> pure ()
  where
   respond m rsp =

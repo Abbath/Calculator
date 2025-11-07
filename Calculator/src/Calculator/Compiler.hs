@@ -31,9 +31,12 @@ import Calculator.Types (
   Unit (Unitless),
   Value (..),
   funmap,
+  imagValue,
   numToText,
   opmap,
+  realValue,
   showT,
+  unitlessValue,
   unitlessZero,
   varmap,
  )
@@ -70,9 +73,9 @@ import System.Random (Random (randomR), StdGen)
 
 -- import Debug.Trace
 
-data DataValue = NumVal (Complex Rational) | StrVal Text deriving (Show, Eq, Generic)
+data DataValue = NumVal Value | StrVal Text deriving (Show, Eq, Generic)
 
-type Val = Complex Rational
+type Val = Value
 
 newtype ValueArray = ValueArray {unarray :: V.Vector DataValue} deriving (Show, Generic)
 
@@ -149,7 +152,7 @@ instance AE.ToJSON UserOp
 instance AE.ToJSON UserFun
 
 instance AE.ToJSON DataValue where
-  toJSON (NumVal n) = AE.object ["tag" AE..= ("num" :: String), "value" AE..= (show (realPart n) <> "j" <> show (imagPart n))]
+  toJSON (NumVal n) = AE.object ["tag" AE..= ("num" :: String), "value" AE..= (show (realValue n) <> "j" <> show (imagValue n))]
   toJSON (StrVal s) = AE.object ["tag" AE..= ("str" :: String), "value" AE..= s]
 
 instance AE.ToJSON ValueArray
@@ -157,9 +160,9 @@ instance AE.ToJSON ValueArray
 instance AE.ToJSON Chunk where
   toEncoding = AE.genericToEncoding AE.defaultOptions
 
-parseComplex :: Text -> Complex Rational
+parseComplex :: Text -> Value
 parseComplex t = case T.split (== 'j') t of
-  [r, i] -> read (r ^. unpacked) :+ read (i ^. unpacked)
+  [r, i] -> unitlessValue $ read (r ^. unpacked) :+ read (i ^. unpacked)
   _ -> error "AAAA"
 
 instance AE.FromJSON DataValue where
@@ -414,7 +417,7 @@ run m = do
         OpJmp -> do
           cond <- pop
           offset <- readOffset
-          when (cond == 0 :+ 0) $ jump offset
+          when (value cond == 0 :+ 0) $ jump offset
           runNext
         OpBuiltin -> do
           n <- readWord
@@ -426,21 +429,21 @@ run m = do
                     case fexec fun of
                       FnFn (CmpFn f) -> do
                         v2 <- pop
-                        push (if f (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
+                        push (if f (realValue v2) (realValue v1) then unitlessValue (1 :+ 0) else unitlessValue (0 :+ 0))
                       FnFn (FracFn1 f) -> do
-                        push (f v1)
+                        push . unitlessValue $ f (value v1)
                       FnFn (MathFn1 f) -> do
-                        push (fmap toRational . f . fmap fromRational $ v1)
+                        push . unitlessValue $ (fmap toRational . f . fmap fromRational $ value v1)
                       FnFn (MathFn2 f) -> do
                         v2 <- pop
-                        push (f v2 v1)
+                        push . unitlessValue $ f (value v2) (value v1)
                       FnFn (IntFn1 f) -> do
-                        push (toRational . f . fromRational <$> v1)
+                        push . unitlessValue $ (toRational . f . fromRational <$> value v1)
                       FnFn (IntFn2 f) -> do
                         v2 <- pop
-                        push (f (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
+                        push . unitlessValue $ (f (numerator . realValue $ v2) (numerator . realValue $ v1) % 1 :+ 0)
                       FnFn (BitFn f) -> do
-                        push ((:+ 0) . toRational . f . numerator . fromRational . realPart $ v1)
+                        push . unitlessValue $ ((:+ 0) . toRational . f . numerator . fromRational . realValue $ v1)
                       _ -> throwError $ "Function is not computable yet: " <> showT k <> " " <> showT fun
                     runNext
             else
@@ -450,17 +453,17 @@ run m = do
                     v2 <- pop
                     if
                       | k == ("/", Ar2) -> do
-                          push $ v2 `divide` v1
+                          push . unitlessValue $ value v2 `divide` value v1
                       | k == ("%", Ar2) -> do
-                          push $ v2 `fmod` v1
+                          push . unitlessValue $ value v2 `fmod` value v1
                       | otherwise ->
                           case oexec op of
                             FnOp (CmpOp o) -> do
-                              push (if o (realPart v2) (realPart v1) then 1 :+ 0 else 0 :+ 0)
+                              push (if o (realValue v2) (realValue v1) then unitlessValue (1 :+ 0) else unitlessValue (0 :+ 0))
                             FnOp (MathOp o) -> do
-                              push (o v2 v1)
+                              push . unitlessValue $ o (value v2) (value v1)
                             FnOp (BitOp o) -> do
-                              push (o (numerator . realPart $ v2) (numerator . realPart $ v1) % 1 :+ 0)
+                              push . unitlessValue $ (o (numerator . realValue $ v2) (numerator . realValue $ v1) % 1 :+ 0)
                             _ -> throwError $ "Operator is not computable yet: " <> showT k <> " " <> showT op
                     runNext
  where
@@ -491,7 +494,7 @@ run m = do
     s <- use stack
     pure $
       if null s
-        then 0 :+ 0
+        then unitlessValue (0 :+ 0)
         else head s
   readOpcode = readWord
   step = ip += 1
@@ -508,21 +511,21 @@ run m = do
   setvar name val = vars %= M.insert name val
   handleInternal op = do
     case op of
-      OpReal -> pop >>= push . (:+ 0) . realPart
-      OpImag -> pop >>= push . (:+ 0) . imagPart
-      OpConj -> pop >>= push . conjugate
+      OpReal -> pop >>= push . unitlessValue . (:+ 0) . realValue
+      OpImag -> pop >>= push . unitlessValue . (:+ 0) . imagValue
+      OpConj -> pop >>= push . unitlessValue . conjugate . value
       OpUnder -> peekSafe >>= setvar "_"
       OpRandom -> do
         rgen <- use gen
         let (randomNumber, newGen) = randomR (0.0, 1.0 :: Double) rgen
         gen .= newGen
-        push $ (:+ 0) . toRational $ randomNumber
+        push . unitlessValue $ (:+ 0) . toRational $ randomNumber
 
 emptyChunk :: Chunk
 emptyChunk = Chunk V.empty (ValueArray V.empty)
 
 emptyCompileState :: CompileState
-emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV $ unitlessZero)] M.empty)
+emptyCompileState = CS emptyChunk (UM M.empty M.empty [("_", UV unitlessZero)] M.empty)
 
 compile :: Maps -> Expr -> Either Text Chunk
 compile m e =
@@ -590,7 +593,7 @@ compile' m = go
       emitByte OpEject
       emitByte OpOutput
     Call "print" (Number n ni _ : values) -> do
-      let format = numToText (n :+ ni)
+      let format = numToText $ unitlessValue (n :+ ni)
       forM_ values go
       emitByte OpEject
       emitByte OpFmt
@@ -602,7 +605,7 @@ compile' m = go
       go cond
       off1 <- unfinishedJump
       go t
-      addConstant (NumVal $ 0 :+ 0)
+      addConstant (NumVal $ unitlessValue (0 :+ 0))
       off2 <- unfinishedJump
       go f
       off3 <- getOffset
@@ -613,7 +616,7 @@ compile' m = go
       go c
       off2 <- unfinishedJump
       go a
-      addConstant (NumVal $ 0 :+ 0)
+      addConstant (NumVal $ unitlessValue (0 :+ 0))
       off3 <- unfinishedJump
       writeOffset off2 (off3 - off2)
       writeOffset off3 (off1 - off3)
@@ -621,7 +624,7 @@ compile' m = go
       go s
       go $ Call "loop" [c, a]
     Call "goto" [Id l] -> do
-      addConstant (NumVal $ 0 :+ 0)
+      addConstant (NumVal $ unitlessValue (0 :+ 0))
       off <- unfinishedJump
       useLabel l off
     Call f [x] | f `V.elem` ["real", "imag", "conj"] -> do
@@ -653,11 +656,11 @@ compile' m = go
         | (callee == "~" && length args == 1) -> go (Call "comp" args)
         | (callee == "!" && length args == 1) -> go (Call "fact" args)
         | otherwise -> throwError $ "Callee does not exist: " <> callee
-    Number a b _ -> addConstant (NumVal $ a :+ b)
+    Number a b _ -> addConstant (NumVal $ unitlessValue (a :+ b))
     Id a -> do
       if
         | a == "m.r" -> emitByte OpInternal >> emitByte OpRandom
-        | M.member a (m ^. varmap) && a /= "_" -> addConstant (NumVal . value $ (m ^. varmap) M.! a)
+        | M.member a (m ^. varmap) && a /= "_" -> addConstant (NumVal $ (m ^. varmap) M.! a)
         | otherwise -> getVar (StrVal a)
     Seq es -> forM_ es $ \e -> do
       go e

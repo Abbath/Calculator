@@ -68,6 +68,9 @@ module Calculator.Types (
   unitlessZero,
   unitlessOne,
   unitlessNumber,
+  showValue,
+  realValue,
+  imagValue,
 )
 where
 
@@ -96,6 +99,12 @@ data Value = Value {value :: Complex Rational, unit :: Unit} deriving (Show, Eq)
 
 unitlessValue :: Complex Rational -> Value
 unitlessValue cr = Value cr Unitless
+
+realValue :: Value -> Rational
+realValue (Value v _) = realPart v
+
+imagValue :: Value -> Rational
+imagValue (Value v _) = imagPart v
 
 newtype Precise = Precise {unreal :: CReal 256}
   deriving (Show, Eq, Ord)
@@ -313,7 +322,7 @@ data Op = Op
   deriving (Show)
 
 type Chair = Map Text ChairVal
-data ChairVal = DickVal (Complex Rational) | PikeVal Chair deriving (Show)
+data ChairVal = DickVal Value | PikeVal Chair deriving (Show)
 
 data Arity = ArFixed Int | ArVar Int deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 data OpArity = Ar1 | Ar2 deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
@@ -423,29 +432,29 @@ simplifyExpr ex = case ex of
 showFraction :: Rational -> Text
 showFraction t = showT (numerator t) <> " / " <> showT (denominator t)
 
-showComplexBase :: Int -> Complex Rational -> Either Text Text
+showComplexBase :: Int -> Value -> Either Text Text
 showComplexBase base cr
   | base `elem` [2, 8, 16] =
-      if (denominator . realPart $ cr) == 1 && (denominator . imagPart $ cr) == 1
+      if (denominator . realValue $ cr) == 1 && (denominator . imagValue $ cr) == 1
         then
           let function = case base of
                 2 -> showBin
                 8 -> showOct
                 16 -> showHex
                 _ -> error "Unreachable"
-           in Right (T.pack . (`function` "") . numerator . realPart $ cr)
+           in Right (T.pack . (`function` "") . numerator . realValue $ cr)
         else Left "Can't show fractions yet"
-showComplexBase _ cr = Right $ showComplex cr
+showComplexBase _ cr = Right $ showValue cr
 
 showChair :: Chair -> Text
 showChair ch = "{" <> T.intercalate ", " (map (\(k, v) -> k <> " => " <> showElem v) . M.toList $ ch) <> "}"
  where
-  showElem (DickVal v) = showComplex v
+  showElem (DickVal v) = showValue v
   showElem (PikeVal v) = showChair v
 
-numToText :: Complex Rational -> Either Text Text
-numToText n | denominator (realPart n) /= 1 = Left "Can't convert rational to string!"
-numToText n = Right $ go T.empty (abs . numerator . realPart $ n)
+numToText :: Value -> Either Text Text
+numToText n | denominator (realValue n) /= 1 = Left "Can't convert rational to string!"
+numToText n = Right $ go T.empty (abs . numerator . realValue $ n)
  where
   go t 0 = t
   go t m = go (T.singleton (chr . fromInteger $ (m .&. 0xff)) <> t) (m `B.shiftR` 8)
@@ -478,7 +487,7 @@ extractFormat = go T.empty []
                   _ -> Left "Wrong format string!"
           _ -> go (T.snoc chunk c) acc cs
 
-zipFormat :: [FormatChunk] -> [Complex Rational] -> Either Text Text
+zipFormat :: [FormatChunk] -> [Value] -> Either Text Text
 zipFormat = go T.empty
  where
   go acc [] [] = Right acc
@@ -489,11 +498,11 @@ zipFormat = go T.empty
     | t == "s" = do
         txt <- numToText r
         go (acc <> txt) fs rs
-    | t == "f" = go (acc <> showComplex r) fs rs
+    | t == "f" = go (acc <> showValue r) fs rs
     | t == "h" = showBase 16 r
     | t == "b" = showBase 2 r
     | t == "o" = showBase 8 r
-    | t == "r" = go (acc <> showFraction (realPart r)) fs rs
+    | t == "r" = go (acc <> showFraction (realValue r)) fs rs
     | otherwise = Left $ "Wrong format: " <> t
    where
     showBase b cr = do

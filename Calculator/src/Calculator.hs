@@ -34,10 +34,10 @@ import Calculator.Types (
   opmap,
   opsFromList,
   opsToList,
-  showComplex,
   unitlessValue,
   varmap,
   zipFormat,
+  showValue,
  )
 import Clay (render)
 import Control.Lens ((%~), (&), (^.))
@@ -102,7 +102,7 @@ parseString :: Mode -> TS.Text -> Maps -> Either TS.Text Expr
 parseString m s ms = case m of
   Internal -> tloop s >>= P.parse ms
 
-evalExprS :: Either TS.Text Expr -> EvalState -> Either (MessageType, EvalState) (Complex Rational, EvalState)
+evalExprS :: Either TS.Text Expr -> EvalState -> Either (MessageType, EvalState) (Value, EvalState)
 evalExprS t es = either (Left . (,es) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
  where
   getShit e = S.runState (runExceptT (evalS e >>= applyPrecision)) es
@@ -165,8 +165,8 @@ loop mode mps = do
             loop' md (EvalState m' ng pr)
           Right (r, EvalState m ng pr) -> do
             let m' = removeLocals m
-            liftIO . TSIO.putStrLn . showComplex $ r
-            loop' md (EvalState (m' & varmap %~ M.insert "_" (unitlessValue r)) ng pr)
+            liftIO . TSIO.putStrLn . showValue $ r
+            loop' md (EvalState (m' & varmap %~ M.insert "_" r) ng pr)
 
 interpret :: FilePath -> Mode -> Maps -> IO ()
 interpret path mode mps = do
@@ -194,13 +194,13 @@ interpret path mode mps = do
               ErrMsg emsg -> "Error: " <> emsg
             loop' ls md nes
           Right (r, EvalState m ng pr) -> do
-            liftIO . TSIO.putStrLn $ showComplex r
-            loop' ls md (EvalState (m & varmap %~ M.insert "_" (unitlessValue r)) ng pr)
+            liftIO . TSIO.putStrLn $ showValue r
+            loop' ls md (EvalState (m & varmap %~ M.insert "_" r) ng pr)
 
 data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
-parseNumber :: TS.Text -> Complex Rational
-parseNumber t = case TS.split (== 'j') t of
+parseNumber :: TS.Text -> Value
+parseNumber t = unitlessValue $ case TS.split (== 'j') t of
   [r, i] -> parseRational r :+ parseRational i
   [r] -> (:+ 0) . parseRational $ r
   _ -> 0 :+ 0
@@ -250,7 +250,7 @@ compileAndRun path mode mps = case mode of
         C.OpOutput -> case C.ejectValue new_vm of
           (Nothing, _) -> execute ms new_vm
           (Just v, newer_vm) -> do
-            TSIO.putStrLn (showComplex v)
+            TSIO.putStrLn (showValue v)
             execute ms newer_vm
         C.OpFmt -> case fmt of
           Nothing -> putStrLn "Nothing to format."
@@ -265,7 +265,7 @@ compileAndRun path mode mps = case mode of
 compileAndRunFile :: FilePath -> CompileMode -> IO ()
 compileAndRunFile f cm = compileAndRun f cm defaultMaps
 
-parseEval :: Mode -> EvalState -> TS.Text -> Either (MessageType, EvalState) (Complex Rational, EvalState)
+parseEval :: Mode -> EvalState -> TS.Text -> Either (MessageType, EvalState) (Value, EvalState)
 parseEval md es x = evalExprS (parseString md x (es ^. maps)) es
 
 evalLoop :: Mode -> IO ()
@@ -356,7 +356,7 @@ webLoop port mode = do
                 let (ress, EvalState mps ng _) =
                       either
                         Prelude.id
-                        (\(r, mg) -> (MsgMsg . showComplex $ r, (maps . varmap %~ M.insert "_" (unitlessValue r)) mg))
+                        (\(r, mg) -> (MsgMsg . showValue $ r, (maps . varmap %~ M.insert "_" r) mg))
                         res
                  in do
                       storeMaps storagename mps

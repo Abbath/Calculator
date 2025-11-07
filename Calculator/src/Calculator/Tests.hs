@@ -8,7 +8,7 @@ import Calculator.Builtins (defaultMaps)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg), evalS)
 import Calculator.Lexer (tloop)
 import Calculator.Parser qualified as P
-import Calculator.Types (EvalState (..), Maps (..), showT, unitlessValue, varmap)
+import Calculator.Types (EvalState (..), Maps (..), showT, unitlessValue, varmap, Value(..), Unit(..), unitlessValue)
 import Control.Lens ((%~), (&))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State (runState)
@@ -22,7 +22,7 @@ import System.Random (StdGen, initStdGen)
 
 data Backend = Internal deriving (Show)
 
-type Tests = [(Text, Either MessageType (Complex Rational))]
+type Tests = [(Text, Either MessageType Value)]
 
 loop :: Tests -> Maps -> StdGen -> Backend -> Int -> IO Int
 loop [] _ _ _ n = pure n
@@ -46,15 +46,15 @@ loop (x : xs) mps rgen bk n = do
               TIO.putStrLn $ "Failed: " <> sample <> " expected: " <> showT x <> " received: " <> showT t
               pure 1
         let (m, g) = case t of
-              (Right r, EvalState m_ g_ _) -> (m_ & varmap %~ M.insert "_" (unitlessValue r), g_)
+              (Right r, EvalState m_ g_ _) -> (m_ & varmap %~ M.insert "_" r, g_)
               (Left _, EvalState m_ g_ _) -> (m_, g_)
         loop xs m g bk (n + new_n)
     else do
       TIO.putStrLn "Empty!"
       loop xs mps rgen bk n
 
-pattern R :: (Eq a1, Num a1) => a1 -> Either a2 (Complex a1)
-pattern R n = Right (n :+ 0)
+pattern R :: Rational -> Either a2 Value
+pattern R n = Right (Value (n :+ 0) Unitless)
 
 tests :: Tests
 tests =
@@ -113,8 +113,8 @@ tests =
   , ("sin 1 + sin 2", R 1.750768411633578202048522187542043842324818032246261334051724721522877705932023895585859281979981224571972325484933728542317200359259362921395331942523722661430914673812988282989904190981908507993127941308176455793670089899904951380449347198009490966796875)
   , ("gcd' (2+3) 5", R 5)
   , ("(-5) ^ 5", R (-3125))
-  , ("sqrt(-1)", Right (0 :+ 1))
-  , ("log(-1)", Right (0 :+ 3.1415926535897932384626433832795028841971693993751058209749445923078164062862066656221801262659750330277469299326429150650931940114238158780256065730465100356865497434884414384760991863982410321694316550044916649280825338141909242040128447115421295166015625))
+  , ("sqrt(-1)", Right $ unitlessValue (0 :+ 1))
+  , ("log(-1)", Right $ unitlessValue (0 :+ 3.1415926535897932384626433832795028841971693993751058209749445923078164062862066656221801262659750330277469299326429150650931940114238158780256065730465100356865497434884414384760991863982410321694316550044916649280825338141909242040128447115421295166015625))
   , ("6! + !6", R 1440)
   , ("!+(5, 2) = !x", Left . MsgMsg $ "Operator !+ p=5 a=none")
   , ("3!+ + !+3", R 12)
