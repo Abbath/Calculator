@@ -4,7 +4,7 @@
 
 module Calculator.Lexer (tloop) where
 
-import Calculator.Types (Token (..), Unit (..), opSymbols, showT, textToNum)
+import Calculator.Types (SingleUnit (..), Token (..), Unit (..), opSymbols, showT, textToNum)
 import Control.Applicative (Alternative (..))
 import Data.Char (
   isAlpha,
@@ -243,8 +243,8 @@ dots = TDots <$ wsBracket (charP '.' <* charP '.' <* charP '.')
 unitPowerP :: Parser Int
 unitPowerP = read <$> ((<>) <$> (((: []) <$> charP '-') <|> pure "") <*> many (parseIf "digit" isDigit))
 
-unitP :: Parser Unit
-unitP = (Unit . T.pack <$> ((:) <$> alfa <*> many alfaNum)) <*> ((charP '^' *> unitPowerP) <|> pure 1)
+unitP :: Parser SingleUnit
+unitP = (SUnit . T.pack <$> ((:) <$> alfa <*> many alfaNum)) <*> ((charP '^' *> unitPowerP) <|> pure 1)
 
 unit :: Parser Token
 unit = TUnit <$> (charP '@' *> (UProd <$> some unitP))

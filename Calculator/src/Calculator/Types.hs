@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -63,6 +64,7 @@ module Calculator.Types (
   renderToken,
   renderTokens,
   Unit (..),
+  SingleUnit (..),
   Value (..),
   unitlessValue,
   unitlessZero,
@@ -72,6 +74,7 @@ module Calculator.Types (
   realValue,
   imagValue,
   combineUnits,
+  expandUnits,
 )
 where
 
@@ -95,8 +98,32 @@ import GHC.Real (Ratio (..))
 import Numeric (showBin, showHex, showOct)
 import System.Random (Random, StdGen)
 
-data Unit = Unitless | Unit Text Int | UProd [Unit] deriving (Show, Eq, Read, Generic, ToJSON, FromJSON)
+data SingleUnit = SUnit Text Int deriving (Show, Eq, Read, Generic, ToJSON, FromJSON)
+data Unit = Unitless | UProd [SingleUnit] deriving (Show, Eq, Read, Generic, ToJSON, FromJSON)
 data Value = Value {value :: Complex Rational, unit :: Unit} deriving (Show, Eq)
+
+dimPrefixes :: M.Map Text Int
+dimPrefixes = [("Q", 30), ("R", 27), ("Y", 24), ("Z", 21), ("E", 18), ("P", 15), ("T", 12), ("G", 9), ("M", 6), ("k", 3), ("h", 2), ("da", 1), ("d", -1), ("c", -2), ("m", -3), ("u", -6), ("n", -9), ("p", -12), ("f", -15), ("a", -18), ("z", -21), ("y", -24), ("r", -27), ("q", -30)] -- QRYZEPTGMkhdadcmunpfazyrq
+
+expandSUnit :: Complex Rational -> SingleUnit -> (Complex Rational, SingleUnit)
+expandSUnit val u@(SUnit n p) =
+  if
+    | n == "g" ->
+        ((:+ 0) $ realPart val * 10 ^^ (-(3 * p)), SUnit "kg" p)
+    | T.last n == 'g' && T.init n `M.member` dimPrefixes ->
+        ((:+ 0) $ realPart val * 10 ^^ (p * (dimPrefixes M.! T.init n) - 3), SUnit "kg" p)
+    | T.take 2 n == "da" && not (n `M.member` dimPrefixes) ->
+        ((:+ 0) $ realPart val * 10 ^^ (p * (dimPrefixes M.! T.take 2 n)), SUnit (T.drop 2 n) p)
+    | T.singleton (T.head n) `M.member` dimPrefixes && not (n `M.member` dimPrefixes) ->
+        ((:+ 0) $ realPart val * 10 ^^ (p * (dimPrefixes M.! T.singleton (T.head n))), SUnit (T.tail n) p)
+    | otherwise -> (val, u)
+
+expandUnits :: Value -> Value
+expandUnits (Value val (UProd us)) = foldr (\a (Value v acc) -> let (nv, nu) = expandSUnit v a in Value nv $ appendUnit nu acc) (Value val (UProd [])) us
+ where
+  appendUnit _ Unitless = UProd []
+  appendUnit u (UProd a) = UProd (u : a)
+expandUnits v = v
 
 unitlessValue :: Complex Rational -> Value
 unitlessValue cr = Value cr Unitless
@@ -110,8 +137,7 @@ imagValue (Value v _) = imagPart v
 renderUnit :: Unit -> Text
 renderUnit u = case u of
   Unitless -> ""
-  (Unit n p) -> n <> "^" <> showT p
-  (UProd us) -> T.concat (renderUnit <$> us)
+  (UProd us) -> T.concat (map (\(SUnit n p) -> n <> "^" <> showT p) us)
 
 combineUnits :: Text -> Unit -> Unit -> Unit
 combineUnits op u1 u2 = case op of
@@ -132,50 +158,39 @@ addSubUnits u1 u2
 multiplyUnits :: Unit -> Unit -> Unit
 multiplyUnits Unitless u = u
 multiplyUnits u Unitless = u
-multiplyUnits u1 u2 = simplifyUnit $ UProd [u1, u2]
+multiplyUnits (UProd u1) (UProd u2) = simplifyUnit $ UProd (u1 <> u2)
 
 -- Division inverts the second unit and multiplies
 divideUnits :: Unit -> Unit -> Unit
 divideUnits u1 Unitless = u1
 divideUnits Unitless u2 = invertUnit u2
-divideUnits u1 u2 = simplifyUnit $ UProd [u1, invertUnit u2]
+divideUnits (UProd u1) u2 = case invertUnit u2 of
+  Unitless -> UProd u1
+  (UProd u3) -> simplifyUnit $ UProd (u1 <> u3)
 
 -- Invert a unit (negate all powers)
 invertUnit :: Unit -> Unit
 invertUnit Unitless = Unitless
-invertUnit (Unit name power) = Unit name (-power)
-invertUnit (UProd units) = UProd (map invertUnit units)
-
-isNonzeroUnit :: Unit -> Bool
-isNonzeroUnit (Unit _ p) | p /= 0 = True
-isNonzeroUnit _ = False
+invertUnit (UProd units) = UProd (map (\(SUnit name power) -> SUnit name (-power)) units)
 
 -- Simplify units by combining like terms and removing zero powers
 simplifyUnit :: Unit -> Unit
 simplifyUnit (UProd units) =
-  let flattened = flattenUnits units
-      combined = combineTerms flattened
-      nonZero = filter isNonzeroUnit combined
-   in case nonZero of
-        [] -> Unitless
-        [single] -> single
-        multiple -> UProd multiple
+  let
+    combined = combineTerms units
+    nonZero = filter (\(SUnit _ p) -> p /= 0) combined
+   in
+    case nonZero of
+      [] -> Unitless
+      multiple -> UProd multiple
 simplifyUnit u = u
 
--- Flatten nested UProd constructors
-flattenUnits :: [Unit] -> [Unit]
-flattenUnits = concatMap flatten
- where
-  flatten Unitless = []
-  flatten (Unit name power) = [Unit name power]
-  flatten (UProd units) = flattenUnits units
-
 -- Combine units with the same name by adding their powers
-combineTerms :: [Unit] -> [Unit]
+combineTerms :: [SingleUnit] -> [SingleUnit]
 combineTerms units =
-  map (uncurry Unit) $
+  map (uncurry SUnit) $
     M.toList $
-      M.fromListWith (+) [(name, power) | Unit name power <- units]
+      M.fromListWith (+) [(name, power) | SUnit name power <- units]
 
 newtype Precise = Precise {unreal :: CReal 256}
   deriving (Show, Eq, Ord)
@@ -486,12 +501,12 @@ simplifyExpr ex = case ex of
   Par e -> Par (simplifyExpr e)
   Call "+" [Number 0.0 0.0 _, n] -> simplifyExpr n
   Call "+" [n, Number 0.0 0.0 _] -> simplifyExpr n
-  Call op [n, Number 0.0 0.0 _] | op `elem` ["+", "-"] -> simplifyExpr n
+  Call op [n, Number 0.0 0.0 _] | op `elem` (["+", "-"] :: [Text]) -> simplifyExpr n
   Call "*" [Number 1.0 0.0 _, n] -> simplifyExpr n
   Call "*" [Number 0.0 0.0 _, n] -> Number 0.0 0.0 Unitless
   Call "*" [n, Number 1.0 0.0 _] -> simplifyExpr n
   Call "*" [n, Number 0.0 0.0 _] -> Number 0.0 0.0 Unitless
-  Call op [n, Number 1.0 0.0 _] | op `elem` ["*", "/", "%"] -> simplifyExpr n
+  Call op [n, Number 1.0 0.0 _] | op `elem` (["*", "/", "%"] :: [Text]) -> simplifyExpr n
   Call "^" [n, Number 1.0 0.0 _] -> simplifyExpr n
   Call "^" [Call "sqrt" [e], Number 2.0 0.0 _] -> simplifyExpr e
   Call "exp" [Call "log" [e]] -> simplifyExpr e
@@ -505,7 +520,7 @@ showFraction t = showT (numerator t) <> " / " <> showT (denominator t)
 
 showComplexBase :: Int -> Value -> Either Text Text
 showComplexBase base cr
-  | base `elem` [2, 8, 16] =
+  | base `elem` ([2, 8, 16] :: [Int]) =
       if (denominator . realValue $ cr) == 1 && (denominator . imagValue $ cr) == 1
         then
           let function = case base of

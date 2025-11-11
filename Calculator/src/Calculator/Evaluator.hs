@@ -44,6 +44,7 @@ import Calculator.Types (
   ar2int,
   chairmap,
   combineUnits,
+  expandUnits,
   exprToString,
   extractFormat,
   funmap,
@@ -504,7 +505,7 @@ evalS ex = case ex of
         Nothing -> throwErr "No such key!"
         Just (DickVal d) -> pure d
         Just (PikeVal d) -> throwMsg $ showChair d
-  Number x xi u -> pure $ Value (x :+ xi) u
+  Number x xi u -> pure $ expandUnits $ Value (x :+ xi) u
   Par e -> evm e
   Seq _ -> throwErr "Sequences are not supported in this mode!"
   Imprt _ -> throwErr "Imports are not supported in this mode!"
