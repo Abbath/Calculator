@@ -43,6 +43,7 @@ import Calculator.Types (
   VarMap,
   ar2int,
   chairmap,
+  combineUnits,
   exprToString,
   extractFormat,
   funmap,
@@ -189,6 +190,13 @@ pattern Undef :: [Expr] -> Expr
 pattern Undef es = Call "undef" es
 pattern Atan2 :: GHC.IsList.Item [Expr] -> GHC.IsList.Item [Expr] -> Expr
 pattern Atan2 e1 e2 = Call "atan" [Call "/" [e1, e2]]
+
+checkUnitCompatibility :: Text -> Value -> Value -> Bool
+checkUnitCompatibility _ (Value _ Unitless) _ = True
+checkUnitCompatibility _ _ (Value _ Unitless) = True
+checkUnitCompatibility op v1 v2 | op `elem` (["+", "-"] :: [Text]) && unit v1 == unit v2 = True
+checkUnitCompatibility op v1 v2 | op `elem` (["*", "/"] :: [Text]) = True
+checkUnitCompatibility op v1 v2 = False
 
 applyPrecision :: Value -> Result Value
 applyPrecision v@(Value r u) = do
@@ -449,7 +457,7 @@ evalS ex = case ex of
     if value n == 0 :+ 0
       then evm a
       else evm $ Call "loop" [c, a]
-  Call "neg" [x] -> evm $ Call "-" [unitlessZero, x]
+  Call "neg" [x] -> evm $ Call "*" [Number (-1) 0 Unitless, x]
   Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
     let builtin_fun = functions M.! (f, ArFixed . length $ ps)
     case fexec builtin_fun of
@@ -540,7 +548,12 @@ evalS ex = case ex of
     let builtin_op = operators M.! bop
     case oexec builtin_op of
       FnOp (CmpOp fun) -> cmp fun x y
-      FnOp (MathOp fun) -> unitlessValue <$> (fun . value <$> evm x <*> (value <$> evm y))
+      FnOp (MathOp fun) -> do
+        v1 <- evm x
+        v2 <- evm y
+        if not $ checkUnitCompatibility (fst bop) v1 v2
+          then throwErr "Incompatible units"
+          else pure $ Value (fun (value v1) (value v2)) (combineUnits (fst bop) (unit v1) (unit v2))
       FnOp (BitOp fun) -> unitlessValue . (:+ 0) <$> bitEval fun x y
       ExOp e -> evm e
       _ -> throwError (ErrMsg "Misteriously missing operator")

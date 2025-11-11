@@ -8,7 +8,7 @@ import Calculator.Builtins (defaultMaps)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg), evalS)
 import Calculator.Lexer (tloop)
 import Calculator.Parser qualified as P
-import Calculator.Types (EvalState (..), Maps (..), showT, unitlessValue, varmap, Value(..), Unit(..), unitlessValue)
+import Calculator.Types (EvalState (..), Maps (..), Unit (..), Value (..), showT, unitlessValue, varmap)
 import Control.Lens ((%~), (&))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State (runState)
@@ -120,6 +120,7 @@ tests =
   , ("3!+ + !+3", R 12)
   , ("rad(180) == m.pi", R 1)
   , ("deg(m.pi) == 180", R 1)
+  , ("1@kg^1 * 2@kg^-1", R 2)
   ]
 
 testLoop :: IO ()

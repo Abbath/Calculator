@@ -71,6 +71,7 @@ module Calculator.Types (
   showValue,
   realValue,
   imagValue,
+  combineUnits,
 )
 where
 
@@ -105,6 +106,76 @@ realValue (Value v _) = realPart v
 
 imagValue :: Value -> Rational
 imagValue (Value v _) = imagPart v
+
+renderUnit :: Unit -> Text
+renderUnit u = case u of
+  Unitless -> ""
+  (Unit n p) -> n <> "^" <> showT p
+  (UProd us) -> T.concat (renderUnit <$> us)
+
+combineUnits :: Text -> Unit -> Unit -> Unit
+combineUnits op u1 u2 = case op of
+  "+" -> addSubUnits u1 u2
+  "-" -> addSubUnits u1 u2
+  "*" -> multiplyUnits u1 u2
+  "/" -> divideUnits u1 u2
+  _ | u1 == Unitless && u2 == Unitless -> if u1 == Unitless then u2 else u1
+  _ -> error $ "Unsupported operation: " ++ show op
+
+-- Addition and subtraction require compatible units
+addSubUnits :: Unit -> Unit -> Unit
+addSubUnits u1 u2
+  | u1 == u2 = u1
+  | otherwise = error "Incompatible units for addition/subtraction"
+
+-- Multiplication combines units
+multiplyUnits :: Unit -> Unit -> Unit
+multiplyUnits Unitless u = u
+multiplyUnits u Unitless = u
+multiplyUnits u1 u2 = simplifyUnit $ UProd [u1, u2]
+
+-- Division inverts the second unit and multiplies
+divideUnits :: Unit -> Unit -> Unit
+divideUnits u1 Unitless = u1
+divideUnits Unitless u2 = invertUnit u2
+divideUnits u1 u2 = simplifyUnit $ UProd [u1, invertUnit u2]
+
+-- Invert a unit (negate all powers)
+invertUnit :: Unit -> Unit
+invertUnit Unitless = Unitless
+invertUnit (Unit name power) = Unit name (-power)
+invertUnit (UProd units) = UProd (map invertUnit units)
+
+isNonzeroUnit :: Unit -> Bool
+isNonzeroUnit (Unit _ p) | p /= 0 = True
+isNonzeroUnit _ = False
+
+-- Simplify units by combining like terms and removing zero powers
+simplifyUnit :: Unit -> Unit
+simplifyUnit (UProd units) =
+  let flattened = flattenUnits units
+      combined = combineTerms flattened
+      nonZero = filter isNonzeroUnit combined
+   in case nonZero of
+        [] -> Unitless
+        [single] -> single
+        multiple -> UProd multiple
+simplifyUnit u = u
+
+-- Flatten nested UProd constructors
+flattenUnits :: [Unit] -> [Unit]
+flattenUnits = concatMap flatten
+ where
+  flatten Unitless = []
+  flatten (Unit name power) = [Unit name power]
+  flatten (UProd units) = flattenUnits units
+
+-- Combine units with the same name by adding their powers
+combineTerms :: [Unit] -> [Unit]
+combineTerms units =
+  map (uncurry Unit) $
+    M.toList $
+      M.fromListWith (+) [(name, power) | Unit name power <- units]
 
 newtype Precise = Precise {unreal :: CReal 256}
   deriving (Show, Eq, Ord)
@@ -187,7 +258,7 @@ showRational r =
 
 showValue :: Value -> Text
 showValue (Value cr Unitless) = showComplex cr
-showValue (Value cr u) = showComplex cr <> "@" <> showT u
+showValue (Value cr u) = showComplex cr <> "@" <> renderUnit u
 
 showComplex :: Complex Rational -> Text
 showComplex c =

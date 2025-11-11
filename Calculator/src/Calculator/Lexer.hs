@@ -164,11 +164,11 @@ stringLiteral :: Parser Rational
 stringLiteral =
   charP '"'
     *> ( fromInteger . textToNum 0
-          <$> many
-            ( charP '\\'
-                *> specialCharacters (parseIf "\"nt" (`elem` ("\"nt" :: String)))
-                  <|> parseIf "anything except \"" (/= '"')
-            )
+           <$> many
+             ( charP '\\'
+                 *> specialCharacters (parseIf "\"nt" (`elem` ("\"nt" :: String)))
+                   <|> parseIf "anything except \"" (/= '"')
+             )
        )
     <* charP '"'
 
@@ -240,8 +240,14 @@ comma = TComma <$ wsBracket (charP ',')
 dots :: Parser Token
 dots = TDots <$ wsBracket (charP '.' <* charP '.' <* charP '.')
 
+unitPowerP :: Parser Int
+unitPowerP = read <$> ((<>) <$> (((: []) <$> charP '-') <|> pure "") <*> many (parseIf "digit" isDigit))
+
+unitP :: Parser Unit
+unitP = (Unit . T.pack <$> ((:) <$> alfa <*> many alfaNum)) <*> ((charP '^' *> unitPowerP) <|> pure 1)
+
 unit :: Parser Token
-unit = TUnit <$> (charP '@' *> (Unit . T.pack <$> some (alfaNum <|> charP '-') <*> pure 1))
+unit = TUnit <$> (charP '@' *> (UProd <$> some unitP))
 
 tokah :: Parser Token
 tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> operata <|> numba <|> label <|> ident <|> dots <|> unit
