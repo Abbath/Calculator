@@ -1,57 +1,68 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module Calculator.Opts.Tel where
-import Control.Arrow (first, second)
-import qualified Telegram.Bot.API  as Telegram
-import Telegram.Bot.Simple
-    ( getEnvToken,
-      startBot_,
-      conversationBot,
-      (<#),
-      replyText,
-      BotApp(..),
-      Eff )
-import Telegram.Bot.Simple.UpdateParser ( parseUpdate, text )
+
 import Calculator (Mode (..), parseEval)
-import Calculator.Types (EvalState (..), showComplex)
 import Calculator.Builtins (defaultEvalState)
+import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
+import Calculator.Types (EvalState (..), showValue)
+import Control.Arrow (first, second)
 import Data.Text qualified as TS
 import System.Random
-import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
+import Telegram.Bot.API qualified as Telegram
+import Telegram.Bot.Simple (
+  BotApp (..),
+  Eff,
+  conversationBot,
+  getEnvToken,
+  replyText,
+  startBot_,
+  (<#),
+ )
+import Telegram.Bot.Simple.UpdateParser (parseUpdate, text)
 
 newtype Model = Model {getMaps :: EvalState}
 
 -- | Actions bot can perform.
 data Action
-  = NoAction    -- ^ Perform no action.
-  | Reply !TS.Text  -- ^ Reply some text.
+  = -- | Perform no action.
+    NoAction
+  | -- | Reply some text.
+    Reply !TS.Text
   deriving (Show)
 
 -- | Bot application.
 bot :: Mode -> StdGen -> BotApp Model Action
-bot mode gen = BotApp
-  { botInitialModel = Model defaultEvalState{_gen = gen}
-  , botAction = flip handleUpdate
-  , botHandler = handleAction mode
-  , botJobs = []
-  }
+bot mode gen =
+  BotApp
+    { botInitialModel = Model defaultEvalState{_gen = gen}
+    , botAction = flip handleUpdate
+    , botHandler = handleAction mode
+    , botJobs = []
+    }
 
--- | How to process incoming 'Telegram.Update's
--- and turn them into 'Action's.
+{- | How to process incoming 'Telegram.Update's
+and turn them into 'Action's.
+-}
 handleUpdate :: Model -> Telegram.Update -> Maybe Action
 handleUpdate _ = parseUpdate (Reply <$> Telegram.Bot.Simple.UpdateParser.text)
 
 -- | How to handle 'Action's.
 handleAction :: Mode -> Action -> Model -> Eff Action Model
 handleAction _ NoAction model = pure model
-handleAction mode (Reply msg) model = model2 <# do
-  replyText $ case response of
-    MsgMsg mmsg -> mmsg
-    ErrMsg emsg -> "Error: " <> emsg
-  pure NoAction
-  where (response, model2) = second Model $ either
-          Prelude.id
-          (first (MsgMsg . showComplex))
-          (let (EvalState mps rgen pr) = getMaps model in parseEval mode (EvalState mps rgen pr) msg)
+handleAction mode (Reply msg) model =
+  model2 <# do
+    replyText $ case response of
+      MsgMsg mmsg -> mmsg
+      ErrMsg emsg -> "Error: " <> emsg
+    pure NoAction
+ where
+  (response, model2) =
+    second Model $
+      either
+        Prelude.id
+        (first (MsgMsg . showValue))
+        (let (EvalState mps rgen pr) = getMaps model in parseEval mode (EvalState mps rgen pr) msg)
 
 -- | Run bot with a given 'Telegram.Token'.
 run :: Mode -> Telegram.Token -> IO ()

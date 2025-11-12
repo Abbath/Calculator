@@ -6,7 +6,7 @@ module Calculator.Opts.Ray where
 import Calculator (Mode (..), parseEval)
 import Calculator.Builtins (defaultEvalState)
 import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
-import Calculator.Types (EvalState (..), showComplex)
+import Calculator.Types (EvalState (..), showValue)
 import Control.Lens (makeLenses, use, (%=), (.=))
 import Control.Monad (forM_, unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -107,7 +107,7 @@ raylibLoop' = do
       es <- use estate
       let y = parseEval Internal es pr
       let (res, es1) = case y of
-            Right (r, es0) -> (showComplex r, es0)
+            Right (r, es0) -> (showValue r, es0)
             Left (ErrMsg m, _) -> (m, es)
             Left (MsgMsg m, es0) -> (m, es0)
       prompt .= ""
