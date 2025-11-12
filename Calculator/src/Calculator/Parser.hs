@@ -357,6 +357,7 @@ expr min_bp m = Parser $
     (Op pr _ _) <- ms ^. (opmap . at (op, Ar1))
     pure $ fromIntegral pr
   postfix_binding_power :: Text -> Maps -> Maybe Double
+  postfix_binding_power "-" _ = Nothing
   postfix_binding_power op ms = do
     (Op pr _ _) <- ms ^. (opmap . at (op, Ar1))
     pure $ fromIntegral pr

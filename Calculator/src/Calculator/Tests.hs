@@ -64,6 +64,7 @@ tests =
   , ("-1", R (-1))
   , ("2+2", R 4)
   , ("2-2-2-2", R (-4))
+  , ("1 - -1", R 2)
   , ("1024/2/2/2", R 128)
   , ("f(x) = x", Left . MsgMsg $ "Function f/1")
   , ("f(g,x) = g(x)", Left . MsgMsg $ "Function f/2")
