@@ -105,10 +105,47 @@ data Value = Value {value :: Complex Rational, unit :: Unit} deriving (Show, Eq)
 dimPrefixes :: M.Map Text Int
 dimPrefixes = [("Q", 30), ("R", 27), ("Y", 24), ("Z", 21), ("E", 18), ("P", 15), ("T", 12), ("G", 9), ("M", 6), ("k", 3), ("h", 2), ("da", 1), ("d", -1), ("c", -2), ("m", -3), ("u", -6), ("n", -9), ("p", -12), ("f", -15), ("a", -18), ("z", -21), ("y", -24), ("r", -27), ("q", -30)] -- QRYZEPTGMkhdadcmunpfazyrq
 
+knownUnits :: [Text]
+knownUnits = ["kg", "m", "s", "A", "K", "mol", "cd"]
+
+expandableUnits :: M.Map Text [SingleUnit]
+expandableUnits =
+  [ ("C", [SUnit "A" 1, SUnit "s" 1])
+  , ("F", [SUnit "kg" (-1), SUnit "m" (-2), SUnit "s" 4, SUnit "A" 2])
+  , ("Sv", [SUnit "m" 2, SUnit "s" (-2)])
+  , ("V", [SUnit "kg" 1, SUnit "m" 2, SUnit "s" (-3), SUnit "A" (-1)])
+  , ("Ω", [SUnit "kg" 1, SUnit "m" 2, SUnit "s" (-3), SUnit "A" (-2)])
+  , ("J", [SUnit "kg" 1, SUnit "m" 2, SUnit "s" (-2)])
+  , ("Hz", [SUnit "s" (-1)])
+  , ("W", [SUnit "kg" 1, SUnit "m" 2, SUnit "s" (-3)])
+  , ("sr", [])
+  , ("Pa", [SUnit "kg" 1, SUnit "m" (-1), SUnit "s" (-2)])
+  , ("Bq", [SUnit "s" (-1)])
+  , ("rad", [])
+  , ("dpt", [SUnit "m" (-1)])
+  , ("Wb", [SUnit "kg" 1, SUnit "m" 2, SUnit "s" (-2), SUnit "A" (-1)])
+  , ("lm", [SUnit "cd" 1])
+  , ("H", [SUnit "kg" 1, SUnit "m" 2, SUnit "s" (-2), SUnit "A" (-2)])
+  , ("lx", [SUnit "m" (-2), SUnit "cd" 1])
+  , ("Gy", [SUnit "m" 2, SUnit "s" (-2)])
+  , ("N", [SUnit "kg" 1, SUnit "m" 1, SUnit "s" (-2)])
+  , ("T", [SUnit "kg" 1, SUnit "s" (-2), SUnit "A" (-1)])
+  ]
+
+expandUnit :: [SingleUnit] -> [SingleUnit]
+expandUnit =
+  combineTerms
+    . concatMap
+      ( \su@(SUnit n p) ->
+          if n `M.member` expandableUnits
+            then map (\(SUnit n1 p1) -> SUnit n1 (p * p1)) (expandableUnits M.! n)
+            else [su]
+      )
+
 expandSUnit :: Complex Rational -> SingleUnit -> (Complex Rational, SingleUnit)
 expandSUnit val u@(SUnit n p) =
   if
-    | n == "kg" -> (val, u)
+    | n `elem` knownUnits -> (val, u)
     | n == "g" ->
         ((:+ 0) $ realPart val * 10 ^^ (-(3 * p)), SUnit "kg" p)
     | T.last n == 'g' && T.init n `M.member` dimPrefixes ->
@@ -120,7 +157,7 @@ expandSUnit val u@(SUnit n p) =
     | otherwise -> (val, u)
 
 expandUnits :: Value -> Value
-expandUnits (Value val (UProd us)) = foldr (\a (Value v acc) -> let (nv, nu) = expandSUnit v a in Value nv $ appendUnit nu acc) (Value val (UProd [])) us
+expandUnits (Value val (UProd us)) = foldr (\a (Value v acc) -> let (nv, nu) = expandSUnit v a in Value nv $ appendUnit nu acc) (Value val (UProd [])) (expandUnit us)
  where
   appendUnit _ Unitless = UProd []
   appendUnit u (UProd a) = UProd (u : a)
