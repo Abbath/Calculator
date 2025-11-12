@@ -108,6 +108,7 @@ dimPrefixes = [("Q", 30), ("R", 27), ("Y", 24), ("Z", 21), ("E", 18), ("P", 15),
 expandSUnit :: Complex Rational -> SingleUnit -> (Complex Rational, SingleUnit)
 expandSUnit val u@(SUnit n p) =
   if
+    | n == "kg" -> (val, u)
     | n == "g" ->
         ((:+ 0) $ realPart val * 10 ^^ (-(3 * p)), SUnit "kg" p)
     | T.last n == 'g' && T.init n `M.member` dimPrefixes ->
