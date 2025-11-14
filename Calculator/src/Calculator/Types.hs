@@ -334,6 +334,7 @@ data Token
   | TLabel Text
   | TDots
   | TUnit Unit
+  | TBackslash
   deriving (Show, Eq)
 
 renderToken :: Token -> Text
@@ -352,6 +353,7 @@ renderToken token = case token of
   (TLabel l) -> l
   TDots -> "..."
   (TUnit u) -> showT u
+  TBackslash -> "\\"
 
 renderTokens :: [Token] -> Text
 renderTokens = T.concat . map renderToken
@@ -377,6 +379,7 @@ data Expr
   | Id Text
   | Seq [Expr]
   | Label Text
+  | Lambda [Text] Expr
   deriving (Eq, Show, Read, Generic)
 
 unitlessZero :: Expr
@@ -514,6 +517,7 @@ exprToString ex = case ex of
   Label l -> l <> ":"
   ChairLit xs -> "{" <> T.intercalate ", " (map (\(key, value) -> key <> " => " <> exprToString value) xs) <> "}"
   ChairSit a x -> a <> "[" <> T.intercalate "," x <> "]"
+  Lambda a e -> "(" <> T.intercalate ", " a <> ") -> " <> exprToString e
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><:?"

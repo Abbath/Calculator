@@ -103,6 +103,7 @@ goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
   (Par e) -> Par <$> f e
   (Call n e) -> Call n <$> mapM f e
+  (Lambda a e) -> Lambda a <$> f e
   e -> pure e
 
 substitute :: [(Text, Expr)] -> Expr -> Either Text Expr
@@ -115,6 +116,10 @@ substitute ((x, y) : xys) (Id i) =
       (Par _) -> y
       t -> Par t
     else substitute xys (Id i)
+substitute ((x, Lambda a ex) : xys) expr@(Call n e) =
+  if n == x
+    then substitute (zip a e) ex
+    else substitute xys expr
 substitute s@((x, Id fname) : xys) (Call n e) =
   if n == x
     then Call fname <$> mapM (substitute s) e
@@ -138,7 +143,7 @@ localize s ex = goInside (localize s) ex
 
 catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
 catchVar (vm, fm) ex = case ex of
-  (Id i) | T.head i == '#' -> pure $ Id i
+  (Id i) | T.head i == '#' -> pure ex
   (Id i) ->
     let a = M.lookup i vm :: Maybe Value
         getNames = map (\(f, _) -> (f, f)) . M.keys
@@ -477,7 +482,7 @@ evalS ex = case ex of
   Call name e -> do
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
-      Just (Fun al (ExFn expr)) -> either throwErr evm $ substitute (("#v.n", Number (fromIntegral . length $ e) 0 Unitless) : turboZip al e) expr
+      Just (Fun al (ExFn expr)) -> either throwErr evm $ substitute (("#v.n", unitlessNumber . fromIntegral . length $ e) : turboZip al e) expr
       Nothing -> case name of
         x | T.head x == '#' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ ->
@@ -510,6 +515,7 @@ evalS ex = case ex of
   Seq _ -> throwErr "Sequences are not supported in this mode!"
   Imprt _ -> throwErr "Imports are not supported in this mode!"
   Label _ -> throwErr "Label are not supported in this mode!"
+  Lambda _ _ -> pure . unitlessValue $ 0 :+ 0
  where
   evalChairLit :: [(Text, Expr)] -> Result [(Text, ChairVal)]
   evalChairLit = mapM \(k, v) -> (k,) . DickVal <$> evm v

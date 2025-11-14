@@ -102,6 +102,9 @@ eq = parseIf "=" (== TOp "=") <|> parseIf "<-" (== TOp "<-")
 eq2 :: Parser Token
 eq2 = parseIf "=" (== TOp "=") <|> parseIf "->" (== TOp "->")
 
+eq3 :: Parser Token
+eq3 = parseIf "->" (== TOp "->")
+
 labelStmt :: Parser Expr
 labelStmt = Label . extractLabel <$> parseIf "label" isLabel
  where
@@ -191,6 +194,12 @@ udfStmt m = do
   args <- parens $ ldots <|> (++) <$> sepBy identifier comma <*> (comma *> ldots <|> pure [])
   void eq2
   UDF (trimTick name) args <$> expr 0.0 m
+
+lambda :: Maps -> Parser Expr
+lambda m = do
+  args <- some identifier
+  void eq3
+  Lambda args <$> expr 0.0 m
 
 copyPrec :: Maps -> Parser (Rational, Rational)
 copyPrec m = do
@@ -308,6 +317,11 @@ expr min_bp m = Parser $
       TRBrace -> Left "No opening brace"
       TRBracket -> Left "No opening bracket"
       TRPar -> Left "No opening parenthesis"
+      TBackslash -> case inputPeek ts of
+        Just (TIdent _) -> do
+          (i, e) <- runParser (lambda m) ts
+          inner_loop e i
+        _ -> Left "Expected lambda"
       tok -> Left ("Only numbers in the building " <> showT tok)
     _ -> Left "Expected token, but the list is empty"
  where

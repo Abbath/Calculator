@@ -164,11 +164,11 @@ stringLiteral :: Parser Rational
 stringLiteral =
   charP '"'
     *> ( fromInteger . textToNum 0
-           <$> many
-             ( charP '\\'
-                 *> specialCharacters (parseIf "\"nt" (`elem` ("\"nt" :: String)))
-                   <|> parseIf "anything except \"" (/= '"')
-             )
+          <$> many
+            ( charP '\\'
+                *> specialCharacters (parseIf "\"nt" (`elem` ("\"nt" :: String)))
+                  <|> parseIf "anything except \"" (/= '"')
+            )
        )
     <* charP '"'
 
@@ -249,8 +249,11 @@ unitP = (SUnit . T.pack <$> ((:) <$> alfa <*> many alfaNum)) <*> ((charP '^' *> 
 unit :: Parser Token
 unit = TUnit <$> (charP '@' *> (UProd <$> some unitP))
 
+backslash :: Parser Token
+backslash = TBackslash <$ charP '\\'
+
 tokah :: Parser Token
-tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> operata <|> numba <|> label <|> ident <|> dots <|> unit
+tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> operata <|> numba <|> label <|> ident <|> dots <|> unit <|> backslash
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0

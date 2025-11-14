@@ -123,6 +123,7 @@ tests =
   , ("deg(m.pi) == 180", R 1)
   , ("1@kg^1 * 2@kg^-1", R 2)
   , ("1@V^1A^-1", Right (Value (1 :+ 0) (UProd [SUnit "A" (-2), SUnit "kg" 1, SUnit "m" 2, SUnit "s" (-3)])))
+  , ("f(\\x -> x + 1, 1)", R 2)
   ]
 
 testLoop :: IO ()

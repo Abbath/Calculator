@@ -668,6 +668,7 @@ compile' m = go
     Label l -> do
       off <- getOffset
       addLabel l off
+    Lambda _ _ -> throwError "Not implemented"
 
 op2Code :: OpMap -> Text -> Word8
 op2Code m op = toWord8 $ M.findIndex (op, Ar2) m
