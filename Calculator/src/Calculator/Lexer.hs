@@ -163,7 +163,7 @@ specialCharacters p = f <$> p
 stringLiteral :: Parser Rational
 stringLiteral =
   charP '"'
-    *> ( fromInteger . textToNum 0
+    *> ( fromInteger . textToNum . T.pack
           <$> many
             ( charP '\\'
                 *> specialCharacters (parseIf "\"nt" (`elem` ("\"nt" :: String)))

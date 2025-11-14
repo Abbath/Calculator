@@ -305,7 +305,7 @@ evalS ex = case ex of
         rs <- traverse evm es
         case zipFormat fs rs of
           Left err -> throwError (ErrMsg err)
-          Right t -> pure . flip Value u . (:+ 0) . (% 1) . textToNum 0 $ T.unpack t
+          Right t -> pure . flip Value u . (:+ 0) . (% 1) . textToNum $ t
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
   Call "df" [a, x] -> either throwErr (throwMsg . exprToString . preprocess) $ derivative a x

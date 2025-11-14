@@ -82,9 +82,9 @@ import Control.Arrow (second)
 import Control.Lens.TH (makeLenses)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Bits as B (bit, shiftL, shiftR, unsafeShiftL, (.&.))
+import Data.ByteString qualified as BS
 import Data.CReal (CReal)
 import Data.CReal.Internal as CRI (atPrecision, atanBounded, crMemoize, crealPrecision, recipBounded, shiftL)
-import Data.Char (chr, ord)
 import Data.Complex (Complex (..), imagPart, realPart)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
@@ -93,6 +93,7 @@ import Data.Ratio (denominator, numerator, (%))
 import Data.Scientific qualified as S
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import GHC.Generics (Generic)
 import GHC.Real (Ratio (..))
 import Numeric (showBin, showHex, showOct)
@@ -580,19 +581,33 @@ showChair ch = "{" <> T.intercalate ", " (map (\(k, v) -> k <> " => " <> showEle
   showElem (DickVal v) = showValue v
   showElem (PikeVal v) = showChair v
 
+-- numToText :: Value -> Either Text Text
+-- numToText n | denominator (realValue n) /= 1 = Left "Can't convert rational to string!"
+-- numToText n = Right $ go T.empty (abs . numerator . realValue $ n)
+--  where
+--   go t 0 = t
+--   go t m = go (T.singleton (chr . fromInteger $ (m .&. 0xff)) <> t) (m `B.shiftR` 8)
+--
+-- textToNum :: Integer -> [Char] -> Integer
+-- textToNum n [] = n
+-- textToNum n (c : cs) =
+--   let o = ord c
+--       b = if o > 255 || o < 0 then ord ' ' else o
+--    in textToNum (n `B.shiftL` 8 + toInteger b) cs
+
 numToText :: Value -> Either Text Text
 numToText n | denominator (realValue n) /= 1 = Left "Can't convert rational to string!"
-numToText n = Right $ go T.empty (abs . numerator . realValue $ n)
+numToText n = Right . TE.decodeUtf8Lenient $ go BS.empty (abs . numerator . realValue $ n)
  where
   go t 0 = t
-  go t m = go (T.singleton (chr . fromInteger $ (m .&. 0xff)) <> t) (m `B.shiftR` 8)
+  go t m = go (BS.singleton (fromInteger $ m .&. 0xff) <> t) (m `B.shiftR` 8)
 
-textToNum :: Integer -> [Char] -> Integer
-textToNum n [] = n
-textToNum n (c : cs) =
-  let o = ord c
-      b = if o > 255 || o < 0 then ord ' ' else o
-   in textToNum (n `B.shiftL` 8 + toInteger b) cs
+textToNum :: Text -> Integer
+textToNum "" = 0
+textToNum t =
+  let bs = TE.encodeUtf8 t
+      n = BS.foldl' (\x c -> x `B.shiftL` 8 + toInteger c) 0 bs
+   in n
 
 data FormatChunk = FormatTxt Text | FormatFmt Text deriving (Show)
 
