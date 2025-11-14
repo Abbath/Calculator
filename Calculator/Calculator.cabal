@@ -1,6 +1,6 @@
 cabal-version:        3.4
 name:                 Calculator
-version:              12.12.2
+version:              14.0.0
 synopsis:             Calculator
 -- description:
 -- license:
