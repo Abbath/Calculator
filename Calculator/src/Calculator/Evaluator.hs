@@ -229,6 +229,7 @@ evalS ex = case ex of
         throwMsg ("Function " <> f <> "/" <> showT n1)
       else createVar f e
   Asgn s (Id "undef") -> evm (Call "undef" [Id s])
+  Asgn s (Lambda a e) -> evm (UDF s a e)
   Asgn s e -> createVar s e
   UDF f [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
