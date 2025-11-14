@@ -26,6 +26,7 @@ import Options.Applicative
       execParser,
       helper,
       Parser )
+import Control.Monad (void)
 import Data.Char ( toLower )
 import Paths_Calculator (version)
 import Data.Version (showVersion)
@@ -76,7 +77,7 @@ main = do
 #ifdef DISCORD
     | discord opts2 -> discordCalculator
 #endif
-    | not . null . input $ opts2 -> evalFile (input opts2)
+    | not . null . input $ opts2 -> void $ evalFile (input opts2)
     | not . null . source $ opts2 -> compileAndRunFile (source opts2) $ case compileMode opts2 of
         "L" -> CompLoad
         "S" -> CompStore

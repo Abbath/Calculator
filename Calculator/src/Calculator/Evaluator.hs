@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result, MessageType (..), applyPrecision) where
+module Calculator.Evaluator (evalS, FunMap, VarMap, OpMap, Maps, Result, MessageType (..), applyPrecision, Cmd (..)) where
 
 import Calculator.Builtins (
   defVar,
@@ -160,7 +160,8 @@ catchVar (vm, fm) ex = case ex of
    where
     st = catchVar (vm, fm)
 
-data MessageType = ErrMsg Text | MsgMsg Text deriving (Show, Eq)
+newtype Cmd = Cmd Text deriving (Show, Eq)
+data MessageType = ErrMsg Text | MsgMsg Text | CmdMsg Cmd deriving (Show, Eq)
 
 type Result = ExceptT MessageType (State EvalState)
 
@@ -513,7 +514,7 @@ evalS ex = case ex of
   Number x xi u -> pure $ expandUnits $ Value (x :+ xi) u
   Par e -> evm e
   Seq _ -> throwErr "Sequences are not supported in this mode!"
-  Imprt _ -> throwErr "Imports are not supported in this mode!"
+  Imprt f -> throwError (CmdMsg $ Cmd f) -- "Imports are not supported in this mode!"
   Label _ -> throwErr "Label are not supported in this mode!"
   Lambda _ _ -> pure . unitlessValue $ 0 :+ 0
  where

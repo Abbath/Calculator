@@ -16,7 +16,7 @@ module Calculator (
 import Calculator.Builtins (defVar, defaultMaps, funMap, names, opMap)
 import Calculator.Compiler qualified as C
 import Calculator.Css (getCss, postCss)
-import Calculator.Evaluator (MessageType (..), applyPrecision, evalS)
+import Calculator.Evaluator (Cmd (..), MessageType (..), applyPrecision, evalS)
 import Calculator.Lexer (tloop)
 import Calculator.Parser qualified as P
 import Calculator.Types (
@@ -34,10 +34,10 @@ import Calculator.Types (
   opmap,
   opsFromList,
   opsToList,
+  showValue,
   unitlessValue,
   varmap,
   zipFormat,
-  showValue,
  )
 import Clay (render)
 import Control.Lens ((%~), (&), (^.))
@@ -91,7 +91,7 @@ import System.Console.Haskeline (
   withInterrupt,
  )
 import System.Directory (findFile, getHomeDirectory, removeFile)
-import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
+import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.FilePath (replaceExtension)
 import System.Random (initStdGen, randomIO)
 import Text.Read (readMaybe)
@@ -159,16 +159,22 @@ loop mode mps = do
         case y of
           Left (err, EvalState m ng pr) -> do
             let m' = removeLocals m
-            liftIO . TSIO.putStrLn $ case err of
-              MsgMsg msg -> msg
-              ErrMsg emsg -> "Error: " <> emsg
-            loop' md (EvalState m' ng pr)
+            case err of
+              CmdMsg (Cmd filename) -> do
+                nes <- liftIO $ interpret (TS.unpack filename) md m
+                loop' md nes
+              MsgMsg msg -> do
+                liftIO . TSIO.putStrLn $ msg
+                loop' md (EvalState m' ng pr)
+              ErrMsg emsg -> do
+                liftIO . TSIO.putStrLn $ "Error: " <> emsg
+                loop' md (EvalState m' ng pr)
           Right (r, EvalState m ng pr) -> do
             let m' = removeLocals m
             liftIO . TSIO.putStrLn . showValue $ r
             loop' md (EvalState (m' & varmap %~ M.insert "_" r) ng pr)
 
-interpret :: FilePath -> Mode -> Maps -> IO ()
+interpret :: FilePath -> Mode -> Maps -> IO EvalState
 interpret path mode mps = do
   g <- initStdGen
   source <- TS.lines <$> TSIO.readFile path
@@ -177,14 +183,14 @@ interpret path mode mps = do
     Left (CE.ErrorCall s) -> do
       putStrLn s
       exitWith (ExitFailure 1)
-    Right _ -> exitSuccess
+    Right es -> pure es
  where
-  loop' :: [TS.Text] -> Mode -> EvalState -> StateT StateData IO ()
-  loop' [] _ _ = pure ()
+  loop' :: [TS.Text] -> Mode -> EvalState -> StateT StateData IO EvalState
+  loop' [] _ es = pure es
   loop' src@(l : ls) md es = do
     S.modify \s -> s `union` extractNames (es ^. maps)
     case l of
-      "quit" -> pure ()
+      "quit" -> pure es
       x -> do
         let y = parseEval md es x
         case y of
@@ -192,6 +198,7 @@ interpret path mode mps = do
             liftIO . TSIO.putStrLn $ case err of
               MsgMsg msg -> msg
               ErrMsg emsg -> "Error: " <> emsg
+              _ -> "Can't do"
             loop' ls md nes
           Right (r, EvalState m ng pr) -> do
             liftIO . TSIO.putStrLn $ showValue r
@@ -271,7 +278,7 @@ parseEval md es x = evalExprS (parseString md x (es ^. maps)) es
 evalLoop :: Mode -> IO ()
 evalLoop m = Calculator.loop m defaultMaps
 
-evalFile :: FilePath -> IO ()
+evalFile :: FilePath -> IO EvalState
 evalFile f = Calculator.interpret f Internal defaultMaps
 
 logName :: (Semigroup a, IsString a) => a -> a
@@ -382,3 +389,4 @@ webLoop port mode = do
   listsToMaps (a, b, c) = Maps (M.fromList . map (\(k, (vr, vi)) -> (k, unitlessValue $ vr :+ vi)) $ a) (M.union funMap $ funsFromList b) (M.union opMap $ opsFromList c) M.empty
   unpackMsg (MsgMsg m) = m
   unpackMsg (ErrMsg e) = e
+  unpackMsg (CmdMsg (Cmd t)) = t
