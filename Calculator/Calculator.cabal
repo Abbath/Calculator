@@ -1,6 +1,6 @@
 cabal-version:        3.4
 name:                 Calculator
-version:              14.1.0
+version:              14.2.0
 synopsis:             Calculator
 -- description:
 -- license:
@@ -41,6 +41,7 @@ library
                     , Calculator.Compiler
                     , Calculator.Utils
   build-depends:      aeson
+                    , arithmoi
                     , array
                     , base >= 4.7 && < 5
                     , blaze-html

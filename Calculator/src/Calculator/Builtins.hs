@@ -19,6 +19,7 @@ import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
+import Math.NumberTheory.Primes.Testing
 import Numeric (expm1, log1mexp, log1p, log1pexp)
 import System.Random (mkStdGen)
 
@@ -164,7 +165,11 @@ functions =
   , (("comp", ArFixed 1), Fun{params = [], fexec = FnFn (BitFn complement)})
   , (("fact", ArFixed 1), Fun{params = [], fexec = FnFn (BitFn prod)})
   , (("not", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Id "x", unitlessZero, unitlessOne])})
+  , (("isprime", ArFixed 1), Fun{params = [], fexec = FnFn (BitFn isprime)})
   ]
+
+isprime :: Integer -> Integer
+isprime n = if isPrime n then 1 else 0
 
 turboLog :: Complex Rational -> Complex Rational -> Complex Rational
 turboLog a b = toRational <$> logBase (fromRational <$> a :: Complex Precise) (fromRational <$> b :: Complex Precise)

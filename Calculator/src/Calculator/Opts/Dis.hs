@@ -4,7 +4,7 @@ module Calculator.Opts.Dis where
 
 import Calculator (Mode (..), parseEval)
 import Calculator.Builtins (defaultEvalState)
-import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
+import Calculator.Evaluator (MessageType (..))
 import Calculator.Types (EvalState (..), showValue)
 import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -56,6 +56,7 @@ eventHandler mes event = case event of
         putMVar mes nes
         respond m msg
       Left (ErrMsg msg, _) -> respond m msg
+      Left (CmdMsg _, _) -> respond m "Not supported"
       Right (r, nes) -> do
         putMVar mes nes
         respond m $ showValue r
