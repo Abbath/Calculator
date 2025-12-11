@@ -16,3 +16,4 @@ Calculator/stack.yaml.lock
 **/log*.dat
 **/storage*.dat
 **/ids
+cabal.project.local*
