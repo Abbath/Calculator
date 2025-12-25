@@ -58,6 +58,7 @@ import Calculator.Types (
   preprocess,
   realValue,
   showChair,
+  showDegMinSec,
   showFraction,
   showMultipleOfPi,
   showT,
@@ -321,6 +322,7 @@ evalS ex = case ex of
   Atan2 e1 e2 -> evm $ Call "atan2" [e1, e2]
   Call "prat" [e] -> evm e >>= throwMsg . showFraction . realValue
   Call "smp" [e] -> evm e >>= throwMsg . showMultipleOfPi
+  Call "smd" [e] -> evm e >>= throwMsg . showDegMinSec
   Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text]) -> do
     t1 <- evm e
     let (Value t2 u) = t1
@@ -481,6 +483,7 @@ evalS ex = case ex of
         let r = (\x -> if abs (realPart x) <= sin pi && imagPart x == 0 then 0 else x) . fun . fmap fromRational . value $ n
         pure . unitlessValue $ toRational <$> r
       FnFn (MathFn2 fun) -> unitlessValue <$> (fun . value <$> evm (head ps) <*> (value <$> evm (ps !! 1)))
+      FnFn (MathFn3 fun) -> unitlessValue <$> (fun . value <$> evm (head ps) <*> (value <$> evm (ps !! 1)) <*> (value <$> evm (ps !! 2)))
       ExFn expr -> either throwErr evm $ substitute (zip (params builtin_fun) ps) expr
       _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do

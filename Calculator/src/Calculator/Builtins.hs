@@ -16,7 +16,7 @@ import Data.Foldable (maximumBy)
 import Data.Function (on)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
-import Data.Ratio ((%))
+import Data.Ratio (numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
@@ -83,6 +83,7 @@ functions :: FunMap
 functions =
   [ (("prat", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("str", ArFixed 1), Fun{params = [], fexec = NFn})
+  , (("smp", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("fmt", ArFixed 1), Fun{params = [], fexec = NFn})
   , (("quit", ArFixed 0), Fun{params = [], fexec = NFn})
   , (("id", ArFixed 1), Fun{params = [], fexec = NFn})
@@ -167,7 +168,19 @@ functions =
   , (("fact", ArFixed 1), Fun{params = [], fexec = FnFn (BitFn prod)})
   , (("not", ArFixed 1), Fun{params = ["x"], fexec = ExFn (Call "if" [Id "x", unitlessZero, unitlessOne])})
   , (("isprime", ArFixed 1), Fun{params = [], fexec = FnFn (BitFn isprime)})
+  , (("P", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 perm)})
+  , (("C", ArFixed 2), Fun{params = [], fexec = FnFn (MathFn2 comb)})
+  , (("dms", ArFixed 3), Fun{params = [], fexec = FnFn (MathFn3 dms)})
   ]
+
+dms :: Complex Rational -> Complex Rational -> Complex Rational -> Complex Rational
+dms (d :+ _) (m :+ _) (s :+ _) = (:+ 0) $ d + (m / 60) + (s / 3600)
+
+perm :: Complex Rational -> Complex Rational -> Complex Rational
+perm (n :+ _) (k :+ _) = (:+ 0) . toRational $ (fromInteger @Precise $ prod (numerator n)) / (fromInteger @Precise $ prod (numerator n - numerator k))
+
+comb :: Complex Rational -> Complex Rational -> Complex Rational
+comb (n :+ _) (k :+ _) = (:+ 0) . toRational $ (fromInteger @Precise $ prod (numerator n)) / fromInteger @Precise (prod (numerator n - numerator k) * prod (numerator k))
 
 isprime :: Integer -> Integer
 isprime n = if isPrime n then 1 else 0

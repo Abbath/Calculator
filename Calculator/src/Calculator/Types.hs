@@ -76,6 +76,7 @@ module Calculator.Types (
   combineUnits,
   expandUnits,
   showMultipleOfPi,
+  showDegMinSec,
 )
 where
 
@@ -311,6 +312,16 @@ showRational r =
             idx = (+ (n + 1)) . fromMaybe 0 . T.findIndex (== '.') $ st
          in T.take idx st <> "(" <> T.drop idx st <> ")"
 
+showDegMinSec :: Value -> Text
+showDegMinSec (Value (r :+ _) _) =
+  let
+    t = round @_ @Integer $ fromRational @Precise (r * 3600)
+    d = t `div` 3600
+    m = (t - d * 3600) `div` 60
+    s = (t - d * 3600) `mod` 60
+   in
+    showT d <> "°" <> showT m <> "'" <> showT s <> "\""
+
 showMultipleOfPi :: Value -> Text
 showMultipleOfPi v = case v of
   (Value cr Unitless) -> smp cr
@@ -422,6 +433,7 @@ data FunFun
   | FracFn1 (Complex Rational -> Complex Rational)
   | MathFn1 (Complex Precise -> Complex Precise)
   | MathFn2 (Complex Rational -> Complex Rational -> Complex Rational)
+  | MathFn3 (Complex Rational -> Complex Rational -> Complex Rational -> Complex Rational)
   | IntFn1 (Precise -> Integer)
   | IntFn2 (Integer -> Integer -> Integer)
   | BitFn (Integer -> Integer)
@@ -431,6 +443,7 @@ instance Show FunFun where
   show (FracFn1 _) = "FracFn1"
   show (MathFn1 _) = "MathFn1"
   show (MathFn2 _) = "MathFn2"
+  show (MathFn3 _) = "MathFn3"
   show (IntFn1 _) = "IntFn1"
   show (IntFn2 _) = "IntFn2"
   show (BitFn _) = "BitFn"
