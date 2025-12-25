@@ -75,6 +75,7 @@ module Calculator.Types (
   imagValue,
   combineUnits,
   expandUnits,
+  showMultipleOfPi,
 )
 where
 
@@ -309,6 +310,16 @@ showRational r =
         let st = showScientific s
             idx = (+ (n + 1)) . fromMaybe 0 . T.findIndex (== '.') $ st
          in T.take idx st <> "(" <> T.drop idx st <> ")"
+
+showMultipleOfPi :: Value -> Text
+showMultipleOfPi v = case v of
+  (Value cr Unitless) -> smp cr
+  (Value cr u) -> smp cr <> "@" <> renderUnit u
+ where
+  smp x =
+    let y = realPart x / toRational (pi :: Precise)
+        (n, d) = (numerator y, denominator y)
+     in "(" <> (if d /= 1 then showT n <> "/" <> showT d else showT n) <> ")*π"
 
 showValue :: Value -> Text
 showValue (Value cr Unitless) = showComplex cr

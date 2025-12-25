@@ -59,6 +59,7 @@ import Calculator.Types (
   realValue,
   showChair,
   showFraction,
+  showMultipleOfPi,
   showT,
   showValue,
   textToNum,
@@ -319,6 +320,7 @@ evalS ex = case ex of
     pure $ integrate (realValue . fromRight (unitlessValue $ 0 :+ 0) . procListElem mps fun) (realValue a1) (realValue b1) (realValue e1)
   Atan2 e1 e2 -> evm $ Call "atan2" [e1, e2]
   Call "prat" [e] -> evm e >>= throwMsg . showFraction . realValue
+  Call "smp" [e] -> evm e >>= throwMsg . showMultipleOfPi
   Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text]) -> do
     t1 <- evm e
     let (Value t2 u) = t1

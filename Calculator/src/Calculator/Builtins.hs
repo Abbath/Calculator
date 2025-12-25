@@ -7,6 +7,7 @@
 module Calculator.Builtins where
 
 import Calculator.Types (Arity (..), Assoc (..), EvalState (EvalState), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, Unit (..), VarMap, unitlessNumber, unitlessOne, unitlessValue, unitlessZero)
+import Calculator.Utils (splitRational)
 import Control.Applicative ((<|>))
 import Control.Arrow (second)
 import Data.Bits (Bits (complement), complement, popCount, shift, xor, (.&.), (.|.))
@@ -15,7 +16,7 @@ import Data.Foldable (maximumBy)
 import Data.Function (on)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
-import Data.Ratio (denominator, numerator, (%))
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
@@ -213,10 +214,8 @@ divide (a :+ b) (c :+ d) = let dm = c * c + d * d in (a * c + b * d) / dm :+ (b 
 pow :: Complex Rational -> Complex Rational -> Complex Rational
 pow a b
   | imagPart a == 0 && imagPart b == 0 =
-      let da = denominator (realPart a)
-          db = denominator (realPart b)
-          na = numerator (realPart a)
-          nb = numerator (realPart b)
+      let (na, da) = splitRational (realPart a)
+          (nb, db) = splitRational (realPart b)
        in if da == 1 && db == 1 && nb < 0
             then toRational <$> (fromRational <$> a :: Complex Precise) ^^ nb
             else
@@ -250,8 +249,10 @@ names = T.unpack <$> map fst (M.keys operators) ++ map fst (M.keys functions)
 defVar :: VarMap
 defVar =
   [ ("m.pi", unitlessValue $ toRational (pi :: Precise) :+ 0)
+  , ("π", unitlessValue $ toRational (pi :: Precise) :+ 0)
   , ("m.e", unitlessValue $ (toRational . exp $ (1 :: Precise)) :+ 0)
   , ("m.phi", unitlessValue $ toRational ((1 + sqrt 5) / 2 :: Precise) :+ 0)
+  , ("φ", unitlessValue $ toRational ((1 + sqrt 5) / 2 :: Precise) :+ 0)
   , ("m.r", unitlessValue $ 0.0 :+ 0)
   , ("b.true", unitlessValue $ 1.0 :+ 0)
   , ("b.false", unitlessValue $ 0.0 :+ 0)
