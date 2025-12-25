@@ -250,9 +250,9 @@ udoStmt m = do
 
 assignStmt :: Maps -> Parser Expr
 assignStmt m = do
-  name <- identifier
+  names <- sepBy identifier comma
   void eq
-  Asgn (trimTick name) <$> expr 0.0 m
+  Asgn (trimTick <$> names) <$> sepBy (expr 0.0 m) comma
 
 imprtStmt :: Parser Expr
 imprtStmt = do

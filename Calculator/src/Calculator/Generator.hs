@@ -52,8 +52,8 @@ generate' expr = do
     e | isFinal e -> do
       modify (_3 %~ const [TacOp (t n) (extractFinal e) "" ""])
       do_a_barrel_roll n
-    (Asgn var (Call fun [a])) | isFinal a -> modify (_3 %~ (:) (TacFun var fun (extractFinal a)))
-    (Asgn var (Call fun [a])) -> do
+    (Asgn [var] [Call fun [a]]) | isFinal a -> modify (_3 %~ (:) (TacFun var fun (extractFinal a)))
+    (Asgn [var] [Call fun [a]]) -> do
       generate' a
       ln_ <- gets (^. _2)
       modify (_3 %~ (:) (TacFun var fun (t ln_)))
@@ -65,16 +65,16 @@ generate' expr = do
       (n_, ln_, _) <- get
       modify (_3 %~ (:) (TacFun (t n_) fun (t ln_)))
       do_a_barrel_roll n_
-    (Asgn var (Call op [a, b])) | isFinal a && isFinal b -> modify (_3 %~ (:) (TacOp var (extractFinal a) op (extractFinal b)))
-    (Asgn var (Call op [a, b])) | isFinal b && not (isFinal a) -> do
+    (Asgn [var] [Call op [a, b]]) | isFinal a && isFinal b -> modify (_3 %~ (:) (TacOp var (extractFinal a) op (extractFinal b)))
+    (Asgn [var] [Call op [a, b]]) | isFinal b && not (isFinal a) -> do
       generate' a
       ln_ <- gets (^. _2)
       modify (_3 %~ (:) (TacOp var (t ln_) op (extractFinal b)))
-    (Asgn var (Call op [a, b])) | isFinal a && not (isFinal b) -> do
+    (Asgn [var] [Call op [a, b]]) | isFinal a && not (isFinal b) -> do
       generate' b
       ln_ <- gets (^. _2)
       modify (_3 %~ (:) (TacOp var (extractFinal a) op (t ln_)))
-    (Asgn var (Call op [a, b])) -> do
+    (Asgn [var] [Call op [a, b]]) -> do
       generate' a
       ln_a <- gets (^. _2)
       generate' b

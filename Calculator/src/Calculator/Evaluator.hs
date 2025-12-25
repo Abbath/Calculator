@@ -74,6 +74,7 @@ import Calculator.Utils (hashify)
 import Control.Applicative (asum)
 import Control.Arrow (Arrow (second))
 import Control.Lens (at, use, (.=), (?=), (^.))
+import Control.Monad (zipWithM)
 import Control.Monad.Except (
   ExceptT,
   MonadError (throwError),
@@ -217,22 +218,22 @@ applyPrecision v@(Value r u) = do
 
 evalS :: Expr -> Result Value
 evalS ex = case ex of
-  Asgn s (ChairLit e) -> do
+  Asgn [s] [ChairLit e] -> do
     es <- evalChairLit e
     maps . chairmap . at s ?= M.fromList es
     throwMsg "New chair"
-  Asgn s _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
-  Asgn f e@(Call "/" [Id g, Number n _ _]) -> do
+  Asgn [s] _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
+  Asgn [f] [e@(Call "/" [Id g, Number n _ _])] -> do
     let n1 = ArFixed . fromInteger . numerator $ n
     fm <- use (maps . funmap)
     if M.member (g, n1) fm
       then do
         maps . funmap . at (f, n1) ?= (fm M.! (g, n1))
         throwMsg ("Function " <> f <> "/" <> showT n1)
-      else createVar f e
-  Asgn s (Id "undef") -> evm (Call "undef" [Id s])
-  Asgn s (Lambda a e) -> evm (UDF s a e)
-  Asgn s e -> createVar s e
+      else createVar f e >>= throwMsg
+  Asgn [s] [Id "undef"] -> evm (Call "undef" [Id s])
+  Asgn [s] [Lambda a e] -> evm (UDF s a e)
+  Asgn ss es -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
   UDF f [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
     either throwErr (evm . UDF f [s]) de
@@ -436,7 +437,7 @@ evalS ex = case ex of
             )
           ?= n
         pure n
-  Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn x (Call (T.init op) [Id x, y]))
+  Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn [x] [Call (T.init op) [Id x, y]])
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwErr $ "Cannot assign to an expression with: " <> op
   Call op [x] | M.member (op, Ar1) unaryOperators -> evalBuiltinOp1 (op, Ar1) x
   Call op [x, y] | M.member (op, Ar2) operators -> evalBuiltinOp2 (op, Ar2) x y
@@ -538,7 +539,7 @@ evalS ex = case ex of
   createVar f e = do
     r <- evm e
     maps . varmap . at f ?= r
-    throwMsg ((if "c." `T.isPrefixOf` f then "Constant " else "Variable ") <> f <> "=" <> showValue r)
+    pure $ (if "c." `T.isPrefixOf` f then "Constant " else "Variable ") <> f <> "=" <> showValue r
   removeVar f =
     if M.member f defVar
       then throwErr "Can't remove that"

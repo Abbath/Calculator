@@ -77,6 +77,7 @@ module Calculator.Types (
   expandUnits,
   showMultipleOfPi,
   showDegMinSec,
+  defaultFun,
 )
 where
 
@@ -394,7 +395,7 @@ data Expr
   | ChairLit [(Text, Expr)]
   | ChairSit Text [Text]
   | Imprt Text
-  | Asgn Text Expr
+  | Asgn [Text] [Expr]
   | UDF Text [Text] Expr
   | UDO Text Int Assoc Expr
   | Call Text [Expr]
@@ -466,6 +467,9 @@ data Fun = Fun
   }
   deriving (Show)
 
+defaultFun :: Fun
+defaultFun = Fun{params = [], fexec = NFn}
+
 data Op = Op
   { precedence :: Int
   , associativity :: Assoc
@@ -530,7 +534,7 @@ exprToString :: Expr -> Text
 exprToString ex = case ex of
   UDF n a e -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
   UDO n p a e -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Precise else 1) <> ")" <> " = " <> exprToString e
-  Asgn i e -> i <> " = " <> exprToString e
+  Asgn [i] [e] -> i <> " = " <> exprToString e
   Number x y u -> (showT . (fromRational :: Rational -> Precise) $ x) <> (if y == 0 then "" else ("j" <>) . showT . (fromRational :: Rational -> Precise) $ y) <> (if u == Unitless then "" else showT u)
   Par e -> "(" <> exprToString e <> ")"
   Call op [e] | isOp op -> "(" <> op <> exprToString e <> ")"
@@ -543,6 +547,7 @@ exprToString ex = case ex of
   ChairLit xs -> "{" <> T.intercalate ", " (map (\(key, value) -> key <> " => " <> exprToString value) xs) <> "}"
   ChairSit a x -> a <> "[" <> T.intercalate "," x <> "]"
   Lambda a e -> "(" <> T.intercalate ", " a <> ") -> " <> exprToString e
+  _ -> "Error: no such expression is possible"
 
 opSymbols :: String
 opSymbols = "+-/*%^$!~&|=><:?"
@@ -561,7 +566,7 @@ preprocess ex = simplify' ex ex
 
 simplifyExpr :: Expr -> Expr
 simplifyExpr ex = case ex of
-  Asgn s e -> Asgn s (simplifyExpr e)
+  Asgn s [e] -> Asgn s [simplifyExpr e]
   UDF n s e -> UDF n s (simplifyExpr e)
   UDO n p a e -> UDO n p a (simplifyExpr e)
   Par (Par e) -> Par (simplifyExpr e)

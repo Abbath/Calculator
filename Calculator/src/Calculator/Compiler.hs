@@ -572,7 +572,8 @@ compile' m = go
     Imprt filename -> pure ()
     ChairLit _ -> pure ()
     ChairSit _ _ -> pure ()
-    Asgn name expr -> go expr >> setVar (StrVal name)
+    Asgn [name] [expr] -> go expr >> setVar (StrVal name)
+    Asgn _ _ -> throwError "Assignment not supported"
     UDF name args (Call "df" [body, var]) -> case derivative body var of
       Left err -> throwError err
       Right der -> addFun m name args der
