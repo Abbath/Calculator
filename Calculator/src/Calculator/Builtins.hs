@@ -172,7 +172,12 @@ functions =
   , (("C", ArFixed 2), defaultFun{fexec = FnFn (MathFn2 comb)})
   , (("dms", ArFixed 3), defaultFun{fexec = FnFn (MathFn3 dms)})
   , (("smd", ArFixed 1), defaultFun{fexec = FnFn (MultiFn smd)})
+  , (("quad", ArFixed 3), defaultFun{fexec = FnFn (MultiFn quad)})
   ]
+
+quad :: [Complex Rational] -> [Complex Rational]
+quad [a, b, c] = let d = fmath (-) (pow b (2 :+ 0)) (mult (mult (4 :+ 0) a) c) in map (`divide` (2 :+ 0)) [fmath (-) b $ pow d (0.5 :+ 0), fmath (+) b $ pow d (0.5 :+ 0)]
+quad _ = []
 
 smd :: [Complex Rational] -> [Complex Rational]
 smd [r :+ _] =

@@ -504,6 +504,7 @@ evalS ex = case ex of
         pure . unitlessValue $ toRational <$> r
       FnFn (MathFn2 fun) -> unitlessValue <$> (fun . value <$> evm (head ps) <*> (value <$> evm (ps !! 1)))
       FnFn (MathFn3 fun) -> unitlessValue <$> (fun . value <$> evm (head ps) <*> (value <$> evm (ps !! 1)) <*> (value <$> evm (ps !! 2)))
+      FnFn (MultiFn fun) -> unitlessValue . head . fun . map (\(Value cr _) -> cr) <$> mapM evm ps
       ExFn expr -> either throwErr evm $ substitute (zip (params builtin_fun) ps) expr
       _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do
