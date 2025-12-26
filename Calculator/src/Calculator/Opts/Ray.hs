@@ -7,7 +7,7 @@ import Calculator (Mode (..), parseEval)
 import Calculator.Builtins (defaultEvalState)
 import Calculator.Evaluator (MessageType (..))
 import Calculator.Types (EvalState (..), showValue)
-import Control.Lens (makeLenses, use, (%=), (.=))
+import Control.Lens (makeLenses, use, uses, (%=), (.=))
 import Control.Monad (forM_, unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.State (StateT, evalStateT)
@@ -57,6 +57,7 @@ data AppState = AS
   , _estate :: EvalState
   , _fc :: Integer
   , _phist :: Zipper TS.Text
+  , _cursor :: Int
   }
   deriving (Show)
 
@@ -82,7 +83,7 @@ raylibLoop = do
   RL.setTargetFPS fps
   RL.setTextLineSpacing 1
   RL.setWindowState [RL.WindowResizable]
-  evalStateT raylibLoop' (AS "" [] des 0 (Zip [] []))
+  evalStateT raylibLoop' (AS "" [] des 0 (Zip [] []) 0)
 
 raylibLoop' :: StateT AppState IO ()
 raylibLoop' = do
@@ -90,9 +91,18 @@ raylibLoop' = do
   unless wsc $ do
     [w, h, c] <- liftIO $ sequence [RL.getRenderWidth, RL.getRenderHeight, RL.getCharPressed]
     prompt %= if c /= 0 then flip TS.snoc (chr c) else id
-    [bp, up, down, ep] <- liftIO $ mapM RL.isKeyPressed [RL.KeyBackspace, RL.KeyUp, RL.KeyDown, RL.KeyEnter]
-    prompt %= \pr -> if bp && not (TS.null pr) then TS.init pr else pr
-    tw <- use prompt >>= liftIO . flip RL.measureText fontSize . TS.unpack
+    cursor %= if c /= 0 then (+ 1) else id
+    [bp, del, up, down, left, right, ep] <- liftIO $ mapM RL.isKeyPressed [RL.KeyBackspace, RL.KeyDelete, RL.KeyUp, RL.KeyDown, RL.KeyLeft, RL.KeyRight, RL.KeyEnter]
+    cs0 <- use cursor
+    len0 <- uses prompt TS.length
+    prompt %= \pr -> if del && cs0 < len0 then let (begin, end) = TS.splitAt cs0 pr in begin <> TS.tail end else pr
+    prompt %= \pr -> if bp && cs0 > 0 then let (begin, end) = TS.splitAt cs0 pr in TS.init begin <> end else pr
+    len <- uses prompt TS.length
+    cursor %= if left || bp then subtract 1 else id
+    cursor %= if right then (+ 1) else id
+    cursor %= max 0 . min len
+    cs <- use cursor
+    tw <- use prompt >>= liftIO . flip RL.measureText fontSize . TS.unpack . TS.take cs
     checkHistory up down
     pr <- use prompt
     rt <- use results
