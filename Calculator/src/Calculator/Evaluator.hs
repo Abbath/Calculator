@@ -144,24 +144,20 @@ localize s@(x : xs) (Call nm e) =
     else mapM (localize s) e >>= localize xs . Call nm
 localize s ex = goInside (localize s) ex
 
-catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
-catchVar (vm, fm) ex = case ex of
-  (Id i) | T.head i == '#' -> pure ex
-  (Id i) ->
+catchVar :: (VarMap, FunMap) -> [Text] -> Expr -> Either Text Expr
+catchVar (vm, fm) locals ex = case ex of
+  Id i | T.head i == '#' -> pure ex
+  Id i | i `elem` locals -> pure ex
+  Id i ->
     let a = M.lookup i vm :: Maybe Value
-        getNames = map (\(f, _) -> (f, f)) . M.keys
-        fNames = getNames functions
-        b = lookup i (funNames fm ++ fNames) :: Maybe Text
      in case value <$> a of
-          Just n -> pure $ randomCheck (realPart n) i
-          Nothing -> case b of
-            Just s -> pure $ Id s
-            Nothing -> Left $ "No such variable: " <> i
+          Just n -> pure $ randomCheck n i
+          Nothing -> pure $ Id i
    where
-    randomCheck n i_ = if i_ == "m.r" then Id "m.r" else Number n 0 Unitless
-  e -> goInside st e
-   where
-    st = catchVar (vm, fm)
+    randomCheck (re :+ im) i_ = if i_ == "m.r" then Id "m.r" else Number re im Unitless
+  e -> goInside (st locals) e
+ where
+  st = catchVar (vm, fm)
 
 newtype Cmd = Cmd Text deriving (Show, Eq)
 data MessageType = ErrMsg Text | MsgMsg Text | CmdMsg Cmd deriving (Show, Eq)
@@ -257,7 +253,7 @@ evalS ex = case ex of
     either throwErr (evm . UDF f [s]) de
   UDF f s e -> do
     mps <- use maps
-    let newe = localize s e >>= catchVar (mps ^. varmap, mps ^. funmap)
+    let newe = localize s e >>= catchVar (mps ^. varmap, mps ^. funmap) []
     let len = length s
     let is_var = len > 0 && last s == "..."
     let arity = if is_var then ArVar (len - 1) else ArFixed len
@@ -282,7 +278,7 @@ evalS ex = case ex of
     | p < 1 || p > maxPrecedence -> throwErr $ "Bad precedence: " <> showT p
     | otherwise -> do
         mps <- use maps
-        let t = localize (if a == N then ["x"] else ["x", "y"]) e >>= catchVar (mps ^. varmap, mps ^. funmap)
+        let t = localize (if a == N then ["x"] else ["x", "y"]) e >>= catchVar (mps ^. varmap, mps ^. funmap) []
         either
           throwErr
           ( \r -> do

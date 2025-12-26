@@ -176,7 +176,7 @@ functions =
   ]
 
 quad :: [Complex Rational] -> [Complex Rational]
-quad [a, b, c] = let d = fmath (-) (pow b (2 :+ 0)) (mult (mult (4 :+ 0) a) c) in map (`divide` (2 :+ 0)) [fmath (-) b $ pow d (0.5 :+ 0), fmath (+) b $ pow d (0.5 :+ 0)]
+quad [a, b, c] = let d = fmath (-) (pow b (2 :+ 0)) (mult (mult (4 :+ 0) a) c) in map (`divide` mult a (2 :+ 0)) [fmath (-) (mult b ((-1) :+ 0)) $ pow d (0.5 :+ 0), fmath (+) (mult b ((-1) :+ 0)) $ pow d (0.5 :+ 0)]
 quad _ = []
 
 smd :: [Complex Rational] -> [Complex Rational]
