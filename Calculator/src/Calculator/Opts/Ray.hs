@@ -5,7 +5,7 @@ module Calculator.Opts.Ray where
 
 import Calculator (Mode (..), parseEval)
 import Calculator.Builtins (defaultEvalState)
-import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
+import Calculator.Evaluator (MessageType (..))
 import Calculator.Types (EvalState (..), showValue)
 import Control.Lens (makeLenses, use, (%=), (.=))
 import Control.Monad (forM_, unless, when)
@@ -110,6 +110,7 @@ raylibLoop' = do
             Right (r, es0) -> (showValue r, es0)
             Left (ErrMsg m, _) -> (m, es)
             Left (MsgMsg m, es0) -> (m, es0)
+            Left (CmdMsg _, es0) -> ("", es0)
       prompt .= ""
       results .= take ((h - (fontSize + 12)) `div` (fontSize + 2)) (res : rt)
       estate .= es1

@@ -4,7 +4,7 @@ module Calculator.Opts.Tel where
 
 import Calculator (Mode (..), parseEval)
 import Calculator.Builtins (defaultEvalState)
-import Calculator.Evaluator (MessageType (ErrMsg, MsgMsg))
+import Calculator.Evaluator (MessageType (..))
 import Calculator.Types (EvalState (..), showValue)
 import Control.Arrow (first, second)
 import Data.Text qualified as TS
@@ -55,6 +55,7 @@ handleAction mode (Reply msg) model =
     replyText $ case response of
       MsgMsg mmsg -> mmsg
       ErrMsg emsg -> "Error: " <> emsg
+      CmdMsg _ -> ""
     pure NoAction
  where
   (response, model2) =
