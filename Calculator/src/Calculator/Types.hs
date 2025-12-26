@@ -438,6 +438,7 @@ data FunFun
   | IntFn1 (Precise -> Integer)
   | IntFn2 (Integer -> Integer -> Integer)
   | BitFn (Integer -> Integer)
+  | MultiFn ([Complex Rational] -> [Complex Rational])
 
 instance Show FunFun where
   show (CmpFn _) = "CmpFn"
@@ -448,6 +449,7 @@ instance Show FunFun where
   show (IntFn1 _) = "IntFn1"
   show (IntFn2 _) = "IntFn2"
   show (BitFn _) = "BitFn"
+  show (MultiFn _) = "MultiFn"
 
 instance Show FunOp where
   show (CmpOp _) = "CmpOp"
@@ -610,20 +612,6 @@ showChair ch = "{" <> T.intercalate ", " (map (\(k, v) -> k <> " => " <> showEle
   showElem (DickVal v) = showValue v
   showElem (PikeVal v) = showChair v
 
--- numToText :: Value -> Either Text Text
--- numToText n | denominator (realValue n) /= 1 = Left "Can't convert rational to string!"
--- numToText n = Right $ go T.empty (abs . numerator . realValue $ n)
---  where
---   go t 0 = t
---   go t m = go (T.singleton (chr . fromInteger $ (m .&. 0xff)) <> t) (m `B.shiftR` 8)
---
--- textToNum :: Integer -> [Char] -> Integer
--- textToNum n [] = n
--- textToNum n (c : cs) =
---   let o = ord c
---       b = if o > 255 || o < 0 then ord ' ' else o
---    in textToNum (n `B.shiftL` 8 + toInteger b) cs
-
 numToText :: Value -> Either Text Text
 numToText n | denominator (realValue n) /= 1 = Left "Can't convert rational to string!"
 numToText n = Right . TE.decodeUtf8Lenient $ go BS.empty (abs . numerator . realValue $ n)
@@ -635,8 +623,7 @@ textToNum :: Text -> Integer
 textToNum "" = 0
 textToNum t =
   let bs = TE.encodeUtf8 t
-      n = BS.foldl' (\x c -> x `B.shiftL` 8 + toInteger c) 0 bs
-   in n
+   in BS.foldl' (\x c -> x `B.shiftL` 8 + toInteger c) 0 bs
 
 data FormatChunk = FormatTxt Text | FormatFmt Text deriving (Show)
 

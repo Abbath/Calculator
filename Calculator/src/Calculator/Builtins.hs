@@ -84,7 +84,7 @@ functions =
   [ (("prat", ArFixed 1), defaultFun)
   , (("str", ArFixed 1), defaultFun)
   , (("smp", ArFixed 1), defaultFun)
-  , (("fmt", ArFixed 1), defaultFun)
+  , (("fmt", ArVar 1), defaultFun)
   , (("quit", ArFixed 0), defaultFun)
   , (("id", ArFixed 1), defaultFun)
   , (("if", ArFixed 3), defaultFun)
@@ -171,7 +171,19 @@ functions =
   , (("P", ArFixed 2), defaultFun{fexec = FnFn (MathFn2 perm)})
   , (("C", ArFixed 2), defaultFun{fexec = FnFn (MathFn2 comb)})
   , (("dms", ArFixed 3), defaultFun{fexec = FnFn (MathFn3 dms)})
+  , (("smd", ArFixed 1), defaultFun{fexec = FnFn (MultiFn smd)})
   ]
+
+smd :: [Complex Rational] -> [Complex Rational]
+smd [r :+ _] =
+  let
+    t = round @_ @Integer $ fromRational @Precise (r * 3600)
+    d = t `div` 3600
+    m = (t - d * 3600) `div` 60
+    s = (t - d * 3600) `mod` 60
+   in
+    (:+ 0) . toRational <$> [d, m, s]
+smd _ = []
 
 dms :: Complex Rational -> Complex Rational -> Complex Rational -> Complex Rational
 dms (d :+ _) (m :+ _) (s :+ _) = (:+ 0) $ d + (m / 60) + (s / 3600)

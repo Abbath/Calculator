@@ -233,6 +233,24 @@ evalS ex = case ex of
       else createVar f e >>= throwMsg
   Asgn [s] [Id "undef"] -> evm (Call "undef" [Id s])
   Asgn [s] [Lambda a e] -> evm (UDF s a e)
+  Asgn ss [Call "ret" es] -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
+  Asgn ss [Call f ps] | M.member (f, ArFixed . length $ ps) functions -> do
+    let fun = functions M.! (f, ArFixed . length $ ps)
+    case fexec fun of
+      FnFn (MultiFn fn) -> do
+        args <- map (\(r :+ i) -> Number r i Unitless) . fn . map (\(Value cr _) -> cr) <$> mapM evm ps
+        zipWithM createVar ss args >>= throwMsg . T.intercalate "\n"
+      ExFn (Call "ret" es) -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
+      _ -> throwErr "Unsupported assignment"
+  Asgn ss whole@[Call name e] -> do
+    mps <- use maps
+    case findFunction name (length e) (mps ^. funmap) of
+      Just Fun{params = al, fexec = ExFn expr@(Call "ret" _)} -> do
+        case substitute (("#v.n", unitlessNumber . fromIntegral . length $ e) : turboZip al e) expr of
+          Left txt -> throwErr txt
+          Right (Call "ret" es) -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
+          Right e2 -> createVar (head ss) e2 >>= throwMsg
+      _ -> zipWithM createVar ss whole >>= throwMsg . T.intercalate "\n"
   Asgn ss es -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
   UDF f [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
@@ -471,6 +489,7 @@ evalS ex = case ex of
       then evm a
       else evm $ Call "loop" [c, a]
   Call "neg" [x] -> evm $ Call "*" [Number (-1) 0 Unitless, x]
+  Call "ret" (e : _) -> evm e
   Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
     let builtin_fun = functions M.! (f, ArFixed . length $ ps)
     case fexec builtin_fun of
@@ -490,7 +509,7 @@ evalS ex = case ex of
   Call name e -> do
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
-      Just (Fun al (ExFn expr)) -> either throwErr evm $ substitute (("#v.n", unitlessNumber . fromIntegral . length $ e) : turboZip al e) expr
+      Just Fun{params = al, fexec = (ExFn expr)} -> either throwErr evm $ substitute (("#v.n", unitlessNumber . fromIntegral . length $ e) : turboZip al e) expr
       Nothing -> case name of
         x | T.head x == '#' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ ->
@@ -521,7 +540,7 @@ evalS ex = case ex of
   Number x xi u -> pure $ expandUnits $ Value (x :+ xi) u
   Par e -> evm e
   Seq _ -> throwErr "Sequences are not supported in this mode!"
-  Imprt f -> throwError (CmdMsg $ Cmd f) -- "Imports are not supported in this mode!"
+  Imprt f -> throwError (CmdMsg $ Cmd f)
   Label _ -> throwErr "Label are not supported in this mode!"
   Lambda _ _ -> pure . unitlessValue $ 0 :+ 0
  where
