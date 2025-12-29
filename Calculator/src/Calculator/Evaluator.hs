@@ -148,11 +148,11 @@ catchVar (vm, fm) ex = case ex of
   Id i | T.head i == '#' -> pure ex
   Id i ->
     let a = M.lookup i vm :: Maybe Value
-     in case value <$> a of
-          Just n -> pure $ randomCheck n i
+     in case a of
+          Just n -> pure $ randomCheck (value n, unit n) i
           Nothing -> pure $ Id i
    where
-    randomCheck (re :+ im) i_ = if i_ == "m.r" then Id "m.r" else Number re im Unitless
+    randomCheck (re :+ im, u) i_ = if i_ == "m.r" then Id "m.r" else Number re im u
   e -> goInside st e
  where
   st = catchVar (vm, fm)
@@ -167,6 +167,9 @@ throwErr = throwError . ErrMsg
 
 throwMsg :: (MonadError MessageType m) => Text -> m a
 throwMsg = throwError . MsgMsg
+
+throwCmd :: (MonadError MessageType m) => Cmd -> m a
+throwCmd = throwError . CmdMsg
 
 findFunction :: Text -> Int -> FunMap -> Maybe Fun
 findFunction n a fm =
@@ -320,7 +323,7 @@ evalS ex = case ex of
       Right fs -> do
         rs <- traverse evm es
         case zipFormat fs rs of
-          Left err -> throwError (ErrMsg err)
+          Left err -> throwErr err
           Right t -> pure . flip Value u . (:+ 0) . (% 1) . textToNum $ t
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
@@ -364,7 +367,7 @@ evalS ex = case ex of
               . numerator
               . realValue
               $ t1
-      else throwError (ErrMsg "Can't convert rational yet")
+      else throwErr "Can't convert rational yet"
   Call ":" [a, b] -> evm (Call "if" [a, b, b])
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     mps <- use maps
@@ -379,9 +382,9 @@ evalS ex = case ex of
           let Op{associativity = asc2} = (mps ^. opmap) M.! (op2, Ar2)
           case (asc1, asc2) of
             (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
-            (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) Unitless
+            (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) (unit c)
             _ -> throwErr $ "Operators with a different associativity: " <> op1 <> " and " <> op2
-      else evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) Unitless
+      else evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) (unit c)
   oc@(Call op [x, y]) | op `elem` (["/", "div"] :: [Text]) -> do
     n <- evm y
     n1 <- evm x
@@ -414,7 +417,7 @@ evalS ex = case ex of
       Nothing -> throwErr "No such chair"
       Just ch -> case extractChair xs ch of
         Nothing -> throwErr "No such key"
-        Just (DickVal v) -> evm $ Call ":=" [Id x, Number (realValue v) (imagValue v) Unitless]
+        Just (DickVal v) -> evm $ Call ":=" [Id x, Number (realValue v) (imagValue v) (unit v)]
         Just (PikeVal v) -> do
           maps . chairmap . at x ?= v
           throwMsg "Sitting chair"
@@ -436,7 +439,7 @@ evalS ex = case ex of
         throwMsg "Sitting chair"
   Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
-      then throwError (ErrMsg "I'm afraid you can't do that.")
+      then throwErr "I'm afraid you can't do that."
       else do
         n <- evm y
         mps <- use maps
@@ -500,7 +503,7 @@ evalS ex = case ex of
       FnFn (MathFn3 fun) -> unitlessValue <$> (fun . value <$> evm (head ps) <*> (value <$> evm (ps !! 1)) <*> (value <$> evm (ps !! 2)))
       FnFn (MultiFn fun) -> unitlessValue . head . fun . map value <$> mapM evm ps
       ExFn expr -> either throwErr evm $ substitute (zip (params builtin_fun) ps) expr
-      _ -> throwError (ErrMsg "Misteriously missing function")
+      _ -> throwErr "Misteriously missing function"
   Call name e -> do
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
@@ -522,7 +525,7 @@ evalS ex = case ex of
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Precise) rgen
     gen .= newGen
     pure . unitlessValue . (:+ 0) . toRational $ randomNumber
-  Id s -> extractId s >>= maybe (throwError (ErrMsg $ "No such variable : " <> s)) pure
+  Id s -> extractId s >>= maybe (throwErr $ "No such variable : " <> s) pure
   ChairLit _ -> pure $ unitlessValue (0 :+ 0)
   ChairSit a xs -> do
     val <- use $ maps . chairmap . at a
@@ -535,7 +538,7 @@ evalS ex = case ex of
   Number x xi u -> pure $ expandUnits $ Value (x :+ xi) u
   Par e -> evm e
   Seq _ -> throwErr "Sequences are not supported in this mode!"
-  Imprt f -> throwError (CmdMsg $ Cmd f)
+  Imprt f -> throwCmd $ Cmd f
   Label _ -> throwErr "Label are not supported in this mode!"
   Lambda _ _ -> pure . unitlessValue $ 0 :+ 0
  where
@@ -572,7 +575,7 @@ evalS ex = case ex of
     let builtin_op = unaryOperators M.! uop
     case oexec builtin_op of
       FnOp (UnOp fun) -> unitlessValue . (:+ 0) . toRational . fun . numerator . realValue <$> evm x
-      _ -> throwError (ErrMsg "Misteriously missing operator")
+      _ -> throwErr "Misteriously missing operator"
   evalBuiltinOp2 bop x y = do
     let builtin_op = operators M.! bop
     case oexec builtin_op of
@@ -584,11 +587,11 @@ evalS ex = case ex of
           then throwErr "Incompatible units"
           else
             if unit v1 == UProd [SUnit "m" 1] && fst bop == "^" && unit v2 == Unitless && value v2 `elem` ([2 :+ 0, 3 :+ 0] :: [Complex Rational])
-              then pure $ Value (fun (value v1) (value v2)) (UProd [SUnit "m" (fromInteger . numerator . realValue $ v2)])
+              then pure $ Value (fun (value v1) (value v2)) (UProd [SUnit "m" (fromIntegral . numerator . realValue $ v2)])
               else pure $ Value (fun (value v1) (value v2)) (combineUnits (fst bop) (unit v1) (unit v2))
       FnOp (BitOp fun) -> unitlessValue . (:+ 0) <$> bitEval fun x y
       ExOp e -> evm e
-      _ -> throwError (ErrMsg "Misteriously missing operator")
+      _ -> throwErr "Misteriously missing operator"
   tooBig = 2 ^ (8000000 :: Integer) :: Rational
   cmp fun x y = do
     n <- evm x
@@ -602,26 +605,26 @@ evalS ex = case ex of
     n1 <- evm y
     if isWhole (value n) && isWhole (value n1)
       then pure . toRational $ op (numerator (realValue n)) (numerator (realValue n1))
-      else throwError (ErrMsg "Cannot perform bitwise operator on a rational")
+      else throwErr "Cannot perform bitwise operator on a rational"
   evm x = do
     v <- evalS x
     let (Value r u) = v
     if abs (realPart r) > tooBig || abs (imagPart r) > tooBig
-      then throwError (ErrMsg "Too much!")
+      then throwErr "Too much!"
       else pure $ Value r u
   evalInt f x y = do
     t1 <- evm x
     t2 <- evm y
     if isWhole (value t1) && isWhole (value t2)
       then pure . toValue $ f (numerator (realValue t1)) (numerator (realValue t2))
-      else throwError (ErrMsg "Cannot use integral function on rational numbers!")
+      else throwErr "Cannot use integral function on rational numbers!"
   evalInt1 :: (Precise -> Integer) -> Expr -> Result Value
   evalInt1 f x = toValue . f . fromValue <$> evm x
   evalBit f x = do
     t <- evm x
     if isWhole (value t)
       then pure . toValue $ f (numerator (realValue t))
-      else throwError (ErrMsg "Cannot use bitwise function on rational numbers!")
+      else throwErr "Cannot use bitwise function on rational numbers!"
   procListElem m fun n = evalState (runExceptT (evm (Call fun [unitlessNumber n]))) m
   findSimilar :: (Text, Int) -> [(Text, Arity)] -> ([(Text, Int)], [(Text, Int)])
   findSimilar (name, arity) funs =
