@@ -81,6 +81,7 @@ module Calculator.Types (
 )
 where
 
+import Calculator.Utils (isWhole, splitRational)
 import Control.Arrow (second)
 import Control.Lens.TH (makeLenses)
 import Data.Aeson (FromJSON, ToJSON)
@@ -187,7 +188,7 @@ combineUnits op u1 u2 = case op of
   "-" -> addSubUnits u1 u2
   "*" -> multiplyUnits u1 u2
   "/" -> divideUnits u1 u2
-  _ | u1 == Unitless && u2 == Unitless -> if u1 == Unitless then u2 else u1
+  _ | u1 == Unitless || u2 == Unitless -> if u1 == Unitless then u2 else u1
   _ -> error $ "Unsupported operation: " ++ show op
 
 -- Addition and subtraction require compatible units
@@ -330,7 +331,7 @@ showMultipleOfPi v = case v of
  where
   smp x =
     let y = realPart x / toRational (pi :: Precise)
-        (n, d) = (numerator y, denominator y)
+        (n, d) = splitRational y
      in "(" <> (if d /= 1 then showT n <> "/" <> showT d else showT n) <> ")*π"
 
 showValue :: Value -> Text
@@ -595,7 +596,7 @@ showFraction t = showT (numerator t) <> " / " <> showT (denominator t)
 showComplexBase :: Int -> Value -> Either Text Text
 showComplexBase base cr
   | base `elem` ([2, 8, 16] :: [Int]) =
-      if (denominator . realValue $ cr) == 1 && (denominator . imagValue $ cr) == 1
+      if isWhole (value cr) && isWhole (value cr)
         then
           let function = case base of
                 2 -> showBin
@@ -613,7 +614,7 @@ showChair ch = "{" <> T.intercalate ", " (map (\(k, v) -> k <> " => " <> showEle
   showElem (PikeVal v) = showChair v
 
 numToText :: Value -> Either Text Text
-numToText n | denominator (realValue n) /= 1 = Left "Can't convert rational to string!"
+numToText n | not . isWhole . value $ n = Left "Can't convert rational to string!"
 numToText n = Right . TE.decodeUtf8Lenient $ go BS.empty (abs . numerator . realValue $ n)
  where
   go t 0 = t

@@ -38,7 +38,8 @@ import Calculator.Types (
   OpArity (..),
   OpMap,
   Precise,
-  Unit (Unitless),
+  SingleUnit (..),
+  Unit (..),
   Value (..),
   VarMap,
   ar2int,
@@ -70,7 +71,7 @@ import Calculator.Types (
   varmap,
   zipFormat,
  )
-import Calculator.Utils (hashify)
+import Calculator.Utils (hashify, isWhole)
 import Control.Applicative (asum)
 import Control.Arrow (Arrow (second))
 import Control.Lens (at, use, (.=), (?=), (^.))
@@ -85,11 +86,11 @@ import Control.Monad.State (
   State,
   evalState,
  )
-import Data.Complex (Complex (..), conjugate, imagPart, realPart)
+import Data.Complex (Complex (..), conjugate, imagPart, magnitude, realPart)
 import Data.Either (fromRight)
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe, isNothing)
-import Data.Ratio (denominator, numerator, (%))
+import Data.Ratio (numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Metrics (damerauLevenshteinNorm)
@@ -231,7 +232,7 @@ evalS ex = case ex of
     let fun = functions M.! (f, ArFixed . length $ ps)
     case fexec fun of
       FnFn (MultiFn fn) -> do
-        args <- map (\(r :+ i) -> Number r i Unitless) . fn . map (\(Value cr _) -> cr) <$> mapM evm ps
+        args <- map (\(r :+ i) -> Number r i Unitless) . fn . map value <$> mapM evm ps
         zipWithM createVar ss args >>= throwMsg . T.intercalate "\n"
       ExFn (Call "ret" es) -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
       _ -> throwErr "Unsupported assignment"
@@ -346,7 +347,7 @@ evalS ex = case ex of
   Call "^" [Call "neg" [x], y] -> evm $ Call "neg" [Call "^" [x, y]]
   Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
     t1 <- evm e
-    if denominator (realValue t1) == 1
+    if isWhole . value $ t1
       then
         let (function, p) = case f of
               "hex" -> (showHex, 'x')
@@ -493,11 +494,11 @@ evalS ex = case ex of
       FnFn (FracFn1 fun) -> unitlessValue . fun . value <$> evm (head ps)
       FnFn (MathFn1 fun) -> do
         n <- evm (head ps)
-        let r = (\x -> if abs (realPart x) <= sin pi && imagPart x == 0 then 0 else x) . fun . fmap fromRational . value $ n
+        let r = (\x -> if magnitude x <= sin pi then 0 else x) . fun . fmap fromRational . value $ n
         pure . unitlessValue $ toRational <$> r
       FnFn (MathFn2 fun) -> unitlessValue <$> (fun . value <$> evm (head ps) <*> (value <$> evm (ps !! 1)))
       FnFn (MathFn3 fun) -> unitlessValue <$> (fun . value <$> evm (head ps) <*> (value <$> evm (ps !! 1)) <*> (value <$> evm (ps !! 2)))
-      FnFn (MultiFn fun) -> unitlessValue . head . fun . map (\(Value cr _) -> cr) <$> mapM evm ps
+      FnFn (MultiFn fun) -> unitlessValue . head . fun . map value <$> mapM evm ps
       ExFn expr -> either throwErr evm $ substitute (zip (params builtin_fun) ps) expr
       _ -> throwError (ErrMsg "Misteriously missing function")
   Call name e -> do
@@ -581,7 +582,10 @@ evalS ex = case ex of
         v2 <- evm y
         if not $ checkUnitCompatibility (fst bop) v1 v2
           then throwErr "Incompatible units"
-          else pure $ Value (fun (value v1) (value v2)) (combineUnits (fst bop) (unit v1) (unit v2))
+          else
+            if unit v1 == UProd [SUnit "m" 1] && fst bop == "^" && unit v2 == Unitless && value v2 `elem` ([2 :+ 0, 3 :+ 0] :: [Complex Rational])
+              then pure $ Value (fun (value v1) (value v2)) (UProd [SUnit "m" (fromInteger . numerator . realValue $ v2)])
+              else pure $ Value (fun (value v1) (value v2)) (combineUnits (fst bop) (unit v1) (unit v2))
       FnOp (BitOp fun) -> unitlessValue . (:+ 0) <$> bitEval fun x y
       ExOp e -> evm e
       _ -> throwError (ErrMsg "Misteriously missing operator")
@@ -596,7 +600,7 @@ evalS ex = case ex of
   bitEval op x y = do
     n <- evm x
     n1 <- evm y
-    if denominator (realValue n) == 1 && denominator (realValue n1) == 1
+    if isWhole (value n) && isWhole (value n1)
       then pure . toRational $ op (numerator (realValue n)) (numerator (realValue n1))
       else throwError (ErrMsg "Cannot perform bitwise operator on a rational")
   evm x = do
@@ -608,14 +612,14 @@ evalS ex = case ex of
   evalInt f x y = do
     t1 <- evm x
     t2 <- evm y
-    if denominator (realValue t1) == 1 && denominator (realValue t2) == 1
+    if isWhole (value t1) && isWhole (value t2)
       then pure . toValue $ f (numerator (realValue t1)) (numerator (realValue t2))
       else throwError (ErrMsg "Cannot use integral function on rational numbers!")
   evalInt1 :: (Precise -> Integer) -> Expr -> Result Value
   evalInt1 f x = toValue . f . fromValue <$> evm x
   evalBit f x = do
     t <- evm x
-    if denominator (realValue t) == 1
+    if isWhole (value t)
       then pure . toValue $ f (numerator (realValue t))
       else throwError (ErrMsg "Cannot use bitwise function on rational numbers!")
   procListElem m fun n = evalState (runExceptT (evm (Call fun [unitlessNumber n]))) m
