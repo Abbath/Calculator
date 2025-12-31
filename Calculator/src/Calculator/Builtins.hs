@@ -40,12 +40,14 @@ operators =
   , ((":=", Ar2), Op{precedence = 2, associativity = R, oexec = NOp})
   , (("|", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (BitOp (.|.))})
   , (("&", Ar2), Op{precedence = 4, associativity = L, oexec = FnOp (BitOp (.&.))})
-  , (("==", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (CmpOp (==))})
-  , (("<=", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (CmpOp (<=))})
-  , ((">=", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (CmpOp (>=))})
-  , (("!=", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (CmpOp (/=))})
-  , (("<", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (CmpOp (<))})
-  , ((">", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (CmpOp (>))})
+  , (("==", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp eq)})
+  , (("===", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp $ const (==))})
+  , (("<=", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (<=))})
+  , ((">=", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (>=))})
+  , (("!=", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp neq)})
+  , (("!==", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp $ const (/=))})
+  , (("<", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (<))})
+  , ((">", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (>))})
   , (("<<", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (BitOp \n s -> shift n (fromInteger s))})
   , ((">>", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (BitOp \n s -> shift n ((-1) * fromInteger s))})
   , (("+", Ar2), Op{precedence = 7, associativity = L, oexec = FnOp (MathOp $ fmath (+))})
@@ -58,6 +60,12 @@ operators =
   , (("|>", Ar2), Op{precedence = 12, associativity = L, oexec = NOp})
   , (("::=", Ar2), Op{precedence = 13, associativity = R, oexec = NOp})
   ]
+
+eq :: Int -> Complex Rational -> Complex Rational -> Bool
+eq pr a b = let small = 10 ^^ (-pr) in abs (realPart a - realPart b) < small && abs (imagPart a - imagPart b) < small
+
+neq :: Int -> Complex Rational -> Complex Rational -> Bool
+neq pr a b = let small = 10 ^^ (-pr) in abs (realPart a - realPart b) > small || abs (imagPart a - imagPart b) > small
 
 opMember :: Text -> Bool
 opMember op = M.member (op, Ar2) operators || M.member (op, Ar1) unaryOperators
@@ -99,12 +107,14 @@ functions =
   , (("opt", ArFixed 1), defaultFun)
   , (("opt", ArFixed 2), defaultFun)
   , (("neg", ArFixed 1), defaultFun)
-  , (("lt", ArFixed 2), defaultFun{fexec = FnFn (CmpFn (<))})
-  , (("gt", ArFixed 2), defaultFun{fexec = FnFn (CmpFn (>))})
-  , (("eq", ArFixed 2), defaultFun{fexec = FnFn (CmpFn (==))})
-  , (("ne", ArFixed 2), defaultFun{fexec = FnFn (CmpFn (/=))})
-  , (("le", ArFixed 2), defaultFun{fexec = FnFn (CmpFn (<=))})
-  , (("ge", ArFixed 2), defaultFun{fexec = FnFn (CmpFn (>=))})
+  , (("lt", ArFixed 2), defaultFun{fexec = FnFn (OrdFn (<))})
+  , (("gt", ArFixed 2), defaultFun{fexec = FnFn (OrdFn (>))})
+  , (("eq", ArFixed 2), defaultFun{fexec = FnFn (EqFn eq)})
+  , (("ne", ArFixed 2), defaultFun{fexec = FnFn (EqFn neq)})
+  , (("eqs", ArFixed 2), defaultFun{fexec = FnFn (EqFn $ const (==))})
+  , (("nes", ArFixed 2), defaultFun{fexec = FnFn (EqFn $ const (/=))})
+  , (("le", ArFixed 2), defaultFun{fexec = FnFn (OrdFn (<=))})
+  , (("ge", ArFixed 2), defaultFun{fexec = FnFn (OrdFn (>=))})
   , (("sin", ArFixed 1), defaultFun{fexec = FnFn (MathFn1 sin)})
   , (("cos", ArFixed 1), defaultFun{fexec = FnFn (MathFn1 cos)})
   , (("asin", ArFixed 1), defaultFun{fexec = FnFn (MathFn1 asin)})

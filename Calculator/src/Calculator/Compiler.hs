@@ -23,7 +23,7 @@ import Calculator.Types (
   Fun (fexec),
   FunFun (..),
   FunMap,
-  FunOp (BitOp, CmpOp, MathOp),
+  FunOp (BitOp, EqOp, MathOp, OrdOp),
   Maps (..),
   Op (oexec),
   OpArity (..),
@@ -427,7 +427,10 @@ run m = do
                in do
                     v1 <- pop
                     case fexec fun of
-                      FnFn (CmpFn f) -> do
+                      FnFn (EqFn f) -> do
+                        v2 <- pop
+                        push (if f 16 (value v2) (value v1) then unitlessValue (1 :+ 0) else unitlessValue (0 :+ 0))
+                      FnFn (OrdFn f) -> do
                         v2 <- pop
                         push (if f (realValue v2) (realValue v1) then unitlessValue (1 :+ 0) else unitlessValue (0 :+ 0))
                       FnFn (FracFn1 f) -> do
@@ -458,7 +461,9 @@ run m = do
                           push . unitlessValue $ value v2 `fmod` value v1
                       | otherwise ->
                           case oexec op of
-                            FnOp (CmpOp o) -> do
+                            FnOp (EqOp o) -> do
+                              push (if o 16 (value v2) (value v1) then unitlessValue (1 :+ 0) else unitlessValue (0 :+ 0))
+                            FnOp (OrdOp o) -> do
                               push (if o (realValue v2) (realValue v1) then unitlessValue (1 :+ 0) else unitlessValue (0 :+ 0))
                             FnOp (MathOp o) -> do
                               push . unitlessValue $ o (value v2) (value v1)

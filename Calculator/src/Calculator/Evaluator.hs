@@ -230,25 +230,25 @@ evalS ex = case ex of
       else createVar f e >>= throwMsg
   Asgn [s] [Id "undef"] -> evm (Call "undef" [Id s])
   Asgn [s] [Lambda a e] -> evm (UDF s a e)
-  Asgn ss [Call "ret" es] -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
-  Asgn ss [Call f ps] | M.member (f, ArFixed . length $ ps) functions -> do
+  Asgn ss [Call "ret" es] -> zipWithM createVar ss es >>= throwMsgConcat
+  Asgn ss [call@(Call f ps)] | M.member (f, ArFixed . length $ ps) functions -> do
     let fun = functions M.! (f, ArFixed . length $ ps)
     case fexec fun of
       FnFn (MultiFn fn) -> do
         args <- map (\(r :+ i) -> Number r i Unitless) . fn . map value <$> mapM evm ps
-        zipWithM createVar ss args >>= throwMsg . T.intercalate "\n"
-      ExFn (Call "ret" es) -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
-      _ -> throwErr "Unsupported assignment"
+        zipWithM createVar ss args >>= throwMsgConcat
+      ExFn (Call "ret" es) -> zipWithM createVar ss es >>= throwMsgConcat
+      _ -> createVar (head ss) call >>= throwMsg
   Asgn ss whole@[Call name e] -> do
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
       Just Fun{params = al, fexec = ExFn expr@(Call "ret" _)} -> do
         case substitute (("#v.n", unitlessNumber . fromIntegral . length $ e) : turboZip al e) expr of
           Left txt -> throwErr txt
-          Right (Call "ret" es) -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
+          Right (Call "ret" es) -> zipWithM createVar ss es >>= throwMsgConcat
           Right e2 -> createVar (head ss) e2 >>= throwMsg
-      _ -> zipWithM createVar ss whole >>= throwMsg . T.intercalate "\n"
-  Asgn ss es -> zipWithM createVar ss es >>= throwMsg . T.intercalate "\n"
+      _ -> zipWithM createVar ss whole >>= throwMsgConcat
+  Asgn ss es -> zipWithM createVar ss es >>= throwMsgConcat
   UDF f [s] (Call "df" [e, Id x]) | s == x -> do
     let de = derivative e (Id x)
     either throwErr (evm . UDF f [s]) de
@@ -489,8 +489,10 @@ evalS ex = case ex of
   Call "ret" (e : _) -> evm e
   Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
     let builtin_fun = functions M.! (f, ArFixed . length $ ps)
+    pr <- use prec
     case fexec builtin_fun of
-      FnFn (CmpFn fun) -> cmp fun (head ps) (ps !! 1)
+      FnFn (EqFn fun) -> eq pr fun (head ps) (ps !! 1)
+      FnFn (OrdFn fun) -> cmp fun (head ps) (ps !! 1)
       FnFn (IntFn1 fun) -> evalInt1 fun (head ps)
       FnFn (IntFn2 fun) -> evalInt fun (head ps) (ps !! 1)
       FnFn (BitFn fun) -> evalBit fun (head ps)
@@ -557,6 +559,7 @@ evalS ex = case ex of
     r <- evm e
     maps . varmap . at f ?= r
     pure $ (if "c." `T.isPrefixOf` f then "Constant " else "Variable ") <> f <> "=" <> showValue r
+  throwMsgConcat = throwMsg . T.intercalate "\n"
   removeVar f =
     if M.member f defVar
       then throwErr "Can't remove that"
@@ -578,8 +581,10 @@ evalS ex = case ex of
       _ -> throwErr "Misteriously missing operator"
   evalBuiltinOp2 bop x y = do
     let builtin_op = operators M.! bop
+    pr <- use prec
     case oexec builtin_op of
-      FnOp (CmpOp fun) -> cmp fun x y
+      FnOp (OrdOp fun) -> cmp fun x y
+      FnOp (EqOp fun) -> eq pr fun x y
       FnOp (MathOp fun) -> do
         v1 <- evm x
         v2 <- evm y
@@ -593,13 +598,14 @@ evalS ex = case ex of
       ExOp e -> evm e
       _ -> throwErr "Misteriously missing operator"
   tooBig = 2 ^ (8000000 :: Integer) :: Rational
+  eq pr fun x y = do
+    n <- evm x
+    n1 <- evm y
+    pure . unitlessValue . (:+ 0) $ if fun pr (value n) (value n1) then 1 else 0
   cmp fun x y = do
     n <- evm x
     n1 <- evm y
-    pure $
-      if fun (realValue n) (realValue n1)
-        then unitlessValue $ 1 :+ 0
-        else unitlessValue $ 0 :+ 0
+    pure . unitlessValue . (:+ 0) $ if fun (realValue n) (realValue n1) then 1 else 0
   bitEval op x y = do
     n <- evm x
     n1 <- evm y

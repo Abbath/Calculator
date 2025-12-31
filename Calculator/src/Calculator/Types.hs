@@ -431,7 +431,8 @@ instance FromJSON Expr
 type ListTuple = ([(Text, (Rational, Rational))], [((Text, Arity), ([Text], Expr))], [((Text, OpArity), ((Int, Assoc), Expr))])
 
 data FunFun
-  = CmpFn (Rational -> Rational -> Bool)
+  = EqFn (Int -> Complex Rational -> Complex Rational -> Bool)
+  | OrdFn (Rational -> Rational -> Bool)
   | FracFn1 (Complex Rational -> Complex Rational)
   | MathFn1 (Complex Precise -> Complex Precise)
   | MathFn2 (Complex Rational -> Complex Rational -> Complex Rational)
@@ -442,7 +443,8 @@ data FunFun
   | MultiFn ([Complex Rational] -> [Complex Rational])
 
 instance Show FunFun where
-  show (CmpFn _) = "CmpFn"
+  show (EqFn _) = "EqFn"
+  show (OrdFn _) = "EqFn"
   show (FracFn1 _) = "FracFn1"
   show (MathFn1 _) = "MathFn1"
   show (MathFn2 _) = "MathFn2"
@@ -453,7 +455,8 @@ instance Show FunFun where
   show (MultiFn _) = "MultiFn"
 
 instance Show FunOp where
-  show (CmpOp _) = "CmpOp"
+  show (EqOp _) = "CmpOp"
+  show (OrdOp _) = "CmpOp"
   show (MathOp _) = "MathOp"
   show (BitOp _) = "BitOp"
   show (UnOp _) = "UnOp"
@@ -462,7 +465,7 @@ data ExecFn = NFn | ExFn Expr | FnFn FunFun deriving (Show)
 
 data ExecOp = NOp | ExOp Expr | FnOp FunOp | AOp Text deriving (Show)
 
-data FunOp = CmpOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer) | UnOp (Integer -> Integer)
+data FunOp = EqOp (Int -> Complex Rational -> Complex Rational -> Bool) | OrdOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer) | UnOp (Integer -> Integer)
 
 data Fun = Fun
   { params :: [Text]
