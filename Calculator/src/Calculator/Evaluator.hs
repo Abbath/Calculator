@@ -23,6 +23,7 @@ import Calculator.Generator
 import Calculator.Types (
   Arity (ArFixed, ArVar),
   Assoc (..),
+  ChLit (..),
   Chair,
   ChairVal (..),
   EvalState (..),
@@ -94,6 +95,7 @@ import Data.Ratio (numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Metrics (damerauLevenshteinNorm)
+import Data.Vector qualified as V
 import GHC.IsList qualified
 import Numeric (showBin, showHex, showInt, showOct)
 import System.Random (Random (randomR))
@@ -418,6 +420,9 @@ evalS ex = case ex of
       Just ch -> case extractChair xs ch of
         Nothing -> throwErr "No such key"
         Just (DickVal v) -> evm $ Call ":=" [Id x, Number (realValue v) (imagValue v) (unit v)]
+        Just val@(ForkVal v) -> do
+          maps . chairmap . at x ?= M.singleton "a" val
+          throwMsg "Sittong chair"
         Just (PikeVal v) -> do
           maps . chairmap . at x ?= v
           throwMsg "Sitting chair"
@@ -536,6 +541,7 @@ evalS ex = case ex of
       Just ch -> case extractChair xs ch of
         Nothing -> throwErr "No such key!"
         Just (DickVal d) -> pure d
+        Just (ForkVal d) -> throwMsg $ "{" <> (T.intercalate "," . map showValue $ V.toList d) <> "}"
         Just (PikeVal d) -> throwMsg $ showChair d
   Number x xi u -> pure $ expandUnits $ Value (x :+ xi) u
   Par e -> evm e
@@ -544,8 +550,11 @@ evalS ex = case ex of
   Label _ -> throwErr "Label are not supported in this mode!"
   Lambda _ _ -> pure . unitlessValue $ 0 :+ 0
  where
-  evalChairLit :: [(Text, Expr)] -> Result [(Text, ChairVal)]
-  evalChairLit = mapM \(k, v) -> (k,) . DickVal <$> evm v
+  evalChairLit :: ChLit -> Result [(Text, ChairVal)]
+  evalChairLit (ChMap m) = mapM (\(k, v) -> (k,) . DickVal <$> evm v) m
+  evalChairLit (ChArr m) = do
+    vs <- mapM evm m
+    pure [("a", ForkVal (V.fromList vs))]
   extractId s = do
     chairs <- use $ maps . chairmap
     vars <- use $ maps . varmap
@@ -591,9 +600,10 @@ evalS ex = case ex of
         if not $ checkUnitCompatibility (fst bop) v1 v2
           then throwErr "Incompatible units"
           else
-            if unit v1 == UProd [SUnit "m" 1] && fst bop == "^" && unit v2 == Unitless && value v2 `elem` ([2 :+ 0, 3 :+ 0] :: [Complex Rational])
-              then pure $ Value (fun (value v1) (value v2)) (UProd [SUnit "m" (fromIntegral . numerator . realValue $ v2)])
-              else pure $ Value (fun (value v1) (value v2)) (combineUnits (fst bop) (unit v1) (unit v2))
+            pure $
+              if unit v1 == UProd [SUnit "m" 1] && fst bop == "^" && unit v2 == Unitless && value v2 `elem` ([2 :+ 0, 3 :+ 0] :: [Complex Rational])
+                then Value (fun (value v1) (value v2)) (UProd [SUnit "m" (fromIntegral . numerator . realValue $ v2)])
+                else Value (fun (value v1) (value v2)) (combineUnits (fst bop) (unit v1) (unit v2))
       FnOp (BitOp fun) -> unitlessValue . (:+ 0) <$> bitEval fun x y
       ExOp e -> evm e
       _ -> throwErr "Misteriously missing operator"
@@ -601,11 +611,11 @@ evalS ex = case ex of
   eq pr fun x y = do
     n <- evm x
     n1 <- evm y
-    pure . unitlessValue . (:+ 0) $ if fun pr (value n) (value n1) then 1 else 0
+    pure . unitlessValue . (:+ 0) . fromIntegral . fromEnum $ fun pr (value n) (value n1)
   cmp fun x y = do
     n <- evm x
     n1 <- evm y
-    pure . unitlessValue . (:+ 0) $ if fun (realValue n) (realValue n1) then 1 else 0
+    pure . unitlessValue . (:+ 0) . fromIntegral . fromEnum $ fun (realValue n) (realValue n1)
   bitEval op x y = do
     n <- evm x
     n1 <- evm y
@@ -649,6 +659,9 @@ evalS ex = case ex of
   extractChair (x : xs) ch = case M.lookup x ch of
     Nothing -> Nothing
     Just val@(DickVal v) -> Just val
+    Just (ForkVal v) -> case xs of
+      [n] -> Just (DickVal (v V.! read (T.unpack n)))
+      _ -> Nothing
     Just val@(PikeVal v) -> case xs of
       [] -> Just val
       _ -> extractChair xs v
@@ -661,6 +674,7 @@ evalS ex = case ex of
         _ -> case M.lookup x ch of
           Nothing -> ch
           Just (DickVal _) -> ch
+          Just (ForkVal _) -> ch
           Just (PikeVal ch1) -> M.insert x (PikeVal (sitChair xs value ch1)) ch
       else case xs of
         [] -> M.insert x value ch

@@ -10,6 +10,7 @@ import Calculator.Builtins (maxPrecedence)
 import Calculator.Lexer (tloop)
 import Calculator.Types (
   Assoc (..),
+  ChLit (..),
   Expr (..),
   Maps,
   Op (Op, associativity, precedence),
@@ -262,13 +263,19 @@ imprtStmt = do
 
 keyValuePair :: Maps -> Parser (Text, Expr)
 keyValuePair m = do
-  i <- identifier
+  i <- identifier <|> (showT <$> number)
   void $ parseIf "=>" (== TOp "=>")
   e <- expr 0.0 m
   pure (i, e)
 
 keyValuePairs :: Maps -> Parser [(Text, Expr)]
 keyValuePairs = flip sepBy comma . keyValuePair
+
+values :: Maps -> Parser [Expr]
+values = flip sepBy comma . expr 0.0
+
+someBullshit :: Maps -> Parser ChLit
+someBullshit m = (ChMap <$> keyValuePairs m) <|> (ChArr <$> values m)
 
 eid :: Parser Expr
 eid = Id <$> identifier
@@ -310,10 +317,10 @@ expr min_bp m = Parser $
           (inputUncons -> Just (TComma, _)) -> Left "Argument list without a function name"
           _ -> Left "No closing parenthesis"
       TLBrace -> do
-        (i, e) <- runParser (keyValuePairs m) ts
+        (i, e) <- runParser (someBullshit m) ts
         case i of
           (inputUncons -> Just (TRBrace, i1)) -> inner_loop (ChairLit e) i1
-          _ -> Left "No closing brace"
+          whatever -> Left ("No closing brace" <> showT whatever)
       TRBrace -> Left "No opening brace"
       TRBracket -> Left "No opening bracket"
       TRPar -> Left "No opening parenthesis"

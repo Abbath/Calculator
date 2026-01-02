@@ -78,6 +78,7 @@ module Calculator.Types (
   showMultipleOfPi,
   showDegMinSec,
   defaultFun,
+  ChLit (..),
 )
 where
 
@@ -98,6 +99,7 @@ import Data.Scientific qualified as S
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Vector qualified as V
 import GHC.Generics (Generic)
 import GHC.Real (Ratio (..))
 import Numeric (showBin, showHex, showOct)
@@ -180,7 +182,7 @@ imagValue (Value v _) = imagPart v
 renderUnit :: Unit -> Text
 renderUnit u = case u of
   Unitless -> ""
-  (UProd us) -> T.concat (map (\(SUnit n p) -> n <> "^" <> showT p) us)
+  UProd us -> T.concat (map (\(SUnit n p) -> n <> "^" <> showT p) us)
 
 combineUnits :: Text -> Unit -> Unit -> Unit
 combineUnits op u1 u2 = case op of
@@ -209,7 +211,7 @@ divideUnits u1 Unitless = u1
 divideUnits Unitless u2 = invertUnit u2
 divideUnits (UProd u1) u2 = case invertUnit u2 of
   Unitless -> UProd u1
-  (UProd u3) -> simplifyUnit $ UProd (u1 <> u3)
+  UProd u3 -> simplifyUnit $ UProd (u1 <> u3)
 
 -- Invert a unit (negate all powers)
 invertUnit :: Unit -> Unit
@@ -326,8 +328,8 @@ showDegMinSec (Value (r :+ _) _) =
 
 showMultipleOfPi :: Value -> Text
 showMultipleOfPi v = case v of
-  (Value cr Unitless) -> smp cr
-  (Value cr u) -> smp cr <> "@" <> renderUnit u
+  Value cr Unitless -> smp cr
+  Value cr u -> smp cr <> "@" <> renderUnit u
  where
   smp x =
     let y = realPart x / toRational (pi :: Precise)
@@ -391,9 +393,11 @@ isSpaceFun _ = False
 
 data Assoc = L | R | N deriving (Show, Read, Eq, Ord, Enum, Generic, ToJSON, FromJSON)
 
+data ChLit = ChMap [(Text, Expr)] | ChArr [Expr] deriving (Show, Read, Eq, Generic, ToJSON, FromJSON)
+
 data Expr
   = Number Rational Rational Unit
-  | ChairLit [(Text, Expr)]
+  | ChairLit ChLit
   | ChairSit Text [Text]
   | Imprt Text
   | Asgn [Text] [Expr]
@@ -484,7 +488,7 @@ data Op = Op
   deriving (Show)
 
 type Chair = Map Text ChairVal
-data ChairVal = DickVal Value | PikeVal Chair deriving (Show)
+data ChairVal = DickVal Value | ForkVal (V.Vector Value) | PikeVal Chair deriving (Show)
 
 data Arity = ArFixed Int | ArVar Int deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 data OpArity = Ar1 | Ar2 deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
@@ -550,7 +554,8 @@ exprToString ex = case ex of
   Seq es -> T.intercalate "\n" (map exprToString es)
   Imprt t -> "import " <> t
   Label l -> l <> ":"
-  ChairLit xs -> "{" <> T.intercalate ", " (map (\(key, value) -> key <> " => " <> exprToString value) xs) <> "}"
+  ChairLit (ChMap xs) -> "{" <> T.intercalate ", " (map (\(key, value) -> key <> " => " <> exprToString value) xs) <> "}"
+  ChairLit (ChArr xs) -> "{" <> T.intercalate ", " (map exprToString xs) <> "}"
   ChairSit a x -> a <> "[" <> T.intercalate "," x <> "]"
   Lambda a e -> "(" <> T.intercalate ", " a <> ") -> " <> exprToString e
   _ -> "Error: no such expression is possible"
@@ -614,6 +619,7 @@ showChair :: Chair -> Text
 showChair ch = "{" <> T.intercalate ", " (map (\(k, v) -> k <> " => " <> showElem v) . M.toList $ ch) <> "}"
  where
   showElem (DickVal v) = showValue v
+  showElem (ForkVal v) = V.foldl' (<>) T.empty $ showValue <$> v
   showElem (PikeVal v) = showChair v
 
 numToText :: Value -> Either Text Text
