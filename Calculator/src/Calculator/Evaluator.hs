@@ -534,6 +534,11 @@ evalS ex = case ex of
     pure . unitlessValue . (:+ 0) . toRational $ randomNumber
   Id s -> extractId s >>= maybe (throwErr $ "No such variable : " <> s) pure
   ChairLit _ -> pure $ unitlessValue (0 :+ 0)
+  ChairSit a [] -> do
+    val <- use $ maps . chairmap . at a
+    case val of
+      Nothing -> throwErr "No such chair!"
+      Just ch -> throwMsg $ showChair ch
   ChairSit a xs -> do
     val <- use $ maps . chairmap . at a
     case val of

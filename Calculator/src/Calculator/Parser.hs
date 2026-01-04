@@ -263,19 +263,21 @@ imprtStmt = do
 
 keyValuePair :: Maps -> Parser (Text, Expr)
 keyValuePair m = do
-  i <- identifier <|> (showT <$> number)
+  i <- identifier
   void $ parseIf "=>" (== TOp "=>")
   e <- expr 0.0 m
   pure (i, e)
 
 keyValuePairs :: Maps -> Parser [(Text, Expr)]
-keyValuePairs = flip sepBy comma . keyValuePair
-
-values :: Maps -> Parser [Expr]
-values = flip sepBy comma . expr 0.0
+keyValuePairs = flip sepBy comma . (\m -> keyValuePair m <|> (("",) <$> expr 0.0 m))
 
 someBullshit :: Maps -> Parser ChLit
-someBullshit m = (ChMap <$> keyValuePairs m) <|> (ChArr <$> values m)
+someBullshit m = do
+  stuff <- keyValuePairs m
+  pure $
+    if all ((== "") . fst) stuff
+      then ChArr (map snd stuff)
+      else ChMap stuff
 
 eid :: Parser Expr
 eid = Id <$> identifier
@@ -304,7 +306,7 @@ expr min_bp m = Parser $
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts
           inner_loop (Call a e) i
         Just TLBracket -> do
-          (i, e) <- runParser (brackets (sepBy identifier comma)) ts
+          (i, e) <- runParser (brackets (sepBy (identifier <|> (showT . numerator . fst <$> number)) comma)) ts
           inner_loop (ChairSit a e) i
         Just x | isSpaceFun x -> do
           (i, e) <- runParser (many (eid <|> enumber <|> parens (expr 0.0 m))) ts
@@ -320,7 +322,7 @@ expr min_bp m = Parser $
         (i, e) <- runParser (someBullshit m) ts
         case i of
           (inputUncons -> Just (TRBrace, i1)) -> inner_loop (ChairLit e) i1
-          whatever -> Left ("No closing brace" <> showT whatever)
+          whatever -> Left ("No closing brace " <> renderTokens (inputTok whatever))
       TRBrace -> Left "No opening brace"
       TRBracket -> Left "No opening bracket"
       TRPar -> Left "No opening parenthesis"

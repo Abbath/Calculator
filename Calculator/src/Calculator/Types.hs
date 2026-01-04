@@ -619,7 +619,7 @@ showChair :: Chair -> Text
 showChair ch = "{" <> T.intercalate ", " (map (\(k, v) -> k <> " => " <> showElem v) . M.toList $ ch) <> "}"
  where
   showElem (DickVal v) = showValue v
-  showElem (ForkVal v) = V.foldl' (<>) T.empty $ showValue <$> v
+  showElem (ForkVal v) = "{" <> T.intercalate "," (showValue <$> V.toList v) <> "}"
   showElem (PikeVal v) = showChair v
 
 numToText :: Value -> Either Text Text
