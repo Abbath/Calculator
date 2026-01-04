@@ -2,7 +2,7 @@
 
 module Calculator.Opts.Dis where
 
-import Calculator (Mode (..), parseEval)
+import Calculator (parseEval)
 import Calculator.Builtins (defaultEvalState)
 import Calculator.Evaluator (MessageType (..))
 import Calculator.Types (EvalState (..), showValue)
@@ -50,7 +50,7 @@ eventHandler mes event = case event of
     liftIO . TSIO.putStrLn $ "[" <> (TS.pack . show $ messageTimestamp m) <> "] " <> userName (messageAuthor m) <> ": " <> TS.dropWhile (not . isSpace) (messageContent m)
     void $ restCall (R.CreateReaction (messageChannelId m, messageId m) "eyes")
     es <- takeMVar mes
-    let res = parseEval Internal es (TS.dropWhile (not . isSpace) $ messageContent m)
+    let res = parseEval es (TS.dropWhile (not . isSpace) $ messageContent m)
     case res of
       Left (MsgMsg msg, nes) -> do
         putMVar mes nes

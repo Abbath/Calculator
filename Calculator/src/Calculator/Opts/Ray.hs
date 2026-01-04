@@ -3,7 +3,7 @@
 
 module Calculator.Opts.Ray where
 
-import Calculator (Mode (..), parseEval)
+import Calculator (parseEval)
 import Calculator.Builtins (defaultEvalState)
 import Calculator.Evaluator (MessageType (..))
 import Calculator.Types (EvalState (..), showValue)
@@ -115,7 +115,7 @@ raylibLoop' = do
       forM_ (zip rt [0 ..]) (\(r, i) -> RL.drawText (TS.unpack r) 15 (fontSize + 12 + i * (fontSize + 2)) fontSize RL.lightGray)
     when ep $ do
       es <- use estate
-      let y = parseEval Internal es pr
+      let y = parseEval es pr
       let (res, es1) = case y of
             Right (r, es0) -> (showValue r, es0)
             Left (ErrMsg m, _) -> (m, es)

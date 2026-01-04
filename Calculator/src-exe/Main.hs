@@ -3,7 +3,6 @@ module Main where
 
 import Calculator
     ( CompileMode(CompRead, CompLoad, CompStore),
-      Mode(Internal),
       compileAndRunFile,
       evalLoop,
       evalFile,
@@ -85,12 +84,12 @@ main = do
         _ -> CompRead
     | otherwise -> do
       case map toLower $ frontend opts2 of
-        "c"  -> evalLoop Internal
-        "w"  -> webLoop (port opts2) Internal
+        "c"  -> evalLoop 
+        "w"  -> webLoop (port opts2) 
 #ifdef TELEGRAM
-        "t"  -> telegramSimple Internal
+        "t"  -> telegramSimple 
 #endif
-        _    -> webLoop (port opts2) Internal
+        _    -> webLoop (port opts2) 
       where opts = info (helper <*> options)
               ( fullDesc
                 <> progDesc "Reads a character string and prints the result of calculation"

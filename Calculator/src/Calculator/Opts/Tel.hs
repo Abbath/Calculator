@@ -2,7 +2,7 @@
 
 module Calculator.Opts.Tel where
 
-import Calculator (Mode (..), parseEval)
+import Calculator (parseEval)
 import Calculator.Builtins (defaultEvalState)
 import Calculator.Evaluator (MessageType (..))
 import Calculator.Types (EvalState (..), showValue)
@@ -32,12 +32,12 @@ data Action
   deriving (Show)
 
 -- | Bot application.
-bot :: Mode -> StdGen -> BotApp Model Action
-bot mode gen =
+bot :: StdGen -> BotApp Model Action
+bot gen =
   BotApp
     { botInitialModel = Model defaultEvalState{_gen = gen}
     , botAction = flip handleUpdate
-    , botHandler = handleAction mode
+    , botHandler = handleAction
     , botJobs = []
     }
 
@@ -48,9 +48,9 @@ handleUpdate :: Model -> Telegram.Update -> Maybe Action
 handleUpdate _ = parseUpdate (Reply <$> Telegram.Bot.Simple.UpdateParser.text)
 
 -- | How to handle 'Action's.
-handleAction :: Mode -> Action -> Model -> Eff Action Model
-handleAction _ NoAction model = pure model
-handleAction mode (Reply msg) model =
+handleAction :: Action -> Model -> Eff Action Model
+handleAction NoAction model = pure model
+handleAction (Reply msg) model =
   model2 <# do
     replyText $ case response of
       MsgMsg mmsg -> mmsg
@@ -63,15 +63,15 @@ handleAction mode (Reply msg) model =
       either
         Prelude.id
         (first (MsgMsg . showValue))
-        (let (EvalState mps rgen pr) = getMaps model in parseEval mode (EvalState mps rgen pr) msg)
+        (let (EvalState mps rgen pr) = getMaps model in parseEval (EvalState mps rgen pr) msg)
 
 -- | Run bot with a given 'Telegram.Token'.
-run :: Mode -> Telegram.Token -> IO ()
-run mode token = do
+run :: Telegram.Token -> IO ()
+run token = do
   g <- initStdGen
   env <- Telegram.defaultTelegramClientEnv token
-  startBot_ (conversationBot Telegram.updateChatId (bot mode g)) env
+  startBot_ (conversationBot Telegram.updateChatId (bot g)) env
 
 -- | Run bot using 'Telegram.Token' from @TELEGRAM_BOT_TOKEN@ environment.
-telegramSimple :: Mode -> IO ()
-telegramSimple mode = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run mode
+telegramSimple :: IO ()
+telegramSimple = getEnvToken "TELEGRAM_BOT_TOKEN" >>= run

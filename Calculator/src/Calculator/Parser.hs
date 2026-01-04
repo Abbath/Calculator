@@ -276,8 +276,8 @@ someBullshit m = do
   stuff <- keyValuePairs m
   pure $
     if all ((== "") . fst) stuff
-      then ChArr (map snd stuff)
-      else ChMap stuff
+      then ChArr $ map snd stuff
+      else ChMap $ filter ((/= "") . fst) stuff
 
 eid :: Parser Expr
 eid = Id <$> identifier

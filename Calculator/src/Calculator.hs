@@ -4,7 +4,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Calculator (
-  Mode (..),
   CompileMode (..),
   evalLoop,
   webLoop,
@@ -96,11 +95,8 @@ import System.FilePath (replaceExtension)
 import System.Random (initStdGen, randomIO)
 import Text.Read (readMaybe)
 
-data Mode = Internal deriving (Show)
-
-parseString :: Mode -> TS.Text -> Maps -> Either TS.Text Expr
-parseString m s ms = case m of
-  Internal -> tloop s >>= P.parse ms
+parseString :: TS.Text -> Maps -> Either TS.Text Expr
+parseString s ms = tloop s >>= P.parse ms
 
 evalExprS :: Either TS.Text Expr -> EvalState -> Either (MessageType, EvalState) (Value, EvalState)
 evalExprS t es = either (Left . (,es) . ErrMsg) ((\(r, s) -> either (Left . (,s)) (Right . (,s)) r) . getShit) t
@@ -130,8 +126,8 @@ replSettings =
 extractNames :: Maps -> [String]
 extractNames ms = map TS.unpack $ map fst (M.keys (ms ^. opmap)) <> M.keys (ms ^. varmap) <> map fst (M.keys (ms ^. funmap))
 
-loop :: Mode -> Maps -> IO ()
-loop mode mps = do
+loop :: Maps -> IO ()
+loop mps = do
   g <- initStdGen
   hd <- getHomeDirectory
   x <-
@@ -139,70 +135,70 @@ loop mode mps = do
       flip S.evalStateT [] $
         runInputT
           (replSettings{historyFile = Just (hd ++ "/.mycalchist")})
-          (loop' mode (EvalState mps g 16))
+          (loop' (EvalState mps g 16))
   case x of
     Left (CE.ErrorCall s) -> do
       putStrLn s
-      Calculator.loop mode mps
+      Calculator.loop mps
     Right _ -> pure ()
  where
   removeLocals = varmap %~ M.filterWithKey \k v -> not $ "_." `TS.isInfixOf` k
-  loop' :: Mode -> EvalState -> InputT (StateT StateData IO) ()
-  loop' md es = do
+  loop' :: EvalState -> InputT (StateT StateData IO) ()
+  loop' es = do
     S.lift $ S.modify \s -> s `union` extractNames (es ^. maps)
     input <- getInputLine "> "
     case input of
       Nothing -> pure ()
       Just "quit" -> pure ()
-      Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' md es) . withInterrupt $ do
-        let y = parseEval md es (TS.pack x)
+      Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' es) . withInterrupt $ do
+        let y = parseEval es (TS.pack x)
         case y of
           Left (err, EvalState m ng pr) -> do
             let m' = removeLocals m
             case err of
               CmdMsg (Cmd filename) -> do
-                nes <- liftIO $ interpret (TS.unpack filename) md m
-                loop' md nes
+                nes <- liftIO $ interpret (TS.unpack filename) m
+                loop' nes
               MsgMsg msg -> do
                 liftIO . TSIO.putStrLn $ msg
-                loop' md (EvalState m' ng pr)
+                loop' (EvalState m' ng pr)
               ErrMsg emsg -> do
                 liftIO . TSIO.putStrLn $ "Error: " <> emsg
-                loop' md (EvalState m' ng pr)
+                loop' (EvalState m' ng pr)
           Right (r, EvalState m ng pr) -> do
             let m' = removeLocals m
             liftIO . TSIO.putStrLn . showValue $ r
-            loop' md (EvalState (m' & varmap %~ M.insert "_" r) ng pr)
+            loop' (EvalState (m' & varmap %~ M.insert "_" r) ng pr)
 
-interpret :: FilePath -> Mode -> Maps -> IO EvalState
-interpret path mode mps = do
+interpret :: FilePath -> Maps -> IO EvalState
+interpret path mps = do
   g <- initStdGen
   source <- TS.lines <$> TSIO.readFile path
-  x <- CE.try $ flip S.evalStateT [] $ loop' source mode (EvalState mps g 16)
+  x <- CE.try $ flip S.evalStateT [] $ loop' source (EvalState mps g 16)
   case x of
     Left (CE.ErrorCall s) -> do
       putStrLn s
       exitWith (ExitFailure 1)
     Right es -> pure es
  where
-  loop' :: [TS.Text] -> Mode -> EvalState -> StateT StateData IO EvalState
-  loop' [] _ es = pure es
-  loop' src@(l : ls) md es = do
+  loop' :: [TS.Text] -> EvalState -> StateT StateData IO EvalState
+  loop' [] es = pure es
+  loop' src@(l : ls) es = do
     S.modify \s -> s `union` extractNames (es ^. maps)
     case l of
       "quit" -> pure es
       x -> do
-        let y = parseEval md es x
+        let y = parseEval es x
         case y of
           Left (err, nes) -> do
             liftIO . TSIO.putStrLn $ case err of
               MsgMsg msg -> msg
               ErrMsg emsg -> "Error: " <> emsg
               _ -> "Can't do"
-            loop' ls md nes
+            loop' ls nes
           Right (r, EvalState m ng pr) -> do
             liftIO . TSIO.putStrLn $ showValue r
-            loop' ls md (EvalState (m & varmap %~ M.insert "_" r) ng pr)
+            loop' ls (EvalState (m & varmap %~ M.insert "_" r) ng pr)
 
 data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
@@ -230,7 +226,7 @@ compileAndRun path mode mps = case mode of
  where
   loop' :: [TS.Text] -> Maps -> StateT [Expr] IO ()
   loop' [] _ = S.modify reverse
-  loop' (l : ls) ms = case parseString Internal l ms of
+  loop' (l : ls) ms = case parseString l ms of
     Left err -> do
       liftIO $ TSIO.putStrLn err
     Right res -> case res of
@@ -272,14 +268,14 @@ compileAndRun path mode mps = case mode of
 compileAndRunFile :: FilePath -> CompileMode -> IO ()
 compileAndRunFile f cm = compileAndRun f cm defaultMaps
 
-parseEval :: Mode -> EvalState -> TS.Text -> Either (MessageType, EvalState) (Value, EvalState)
-parseEval md es x = evalExprS (parseString md x (es ^. maps)) es
+parseEval :: EvalState -> TS.Text -> Either (MessageType, EvalState) (Value, EvalState)
+parseEval es x = evalExprS (parseString x (es ^. maps)) es
 
-evalLoop :: Mode -> IO ()
-evalLoop m = Calculator.loop m defaultMaps
+evalLoop :: IO ()
+evalLoop = Calculator.loop defaultMaps
 
 evalFile :: FilePath -> IO EvalState
-evalFile f = Calculator.interpret f Internal defaultMaps
+evalFile f = Calculator.interpret f defaultMaps
 
 logName :: (Semigroup a, IsString a) => a -> a
 logName lname = "log" <> lname <> ".dat"
@@ -308,8 +304,8 @@ updateIDS i = do
           then map (\(a, b) -> if b == i then (tm, i) else (a, b)) ids
           else (tm, i) : filter (\(a, _) -> tm - a < 60 * 60) ids
 
-webLoop :: Int -> Mode -> IO ()
-webLoop port mode = do
+webLoop :: Int -> IO ()
+webLoop port = do
   ref <- initStdGen >>= newIORef
   WS.scotty port $ do
     WS.middleware $ NWMS.staticPolicy (NWMS.noDots NWMS.>-> NWMS.addBase "Static/images")
@@ -356,7 +352,7 @@ webLoop port mode = do
                   listsToMaps
                   (decode (B.fromStrict env) :: Maybe ListTuple)
           let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
-          let t = parseString mode fs ms
+          let t = parseString fs ms
           g1 <- liftIO $ readIORef ref
           let res = evalExprS t (EvalState ms g1 16)
           let txt =
