@@ -93,6 +93,7 @@ import System.Console.Haskeline (
 import System.Directory (findFile, getHomeDirectory, removeFile)
 import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.FilePath (replaceExtension)
+import System.IO (hIsTerminalDevice, stdin)
 import System.Random (initStdGen, randomIO)
 import Text.Read (readMaybe)
 
@@ -147,7 +148,8 @@ loop mps = do
   loop' :: EvalState -> InputT (StateT StateData IO) ()
   loop' es = do
     S.lift $ S.modify \s -> s `union` extractNames (es ^. maps)
-    input <- getInputLine "> "
+    isTTY <- liftIO $ hIsTerminalDevice stdin
+    input <- getInputLine (if isTTY then "> " else "")
     case input of
       Nothing -> pure ()
       Just "quit" -> pure ()
