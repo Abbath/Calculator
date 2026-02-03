@@ -6,6 +6,7 @@ import Calculator
       compileAndRunFile,
       evalLoop,
       evalFile,
+      evalString,
       webLoop )
 import Calculator.Tests ( testLoop )
 import Options.Applicative
@@ -24,11 +25,13 @@ import Options.Applicative
       value,
       execParser,
       helper,
-      Parser )
+      Parser, 
+      optional)
 import Control.Monad (void)
 import Data.Char ( toLower )
 import Paths_Calculator (version)
 import Data.Version (showVersion)
+import Data.Maybe (fromMaybe, isJust)
 #ifdef DISCORD
 import Calculator.Opts.Dis ( discordCalculator )
 #endif
@@ -47,8 +50,9 @@ data Options = Options {
       test        :: !Bool,
       raylib      :: !Bool,
       discord     :: !Bool,
-      ver     :: !Bool,
-      port        :: !Int
+      ver         :: !Bool,
+      port        :: !Int,
+      expr        :: !(Maybe String)
     }
 
 options :: Parser Options
@@ -62,6 +66,7 @@ options = Options
           <*> switch (long "discord" <> short 'd' <> help "Discord bot")
           <*> switch (long "version" <> short 'v' <> help "Version")
           <*> option auto (long "port" <> short 'p' <> help "Port" <> metavar "PORT" <> value 3000)
+          <*> optional (strOption (long "expression" <> short 'e' <> help "Evaluate expression" <> metavar "EXPRESSION"))
 
 main :: IO ()
 main = do
@@ -76,6 +81,7 @@ main = do
 #ifdef DISCORD
     | discord opts2 -> discordCalculator
 #endif
+    | isJust (expr opts2) -> void $ evalString (fromMaybe "" $ expr opts2) 
     | not . null . input $ opts2 -> void $ evalFile (input opts2)
     | not . null . source $ opts2 -> compileAndRunFile (source opts2) $ case compileMode opts2 of
         "L" -> CompLoad

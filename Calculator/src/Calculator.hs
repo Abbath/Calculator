@@ -8,6 +8,7 @@ module Calculator (
   evalLoop,
   webLoop,
   evalFile,
+  evalString,
   compileAndRunFile,
   parseEval,
 ) where
@@ -169,6 +170,16 @@ loop mps = do
             let m' = removeLocals m
             liftIO . TSIO.putStrLn . showValue $ r
             loop' (EvalState (m' & varmap %~ M.insert "_" r) ng pr)
+
+evalString :: String -> IO ()
+evalString ex = do
+  g <- initStdGen
+  case parseEval (EvalState defaultMaps g 16) (TS.pack ex) of
+    Left (err, _) -> TSIO.putStrLn $ case err of
+      MsgMsg t -> t
+      ErrMsg e -> "Error: " <> e
+      _ -> "Can't do"
+    Right (r, _) -> TSIO.putStrLn $ showValue r
 
 interpret :: FilePath -> Maps -> IO EvalState
 interpret path mps = do
