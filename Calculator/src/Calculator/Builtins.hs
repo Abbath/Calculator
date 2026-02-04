@@ -104,6 +104,7 @@ functions =
   , (("oct", ArFixed 1), defaultFun)
   , (("bin", ArFixed 1), defaultFun)
   , (("undef", ArFixed 1), defaultFun)
+  , (("undef", ArFixed 2), defaultFun)
   , (("opt", ArFixed 1), defaultFun)
   , (("opt", ArFixed 2), defaultFun)
   , (("neg", ArFixed 1), defaultFun)

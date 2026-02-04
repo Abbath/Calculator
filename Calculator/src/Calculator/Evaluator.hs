@@ -337,6 +337,15 @@ evalS ex = case ex of
     b1 <- evm b
     e1 <- evm eps
     pure $ integrate (realValue . fromRight (unitlessValue $ 0 :+ 0) . procListElem mps fun) (realValue a1) (realValue b1) (realValue e1)
+  Call "int" [Lambda as e, a, b] -> evm $ Call "int" [Lambda as e, a, b, unitlessNumber 1e-10]
+  Call "int" [Lambda as e, a, b, eps] -> do
+    mps <- use maps
+    let newe = localize as e >>= catchVar (mps ^. varmap, mps ^. funmap)
+    let arity = ArFixed (length as)
+    either throwErr (\r -> maps . funmap . at ("#temp", arity) ?= Fun (map hashify as) (ExFn r)) newe
+    res <- evm (Call "int" [Id "#temp", a, b, eps])
+    maps . funmap .= M.delete ("#temp", arity) (mps ^. funmap)
+    pure res
   Atan2 e1 e2 -> evm $ Call "atan2" [e1, e2]
   Call "prat" [e] -> evm e >>= throwMsg . showFraction . realValue
   Call "smp" [e] -> evm e >>= throwMsg . showMultipleOfPi
