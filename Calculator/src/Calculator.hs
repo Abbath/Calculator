@@ -43,7 +43,6 @@ import Clay (render)
 import Control.Lens ((%~), (&), (^.))
 import Control.Monad.Except (runExceptT)
 
-import Control.Monad (when)
 import Control.Monad.Reader (
   MonadIO (liftIO),
  )
@@ -298,20 +297,20 @@ logName dir lname = dir <> "log" <> lname <> ".dat"
 storageName :: (Semigroup a, IsString a) => a -> a -> a
 storageName dir sname = dir <> "storage" <> sname <> ".dat"
 
-updateIDS :: Integer -> IO ()
+updateIDS :: Word -> IO ()
 updateIDS i = do
   hd <- getXdgDirectory XdgCache "Calculator"
   createDirectoryIfMissing False hd
-  ids :: [(Integer, Integer)] <- fromMaybe [] . readMaybe . BS.unpack <$> BS.readFile (hd <> "/ids")
+  ids :: [(Word, Word)] <- fromMaybe [] . readMaybe . BS.unpack <$> BS.readFile (hd <> "/ids")
   tm <- round `fmap` getPOSIXTime
   mapM_
     ( \(_, ff) -> do
-        let logname = logName hd $ show ff
-        let storagename = storageName hd $ show ff
-        b1 <- findFile ["."] storagename
-        b2 <- findFile ["."] logname
-        when (isJust b1) $ removeFile storagename
-        when (isJust b2) $ removeFile logname
+        let logname = logName "" $ show ff
+        let storagename = storageName "" $ show ff
+        b1 <- findFile [hd] storagename
+        b2 <- findFile [hd] logname
+        mapM_ removeFile b1
+        mapM_ removeFile b2
     )
     $ filter (\(a, _) -> tm - a > 60 * 60) ids
   BS.writeFile (hd <> "/ids") $
@@ -331,8 +330,8 @@ webLoop port = do
     WS.get "/" $ do
       WS.request >>= liftIO . print . remoteHost
       do
-        y <- liftIO (abs <$> randomIO :: IO Integer)
-        f <- liftIO . findFile ["."] . logName hd . show $ y
+        y <- liftIO (randomIO :: IO Word)
+        f <- liftIO . findFile [hd] . logName "" . show $ y
         if isJust f
           then WS.redirect "/"
           else do
@@ -354,7 +353,7 @@ webLoop port = do
     WS.post "/clear/:id" $ WS.captureParam "id" >>= WS.redirect . T.append "/"
     WS.post "/:id" $ do
       iD <- WS.captureParam "id"
-      liftIO $ updateIDS (read . T.unpack $ iD :: Integer)
+      liftIO $ updateIDS (read . T.unpack $ iD :: Word)
       fs <- WS.formParam "foo"
       f1 <- liftIO $ findFile ["."] (storageName hd $ T.unpack iD)
       f2 <- liftIO $ findFile ["."] (logName hd $ T.unpack iD)
