@@ -41,6 +41,7 @@ import Calculator.Opts.Ray ( raylibLoop )
 #ifdef TELEGRAM
 import Calculator.Opts.Tel
 #endif
+import System.Directory (getXdgDirectory, XdgDirectory (..), createDirectoryIfMissing )
 
 data Options = Options {
       input       :: !FilePath,
@@ -70,7 +71,9 @@ options = Options
 
 main :: IO ()
 main = do
-  writeFile "ids" "[]"
+  hd <- getXdgDirectory XdgCache "Calculator"
+  createDirectoryIfMissing False hd
+  writeFile (hd <> "/ids") "[]"
   opts2 <- execParser opts
   if
     | test opts2 -> testLoop

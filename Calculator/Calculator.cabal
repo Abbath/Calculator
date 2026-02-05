@@ -95,6 +95,7 @@ executable Calculator
   build-depends:        Calculator
                       , base >= 4.7 && < 5
                       , optparse-applicative
+                      , directory
   hs-source-dirs:       src-exe
   ghc-options:         -O2 -Wall -fno-warn-unused-matches
                        -fwrite-ide-info -hiedir=.hie

@@ -90,7 +90,7 @@ import System.Console.Haskeline (
   runInputT,
   withInterrupt,
  )
-import System.Directory (findFile, getHomeDirectory, removeFile)
+import System.Directory (XdgDirectory (..), createDirectoryIfMissing, findFile, getXdgDirectory, removeFile)
 import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.FilePath (replaceExtension)
 import System.IO (hIsTerminalDevice, stdin)
@@ -109,10 +109,11 @@ type StateData = [String]
 
 completionGenerator :: String -> StateT StateData IO [Completion]
 completionGenerator s = do
-  sd <- S.get
-  pure $
-    map (\x -> Completion{replacement = x, display = x, isFinished = False}) $
-      filter (isPrefixOf s) (names `union` sd)
+  S.gets
+    ( map (\x -> Completion{replacement = x, display = x, isFinished = False})
+        . filter (isPrefixOf s)
+        . (names `union`)
+    )
 
 replCompletion :: CompletionFunc (StateT StateData IO)
 replCompletion = completeWord Nothing " " completionGenerator
@@ -131,12 +132,13 @@ extractNames ms = map TS.unpack $ map fst (M.keys (ms ^. opmap)) <> M.keys (ms ^
 loop :: Maps -> IO ()
 loop mps = do
   g <- initStdGen
-  hd <- getHomeDirectory
+  hd <- getXdgDirectory XdgData "Calculator"
+  createDirectoryIfMissing False hd
   x <-
     CE.try $
       flip S.evalStateT [] $
         runInputT
-          (replSettings{historyFile = Just (hd ++ "/.mycalchist")})
+          (replSettings{historyFile = Just (hd <> "/.mycalchist")})
           (loop' (EvalState mps g 16))
   case x of
     Left (CE.ErrorCall s) -> do
@@ -290,27 +292,29 @@ evalLoop = Calculator.loop defaultMaps
 evalFile :: FilePath -> IO EvalState
 evalFile f = Calculator.interpret f defaultMaps
 
-logName :: (Semigroup a, IsString a) => a -> a
-logName lname = "log" <> lname <> ".dat"
+logName :: (Semigroup a, IsString a) => a -> a -> a
+logName dir lname = dir <> "log" <> lname <> ".dat"
 
-storageName :: (Semigroup a, IsString a) => a -> a
-storageName sname = "storage" <> sname <> ".dat"
+storageName :: (Semigroup a, IsString a) => a -> a -> a
+storageName dir sname = dir <> "storage" <> sname <> ".dat"
 
 updateIDS :: Integer -> IO ()
 updateIDS i = do
-  ids :: [(Integer, Integer)] <- fromMaybe [] . readMaybe . BS.unpack <$> BS.readFile "ids"
+  hd <- getXdgDirectory XdgCache "Calculator"
+  createDirectoryIfMissing False hd
+  ids :: [(Integer, Integer)] <- fromMaybe [] . readMaybe . BS.unpack <$> BS.readFile (hd <> "/ids")
   tm <- round `fmap` getPOSIXTime
   mapM_
     ( \(_, ff) -> do
-        let logname = logName $ show ff
-        let storagename = storageName $ show ff
+        let logname = logName hd $ show ff
+        let storagename = storageName hd $ show ff
         b1 <- findFile ["."] storagename
         b2 <- findFile ["."] logname
         when (isJust b1) $ removeFile storagename
         when (isJust b2) $ removeFile logname
     )
     $ filter (\(a, _) -> tm - a > 60 * 60) ids
-  BS.writeFile "ids" $
+  BS.writeFile (hd <> "/ids") $
     BS.pack $
       show $
         if i `elem` map snd ids
@@ -319,6 +323,8 @@ updateIDS i = do
 
 webLoop :: Int -> IO ()
 webLoop port = do
+  hd <- getXdgDirectory XdgCache "Calculator"
+  createDirectoryIfMissing False hd
   ref <- initStdGen >>= newIORef
   WS.scotty port $ do
     WS.middleware $ NWMS.staticPolicy (NWMS.noDots NWMS.>-> NWMS.addBase "Static/images")
@@ -326,7 +332,7 @@ webLoop port = do
       WS.request >>= liftIO . print . remoteHost
       do
         y <- liftIO (abs <$> randomIO :: IO Integer)
-        f <- liftIO . findFile ["."] . logName . show $ y
+        f <- liftIO . findFile ["."] . logName hd . show $ y
         if isJust f
           then WS.redirect "/"
           else do
@@ -335,8 +341,8 @@ webLoop port = do
     WS.get "/favicon.ico" $ WS.file "./Static/favicon.ico"
     WS.get "/:id" $ do
       iD <- WS.captureParam "id"
-      liftIO $ BS.writeFile (storageName $ T.unpack iD) (B.toStrict . encode $ ((remapComplex . M.toList $ defVar, [], opsToList opMap) :: ListTuple))
-      liftIO $ BS.writeFile (logName $ T.unpack iD) "[]"
+      liftIO $ BS.writeFile (storageName hd $ T.unpack iD) (B.toStrict . encode $ ((remapComplex . M.toList $ defVar, [], opsToList opMap) :: ListTuple))
+      liftIO $ BS.writeFile (logName hd $ T.unpack iD) "[]"
       WS.html $
         renderHtml $
           H.html $
@@ -350,13 +356,13 @@ webLoop port = do
       iD <- WS.captureParam "id"
       liftIO $ updateIDS (read . T.unpack $ iD :: Integer)
       fs <- WS.formParam "foo"
-      f1 <- liftIO $ findFile ["."] (storageName $ T.unpack iD)
-      f2 <- liftIO $ findFile ["."] (logName $ T.unpack iD)
+      f1 <- liftIO $ findFile ["."] (storageName hd $ T.unpack iD)
+      f2 <- liftIO $ findFile ["."] (logName hd $ T.unpack iD)
       if isNothing f1 || isNothing f2
         then WS.redirect "/"
         else do
-          let logname = logName $ T.unpack iD
-          let storagename = storageName $ T.unpack iD
+          let logname = logName hd $ T.unpack iD
+          let storagename = storageName hd $ T.unpack iD
           rest <- liftIO $ BS.readFile logname
           env <- liftIO $ BS.readFile storagename
           let ms =

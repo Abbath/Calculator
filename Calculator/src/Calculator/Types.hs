@@ -91,6 +91,7 @@ import Data.ByteString qualified as BS
 import Data.CReal (CReal)
 import Data.CReal.Internal as CRI (atPrecision, atanBounded, crMemoize, crealPrecision, recipBounded, shiftL)
 import Data.Complex (Complex (..), imagPart, realPart)
+import Data.Function (fix)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe)
@@ -193,19 +194,16 @@ combineUnits op u1 u2 = case op of
   _ | u1 == Unitless || u2 == Unitless -> if u1 == Unitless then u2 else u1
   _ -> error $ "Unsupported operation: " ++ show op
 
--- Addition and subtraction require compatible units
 addSubUnits :: Unit -> Unit -> Unit
 addSubUnits u1 u2
   | u1 == u2 = u1
   | otherwise = error "Incompatible units for addition/subtraction"
 
--- Multiplication combines units
 multiplyUnits :: Unit -> Unit -> Unit
 multiplyUnits Unitless u = u
 multiplyUnits u Unitless = u
 multiplyUnits (UProd u1) (UProd u2) = simplifyUnit $ UProd (u1 <> u2)
 
--- Division inverts the second unit and multiplies
 divideUnits :: Unit -> Unit -> Unit
 divideUnits u1 Unitless = u1
 divideUnits Unitless u2 = invertUnit u2
@@ -213,12 +211,10 @@ divideUnits (UProd u1) u2 = case invertUnit u2 of
   Unitless -> UProd u1
   UProd u3 -> simplifyUnit $ UProd (u1 <> u3)
 
--- Invert a unit (negate all powers)
 invertUnit :: Unit -> Unit
 invertUnit Unitless = Unitless
 invertUnit (UProd units) = UProd (map (\(SUnit name power) -> SUnit name (-power)) units)
 
--- Simplify units by combining like terms and removing zero powers
 simplifyUnit :: Unit -> Unit
 simplifyUnit (UProd units) =
   let
@@ -230,7 +226,6 @@ simplifyUnit (UProd units) =
       multiple -> UProd multiple
 simplifyUnit u = u
 
--- Combine units with the same name by adding their powers
 combineTerms :: [SingleUnit] -> [SingleUnit]
 combineTerms units =
   map (uncurry SUnit) $
@@ -571,9 +566,7 @@ unTOp (TOp op) = op
 unTOp _ = error "Not a TOp"
 
 preprocess :: Expr -> Expr
-preprocess ex = simplify' ex ex
- where
-  simplify' e o = if simplifyExpr e == o then o else simplify' (simplifyExpr e) e
+preprocess = fix (\rec e -> if simplifyExpr e == e then e else rec (simplifyExpr e))
 
 simplifyExpr :: Expr -> Expr
 simplifyExpr ex = case ex of
