@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Calculator.Opts.Ray where
+module Calculator.Opts.Ray (raylibLoop) where
 
 import Calculator (parseEval)
 import Calculator.Builtins (defaultEvalState)
@@ -90,13 +90,14 @@ raylibLoop' = do
   wsc <- liftIO RL.windowShouldClose
   unless wsc $ do
     [w, h, c] <- liftIO $ sequence [RL.getRenderWidth, RL.getRenderHeight, RL.getCharPressed]
-    prompt %= if c /= 0 then flip TS.snoc (chr c) else id
+    cs0 <- use cursor
+    prompt %= if c /= 0 then \p -> let (l, r) = TS.splitAt cs0 p in l <> TS.singleton (chr c) <> r else id
     cursor %= if c /= 0 then (+ 1) else id
     [bp, del, up, down, left, right, ep] <- liftIO $ mapM RL.isKeyPressed [RL.KeyBackspace, RL.KeyDelete, RL.KeyUp, RL.KeyDown, RL.KeyLeft, RL.KeyRight, RL.KeyEnter]
-    cs0 <- use cursor
+    cs1 <- use cursor
     len0 <- uses prompt TS.length
-    prompt %= \pr -> if del && cs0 < len0 then let (begin, end) = TS.splitAt cs0 pr in begin <> TS.tail end else pr
-    prompt %= \pr -> if bp && cs0 > 0 then let (begin, end) = TS.splitAt cs0 pr in TS.init begin <> end else pr
+    prompt %= \pr -> if del && cs1 < len0 then let (begin, end) = TS.splitAt cs1 pr in begin <> TS.tail end else pr
+    prompt %= \pr -> if bp && cs1 > 0 then let (begin, end) = TS.splitAt cs1 pr in TS.init begin <> end else pr
     len <- uses prompt TS.length
     cursor %= if left || bp then subtract 1 else id
     cursor %= if right then (+ 1) else id
