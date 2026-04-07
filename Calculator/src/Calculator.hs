@@ -75,7 +75,7 @@ import Web.Scotty qualified as WS
 
 import Control.Exception qualified as CE
 import Data.Complex (Complex (..), imagPart, realPart)
-import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.String (IsString)
 import System.Console.Haskeline (
   Completion (..),
@@ -128,8 +128,8 @@ replSettings =
 extractNames :: Maps -> [String]
 extractNames ms = map TS.unpack $ map fst (M.keys (ms ^. opmap)) <> M.keys (ms ^. varmap) <> map fst (M.keys (ms ^. funmap))
 
-loop :: Maps -> IO ()
-loop mps = do
+loop :: Maps -> IORef Maps -> IO ()
+loop mps backup = do
   g <- initStdGen
   hd <- getXdgDirectory XdgData "Calculator"
   createDirectoryIfMissing False hd
@@ -138,41 +138,44 @@ loop mps = do
       flip S.evalStateT [] $
         runInputT
           (replSettings{historyFile = Just (hd <> "/.mycalchist")})
-          (loop' (EvalState mps g 16))
+          (loop' (EvalState mps g 16) backup)
   case x of
     Left (CE.ErrorCall s) -> do
       putStrLn s
-      Calculator.loop mps
+      restore <- liftIO $ readIORef backup
+      Calculator.loop restore backup
     Right _ -> pure ()
  where
   removeLocals = varmap %~ M.filterWithKey \k v -> not $ "_." `TS.isInfixOf` k
-  loop' :: EvalState -> InputT (StateT StateData IO) ()
-  loop' es = do
+  loop' :: EvalState -> IORef Maps -> InputT (StateT StateData IO) ()
+  loop' es mmaps = do
     S.lift $ S.modify \s -> s `union` extractNames (es ^. maps)
     isTTY <- liftIO $ hIsTerminalDevice stdin
     input <- getInputLine (if isTTY then "> " else "")
     case input of
       Nothing -> pure ()
       Just "quit" -> pure ()
-      Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' es) . withInterrupt $ do
+      Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' es mmaps) . withInterrupt $ do
         let y = parseEval es (TS.pack x)
         case y of
           Left (err, EvalState m ng pr) -> do
             let m' = removeLocals m
+            liftIO $ writeIORef mmaps m
             case err of
               CmdMsg (Cmd filename) -> do
                 nes <- liftIO $ interpret (TS.unpack filename) m
-                loop' nes
+                loop' nes mmaps
               MsgMsg msg -> do
                 liftIO . TSIO.putStrLn $ msg
-                loop' (EvalState m' ng pr)
+                loop' (EvalState m' ng pr) mmaps
               ErrMsg emsg -> do
                 liftIO . TSIO.putStrLn $ "Error: " <> emsg
-                loop' (EvalState m' ng pr)
+                loop' (EvalState m' ng pr) mmaps
           Right (r, EvalState m ng pr) -> do
             let m' = removeLocals m
+            liftIO $ writeIORef mmaps m
             liftIO . TSIO.putStrLn . showValue $ r
-            loop' (EvalState (m' & varmap %~ M.insert "_" r) ng pr)
+            loop' (EvalState (m' & varmap %~ M.insert "_" r) ng pr) mmaps
 
 evalString :: String -> IO ()
 evalString ex = do
@@ -286,7 +289,7 @@ parseEval :: EvalState -> TS.Text -> Either (MessageType, EvalState) (Value, Eva
 parseEval es x = evalExprS (parseString x (es ^. maps)) es
 
 evalLoop :: IO ()
-evalLoop = Calculator.loop defaultMaps
+evalLoop = newIORef defaultMaps >>= Calculator.loop defaultMaps
 
 evalFile :: FilePath -> IO EvalState
 evalFile f = Calculator.interpret f defaultMaps
