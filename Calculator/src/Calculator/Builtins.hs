@@ -20,7 +20,8 @@ import Data.Ratio (numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Math.NumberTheory.Primes.Testing
+import Math.NumberTheory.Primes.Testing qualified as PT
+import Math.NumberTheory.Primes qualified as P
 import Numeric (expm1, log1mexp, log1p, log1pexp)
 import System.Random (mkStdGen)
 
@@ -179,6 +180,7 @@ functions =
   , (("fact", ArFixed 1), defaultFun{fexec = FnFn (BitFn prod)})
   , (("not", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [Id "x", unitlessZero, unitlessOne])})
   , (("isprime", ArFixed 1), defaultFun{fexec = FnFn (BitFn isprime)})
+  , (("prime", ArFixed 1), defaultFun{fexec = FnFn (BitFn prime)})
   , (("P", ArFixed 2), defaultFun{fexec = FnFn (MathFn2 perm)})
   , (("C", ArFixed 2), defaultFun{fexec = FnFn (MathFn2 comb)})
   , (("dms", ArFixed 3), defaultFun{fexec = FnFn (MathFn3 dms)})
@@ -211,7 +213,10 @@ comb :: Complex Rational -> Complex Rational -> Complex Rational
 comb (n :+ _) (k :+ _) = (:+ 0) . toRational $ (fromInteger @Precise $ prod (numerator n)) / fromInteger @Precise (prod (numerator n - numerator k) * prod (numerator k))
 
 isprime :: Integer -> Integer
-isprime n = if isPrime n then 1 else 0
+isprime n = if PT.isPrime n then 1 else 0
+
+prime :: Integer -> Integer
+prime n = P.unPrime (toEnum . fromInteger $ n :: P.Prime Integer)
 
 turboLog :: Complex Rational -> Complex Rational -> Complex Rational
 turboLog a b = toRational <$> logBase (fromRational <$> a :: Complex Precise) (fromRational <$> b :: Complex Precise)
