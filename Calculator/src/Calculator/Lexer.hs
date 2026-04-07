@@ -4,7 +4,7 @@
 
 module Calculator.Lexer (tloop) where
 
-import Calculator.Types (SingleUnit (..), Token (..), Unit (..), opSymbols, showT, textToNum)
+import Calculator.Types (Internal, SingleUnit (..), Token (..), Unit (..), opSymbols, showT, textToNum)
 import Control.Applicative (Alternative (..))
 import Data.Char (
   isAlpha,
@@ -106,10 +106,13 @@ parseIf desc f =
             (inputLoc input)
             ("Expected " <> desc <> ", but reached end of string")
 
-doubleLiteral :: Parser Rational
+doubleLiteral :: Parser Internal
 doubleLiteral =
   ( \sign int frac expo ->
-      toRational . read @S.Scientific $ (sign : int ++ frac ++ expo)
+      let sc = read @S.Scientific $ (sign : int ++ frac ++ expo)
+       in case sc of
+            (S.coefficient -> 0) -> 0
+            _ -> toRational sc
   )
     <$> plusminus
     <*> digits
@@ -122,7 +125,7 @@ doubleLiteral =
   e = charP 'e' <|> charP 'E'
   opt = (<|> pure "")
 
-basedLiteral :: (Char -> Bool) -> Char -> Parser Rational
+basedLiteral :: (Char -> Bool) -> Char -> Parser Internal
 basedLiteral f p = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (read . (['0', p] ++) <$> digits)
  where
   digits = (++) <$> some (parseIf "digit" f) <*> (concat <$> many ud)
@@ -130,13 +133,13 @@ basedLiteral f p = (\_ _ n -> toRational (n :: Integer)) <$> zero <*> x <*> (rea
   zero = charP '0'
   x = charP p
 
-hexLiteral :: Parser Rational
+hexLiteral :: Parser Internal
 hexLiteral = basedLiteral isHexDigit 'x'
 
-octLiteral :: Parser Rational
+octLiteral :: Parser Internal
 octLiteral = basedLiteral isOctDigit 'o'
 
-binLiteral :: Parser Rational
+binLiteral :: Parser Internal
 binLiteral =
   (\_ _ n -> toRational (n :: Integer))
     <$> charP '0'
@@ -160,22 +163,22 @@ specialCharacters p = f <$> p
   f 't' = '\t'
   f _ = error "Unacceptable character"
 
-stringLiteral :: Parser Rational
+stringLiteral :: Parser Internal
 stringLiteral =
   charP '"'
     *> ( fromInteger . textToNum . T.pack
-          <$> many
-            ( charP '\\'
-                *> specialCharacters (parseIf "\"nt" (`elem` ("\"nt" :: String)))
-                  <|> parseIf "anything except \"" (/= '"')
-            )
+           <$> many
+             ( charP '\\'
+                 *> specialCharacters (parseIf "\"nt" (`elem` ("\"nt" :: String)))
+                   <|> parseIf "anything except \"" (/= '"')
+             )
        )
     <* charP '"'
 
 wsBracket :: Parser a -> Parser a
 wsBracket p = ws *> p <* ws
 
-complexLiteral :: Parser (Rational, Rational)
+complexLiteral :: Parser (Internal, Internal)
 complexLiteral = (,) <$> (doubleLiteral <* (charP 'j' <|> charP 'i')) <*> doubleLiteral
 
 numba :: Parser Token

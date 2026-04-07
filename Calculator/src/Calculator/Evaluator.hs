@@ -34,6 +34,7 @@ import Calculator.Types (
   FunFun (..),
   FunMap,
   FunOp (..),
+  Internal,
   Maps (..),
   Op (..),
   OpArity (..),
@@ -615,13 +616,13 @@ evalS ex = case ex of
           then throwErr "Incompatible units"
           else
             pure $
-              if unit v1 == UProd [SUnit "m" 1] && fst bop == "^" && unit v2 == Unitless && value v2 `elem` ([2 :+ 0, 3 :+ 0] :: [Complex Rational])
+              if unit v1 == UProd [SUnit "m" 1] && fst bop == "^" && unit v2 == Unitless && value v2 `elem` ([2 :+ 0, 3 :+ 0] :: [Complex Internal])
                 then Value (fun (value v1) (value v2)) (UProd [SUnit "m" (fromIntegral . numerator . realValue $ v2)])
                 else Value (fun (value v1) (value v2)) (combineUnits (fst bop) (unit v1) (unit v2))
       FnOp (BitOp fun) -> unitlessValue . (:+ 0) <$> bitEval fun x y
       ExOp e -> evm e
       _ -> throwErr "Misteriously missing operator"
-  tooBig = 2 ^ (8000000 :: Integer) :: Rational
+  tooBig = 2 ^ (8000000 :: Integer) :: Internal
   eq pr fun x y = do
     n <- evm x
     n1 <- evm y
@@ -664,7 +665,7 @@ evalS ex = case ex of
      in (wrongArgNum, wrongName)
   fromComplex = fromRational . realPart
   fromValue = fromComplex . value
-  toComplex :: (Real a) => a -> Complex Rational
+  toComplex :: (Real a) => a -> Complex Internal
   toComplex = (:+ 0.0) . toRational
   toValue :: (Real a) => a -> Value
   toValue = unitlessValue . toComplex
@@ -694,14 +695,14 @@ evalS ex = case ex of
         [] -> M.insert x value ch
         _ -> M.insert x (PikeVal (sitChair xs value M.empty)) ch
 
-s1_ :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational -> (Rational, Rational, Rational)
+s1_ :: (Internal -> Internal) -> Internal -> Internal -> Internal -> Internal -> (Internal, Internal, Internal)
 s1_ f a b fa fb =
   let m = (a + b) / 2
       r = f m
       g = (abs (b - a) / 6) * (fa + 4 * r + fb)
    in (m, r, g)
 
-s2_ :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational -> Rational
+s2_ :: (Internal -> Internal) -> Internal -> Internal -> Internal -> Internal -> Internal -> Internal -> Internal -> Internal -> Internal
 s2_ f a b fa fb eps whole m fm =
   let (ml, rl, gl) = s1_ f a m fa fm
       (mr, rr, gr) = s1_ f m b fm fb
@@ -712,7 +713,7 @@ s2_ f a b fa fb eps whole m fm =
           s2_ f a m fa fm (eps / 2) gl ml rl
             + s2_ f m b fm fb (eps / 2) gr mr rr
 
-integrate :: (Rational -> Rational) -> Rational -> Rational -> Rational -> Value
+integrate :: (Internal -> Internal) -> Internal -> Internal -> Internal -> Value
 integrate f a b eps =
   let fa = f a
       fb = f b

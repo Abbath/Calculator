@@ -6,7 +6,7 @@
 
 module Calculator.Builtins where
 
-import Calculator.Types (Arity (..), Assoc (..), EvalState (EvalState), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Maps (..), Op (..), OpArity (..), OpMap, Precise, Unit (..), VarMap, defaultFun, unitlessNumber, unitlessOne, unitlessValue, unitlessZero)
+import Calculator.Types (Arity (..), Assoc (..), EvalState (EvalState), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Internal, Maps (..), Op (..), OpArity (..), OpMap, Precise, Unit (..), VarMap, defaultFun, unitlessNumber, unitlessOne, unitlessValue, unitlessZero)
 import Calculator.Utils (splitRational)
 import Control.Applicative ((<|>))
 import Control.Arrow (second)
@@ -62,10 +62,10 @@ operators =
   , (("::=", Ar2), Op{precedence = 13, associativity = R, oexec = NOp})
   ]
 
-eq :: Int -> Complex Rational -> Complex Rational -> Bool
+eq :: Int -> Complex Internal -> Complex Internal -> Bool
 eq pr a b = let small = 10 ^^ (-pr) in abs (realPart a - realPart b) < small && abs (imagPart a - imagPart b) < small
 
-neq :: Int -> Complex Rational -> Complex Rational -> Bool
+neq :: Int -> Complex Internal -> Complex Internal -> Bool
 neq pr a b = let small = 10 ^^ (-pr) in abs (realPart a - realPart b) > small || abs (imagPart a - imagPart b) > small
 
 opMember :: Text -> Bool
@@ -188,11 +188,11 @@ functions =
   , (("quad", ArFixed 3), defaultFun{fexec = FnFn (MultiFn quad)})
   ]
 
-quad :: [Complex Rational] -> [Complex Rational]
+quad :: [Complex Internal] -> [Complex Internal]
 quad [a, b, c] = let d = fmath (-) (pow b (2 :+ 0)) (mult (mult (4 :+ 0) a) c) in map (`divide` mult a (2 :+ 0)) [fmath (-) (mult b ((-1) :+ 0)) $ pow d (0.5 :+ 0), fmath (+) (mult b ((-1) :+ 0)) $ pow d (0.5 :+ 0)]
 quad _ = []
 
-smd :: [Complex Rational] -> [Complex Rational]
+smd :: [Complex Internal] -> [Complex Internal]
 smd [r :+ _] =
   let
     t = round @_ @Integer $ fromRational @Precise (r * 3600)
@@ -203,13 +203,13 @@ smd [r :+ _] =
     (:+ 0) . toRational <$> [d, m, s]
 smd _ = []
 
-dms :: Complex Rational -> Complex Rational -> Complex Rational -> Complex Rational
+dms :: Complex Internal -> Complex Internal -> Complex Internal -> Complex Internal
 dms (d :+ _) (m :+ _) (s :+ _) = (:+ 0) $ d + (m / 60) + (s / 3600)
 
-perm :: Complex Rational -> Complex Rational -> Complex Rational
+perm :: Complex Internal -> Complex Internal -> Complex Internal
 perm (n :+ _) (k :+ _) = (:+ 0) . toRational $ (fromInteger @Precise $ prod (numerator n)) / (fromInteger @Precise $ prod (numerator n - numerator k))
 
-comb :: Complex Rational -> Complex Rational -> Complex Rational
+comb :: Complex Internal -> Complex Internal -> Complex Internal
 comb (n :+ _) (k :+ _) = (:+ 0) . toRational $ (fromInteger @Precise $ prod (numerator n)) / fromInteger @Precise (prod (numerator n - numerator k) * prod (numerator k))
 
 isprime :: Integer -> Integer
@@ -218,7 +218,7 @@ isprime n = if PT.isPrime n then 1 else 0
 prime :: Integer -> Integer
 prime n = P.unPrime (toEnum . fromInteger $ n :: P.Prime Integer)
 
-turboLog :: Complex Rational -> Complex Rational -> Complex Rational
+turboLog :: Complex Internal -> Complex Internal -> Complex Internal
 turboLog a b = toRational <$> logBase (fromRational <$> a :: Complex Precise) (fromRational <$> b :: Complex Precise)
 
 prod :: Integer -> Integer
@@ -230,13 +230,13 @@ opMap = operators <> unaryOperators
 funMap :: FunMap
 funMap = functions
 
-fmod :: Complex Rational -> Complex Rational -> Complex Rational
+fmod :: Complex Internal -> Complex Internal -> Complex Internal
 fmod x y =
   let a = realPart x
       b = realPart y
    in (:+ 0) $ a - fromInteger (truncate (a / b)) * b
 
-fcmp :: Complex Rational -> Complex Rational -> Complex Rational
+fcmp :: Complex Internal -> Complex Internal -> Complex Internal
 fcmp x y =
   let rx = realPart x
       ry = realPart y
@@ -245,19 +245,19 @@ fcmp x y =
         EQ -> 0 :+ 0
         LT -> (-1) :+ 0
 
-frac :: Complex Rational -> Complex Rational
+frac :: Complex Internal -> Complex Internal
 frac x = let rp = realPart x in (rp - toRational @Integer (floor rp)) :+ 0
 
-fmath :: (Rational -> Rational -> Rational) -> Complex Rational -> Complex Rational -> Complex Rational
+fmath :: (Internal -> Internal -> Internal) -> Complex Internal -> Complex Internal -> Complex Internal
 fmath op x y = op <$> x <*> y
 
-mult :: Complex Rational -> Complex Rational -> Complex Rational
+mult :: Complex Internal -> Complex Internal -> Complex Internal
 mult (a :+ b) (c :+ d) = (a * c - b * d) :+ (a * d + b * c)
 
-divide :: Complex Rational -> Complex Rational -> Complex Rational
+divide :: Complex Internal -> Complex Internal -> Complex Internal
 divide (a :+ b) (c :+ d) = let dm = c * c + d * d in (a * c + b * d) / dm :+ (b * c - a * d) / dm
 
-pow :: Complex Rational -> Complex Rational -> Complex Rational
+pow :: Complex Internal -> Complex Internal -> Complex Internal
 pow a b
   | imagPart a == 0 && imagPart b == 0 =
       let (na, da) = splitRational (realPart a)
@@ -272,7 +272,7 @@ pow a b
  where
   pow' = toRational <$> (fromRational <$> a :: Complex Precise) ** (fromRational <$> b :: Complex Precise)
 
-hypot :: Complex Rational -> Complex Rational -> Complex Rational
+hypot :: Complex Internal -> Complex Internal -> Complex Internal
 hypot cx cy =
   let (x, y) = (realPart cx, realPart cy)
       min' = min x y
@@ -280,13 +280,13 @@ hypot cx cy =
       r = min' / max'
    in max' * realPart (pow ((1 + r * r) :+ 0) (1 % 2 :+ 0)) :+ 0
 
-wrapRealFun2 :: (Precise -> Precise -> Precise) -> Complex Rational -> Complex Rational -> Complex Rational
+wrapRealFun2 :: (Precise -> Precise -> Precise) -> Complex Internal -> Complex Internal -> Complex Internal
 wrapRealFun2 f x y = (:+ 0) . toRational @Precise $ f (fromRational $ realPart x) (fromRational $ realPart y)
 
-atan3 :: Complex Rational -> Complex Rational -> Complex Rational
+atan3 :: Complex Internal -> Complex Internal -> Complex Internal
 atan3 = wrapRealFun2 atan2
 
-log2 :: Complex Rational -> Complex Rational -> Complex Rational
+log2 :: Complex Internal -> Complex Internal -> Complex Internal
 log2 = wrapRealFun2 logBase
 
 names :: [String]

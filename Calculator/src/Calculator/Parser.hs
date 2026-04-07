@@ -12,6 +12,7 @@ import Calculator.Types (
   Assoc (..),
   ChLit (..),
   Expr (..),
+  Internal,
   Maps,
   Op (Op, associativity, precedence),
   OpArity (..),
@@ -140,7 +141,7 @@ parseIf desc f =
       _ ->
         Left ("Expected " <> desc <> ", but reached end of token list")
 
-number :: Parser (Rational, Rational)
+number :: Parser (Internal, Internal)
 number = extractNum <$> parseIf "number" isTNumber
  where
   isTNumber (TNumber _ _) = True
@@ -202,7 +203,7 @@ lambda m = do
   void eq3
   Lambda args <$> expr 0.0 m
 
-copyPrec :: Maps -> Parser (Rational, Rational)
+copyPrec :: Maps -> Parser (Internal, Internal)
 copyPrec m = do
   void $ parseIf "p" (== TIdent "p")
   void parLeft
@@ -216,7 +217,7 @@ copyPrec m = do
     (Nothing, Just p) -> p
     (Just _, Just p) -> p
 
-copyAssoc :: Maps -> Parser (Rational, Rational)
+copyAssoc :: Maps -> Parser (Internal, Internal)
 copyAssoc m = do
   void $ parseIf "a" (== TIdent "a")
   void parLeft
@@ -230,7 +231,7 @@ copyAssoc m = do
     (Nothing, Just p) -> p
     (Just _, Just p) -> p
 
-assocLetter :: Parser (Rational, Rational)
+assocLetter :: Parser (Internal, Internal)
 assocLetter = do
   name <- identifier
   pure . (,0) $ case name of

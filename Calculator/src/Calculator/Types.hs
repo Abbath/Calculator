@@ -79,6 +79,7 @@ module Calculator.Types (
   showDegMinSec,
   defaultFun,
   ChLit (..),
+  Internal,
 )
 where
 
@@ -106,9 +107,10 @@ import GHC.Real (Ratio (..))
 import Numeric (showBin, showHex, showOct)
 import System.Random (Random, StdGen)
 
+type Internal = Rational
 data SingleUnit = SUnit Text Int deriving (Show, Eq, Read, Generic, ToJSON, FromJSON)
 data Unit = Unitless | UProd [SingleUnit] deriving (Show, Eq, Read, Generic, ToJSON, FromJSON)
-data Value = Value {value :: Complex Rational, unit :: Unit} deriving (Show, Eq)
+data Value = Value {value :: Complex Internal, unit :: Unit} deriving (Show, Eq)
 
 dimPrefixes :: M.Map Text Int
 dimPrefixes = [("Q", 30), ("R", 27), ("Y", 24), ("Z", 21), ("E", 18), ("P", 15), ("T", 12), ("G", 9), ("M", 6), ("k", 3), ("h", 2), ("da", 1), ("d", -1), ("c", -2), ("m", -3), ("u", -6), ("n", -9), ("p", -12), ("f", -15), ("a", -18), ("z", -21), ("y", -24), ("r", -27), ("q", -30)] -- QRYZEPTGMkhdadcmunpfazyrq
@@ -150,7 +152,7 @@ expandUnit =
             else [su]
       )
 
-expandSUnit :: Complex Rational -> SingleUnit -> (Complex Rational, SingleUnit)
+expandSUnit :: Complex Internal -> SingleUnit -> (Complex Internal, SingleUnit)
 expandSUnit val u@(SUnit n p) =
   if
     | n `elem` knownUnits -> (val, u)
@@ -171,13 +173,13 @@ expandUnits (Value val (UProd us)) = foldr (\a (Value v acc) -> let (nv, nu) = e
   appendUnit u (UProd a) = UProd (u : a)
 expandUnits v = v
 
-unitlessValue :: Complex Rational -> Value
+unitlessValue :: Complex Internal -> Value
 unitlessValue cr = Value cr Unitless
 
-realValue :: Value -> Rational
+realValue :: Value -> Internal
 realValue (Value v _) = realPart v
 
-imagValue :: Value -> Rational
+imagValue :: Value -> Internal
 imagValue (Value v _) = imagPart v
 
 renderUnit :: Unit -> Text
@@ -299,7 +301,7 @@ showT = T.pack . show
 showScientific :: S.Scientific -> Text
 showScientific = T.pack . S.formatScientific S.Fixed Nothing
 
-showRational :: Rational -> Text
+showRational :: Internal -> Text
 showRational r =
   if denominator r == 1
     then showT $ numerator r
@@ -335,14 +337,14 @@ showValue :: Value -> Text
 showValue (Value cr Unitless) = showComplex cr
 showValue (Value cr u) = showComplex cr <> "@" <> renderUnit u
 
-showComplex :: Complex Rational -> Text
+showComplex :: Complex Internal -> Text
 showComplex c =
   let cr = realPart c
       ci = imagPart c
    in showRational cr <> if ci /= 0 then "j" <> showRational ci else ""
 
 data Token
-  = TNumber Rational Rational
+  = TNumber Internal Internal
   | TLPar
   | TRPar
   | TLBrace
@@ -391,7 +393,7 @@ data Assoc = L | R | N deriving (Show, Read, Eq, Ord, Enum, Generic, ToJSON, Fro
 data ChLit = ChMap [(Text, Expr)] | ChArr [Expr] deriving (Show, Read, Eq, Generic, ToJSON, FromJSON)
 
 data Expr
-  = Number Rational Rational Unit
+  = Number Internal Internal Unit
   | ChairLit ChLit
   | ChairSit Text [Text]
   | Imprt Text
@@ -412,7 +414,7 @@ unitlessZero = Number 0 0 Unitless
 unitlessOne :: Expr
 unitlessOne = Number 1 0 Unitless
 
-unitlessNumber :: Rational -> Expr
+unitlessNumber :: Internal -> Expr
 unitlessNumber n = Number n 0 Unitless
 
 isNumber :: Expr -> Bool
@@ -427,19 +429,19 @@ instance ToJSON Expr
 
 instance FromJSON Expr
 
-type ListTuple = ([(Text, (Rational, Rational))], [((Text, Arity), ([Text], Expr))], [((Text, OpArity), ((Int, Assoc), Expr))])
+type ListTuple = ([(Text, (Internal, Internal))], [((Text, Arity), ([Text], Expr))], [((Text, OpArity), ((Int, Assoc), Expr))])
 
 data FunFun
-  = EqFn (Int -> Complex Rational -> Complex Rational -> Bool)
-  | OrdFn (Rational -> Rational -> Bool)
-  | FracFn1 (Complex Rational -> Complex Rational)
+  = EqFn (Int -> Complex Internal -> Complex Internal -> Bool)
+  | OrdFn (Internal -> Internal -> Bool)
+  | FracFn1 (Complex Internal -> Complex Internal)
   | MathFn1 (Complex Precise -> Complex Precise)
-  | MathFn2 (Complex Rational -> Complex Rational -> Complex Rational)
-  | MathFn3 (Complex Rational -> Complex Rational -> Complex Rational -> Complex Rational)
+  | MathFn2 (Complex Internal -> Complex Internal -> Complex Internal)
+  | MathFn3 (Complex Internal -> Complex Internal -> Complex Internal -> Complex Internal)
   | IntFn1 (Precise -> Integer)
   | IntFn2 (Integer -> Integer -> Integer)
   | BitFn (Integer -> Integer)
-  | MultiFn ([Complex Rational] -> [Complex Rational])
+  | MultiFn ([Complex Internal] -> [Complex Internal])
 
 instance Show FunFun where
   show (EqFn _) = "EqFn"
@@ -464,7 +466,7 @@ data ExecFn = NFn | ExFn Expr | FnFn FunFun deriving (Show)
 
 data ExecOp = NOp | ExOp Expr | FnOp FunOp | AOp Text deriving (Show)
 
-data FunOp = EqOp (Int -> Complex Rational -> Complex Rational -> Bool) | OrdOp (Rational -> Rational -> Bool) | MathOp (Complex Rational -> Complex Rational -> Complex Rational) | BitOp (Integer -> Integer -> Integer) | UnOp (Integer -> Integer)
+data FunOp = EqOp (Int -> Complex Internal -> Complex Internal -> Bool) | OrdOp (Internal -> Internal -> Bool) | MathOp (Complex Internal -> Complex Internal -> Complex Internal) | BitOp (Integer -> Integer -> Integer) | UnOp (Integer -> Integer)
 
 data Fun = Fun
   { params :: [Text]
@@ -540,7 +542,7 @@ exprToString ex = case ex of
   UDF n a e -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
   UDO n p a e -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Precise else 1) <> ")" <> " = " <> exprToString e
   Asgn [i] [e] -> i <> " = " <> exprToString e
-  Number x y u -> (showT . (fromRational :: Rational -> Precise) $ x) <> (if y == 0 then "" else ("j" <>) . showT . (fromRational :: Rational -> Precise) $ y) <> (if u == Unitless then "" else showT u)
+  Number x y u -> (showT . (fromRational :: Internal -> Precise) $ x) <> (if y == 0 then "" else ("j" <>) . showT . (fromRational :: Internal -> Precise) $ y) <> (if u == Unitless then "" else showT u)
   Par e -> "(" <> exprToString e <> ")"
   Call op [e] | isOp op -> "(" <> op <> exprToString e <> ")"
   Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
@@ -591,7 +593,7 @@ simplifyExpr ex = case ex of
   Call name e -> Call name (map simplifyExpr e)
   x -> x
 
-showFraction :: Rational -> Text
+showFraction :: Internal -> Text
 showFraction t = showT (numerator t) <> " / " <> showT (denominator t)
 
 showComplexBase :: Int -> Value -> Either Text Text
