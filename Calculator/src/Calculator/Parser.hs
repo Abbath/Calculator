@@ -301,6 +301,7 @@ expr min_bp m = Parser $
           Nothing -> Left $ "No such operator: " <> op
       TNumber a b -> case inputPeek ts of
         Just (TUnit u) -> inner_loop (Number a b u) (inputTail ts)
+        Just (TIdent x) -> inner_loop (Call "*" [Number a b Unitless, Id x]) (inputTail ts)
         _ -> inner_loop (Number a b Unitless) ts
       TIdent a -> case inputPeek ts of
         Just TLPar | not ("'" `T.isSuffixOf` a) -> do

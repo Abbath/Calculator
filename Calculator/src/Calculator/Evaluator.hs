@@ -331,14 +331,14 @@ evalS ex = case ex of
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
   Call "df" [a, x] -> either throwErr (throwMsg . exprToString . preprocess) $ derivative a x
-  Call "int" [Id fun, a, b] -> evm $ Call "int" [Id fun, a, b, unitlessNumber 1e-10]
+  Call "int" [f@Id{}, a, b] -> evm $ Call "int" [f, a, b, unitlessNumber 1e-10]
   Call "int" [Id fun, a, b, eps] -> do
     mps <- get
     a1 <- evm a
     b1 <- evm b
     e1 <- evm eps
     pure $ integrate (realValue . fromRight (unitlessValue $ 0 :+ 0) . procListElem mps fun) (realValue a1) (realValue b1) (realValue e1)
-  Call "int" [Lambda as e, a, b] -> evm $ Call "int" [Lambda as e, a, b, unitlessNumber 1e-10]
+  Call "int" [l@Lambda{}, a, b] -> evm $ Call "int" [l, a, b, unitlessNumber 1e-10]
   Call "int" [Lambda as e, a, b, eps] -> do
     mps <- use maps
     let newe = localize as e >>= catchVar (mps ^. varmap, mps ^. funmap)
@@ -360,6 +360,7 @@ evalS ex = case ex of
       "conj" -> pure $ Value (conjugate t2) u
       _ -> throwErr $ "No such complex function: " <> f
   Call "^" [Call "neg" [x], y] -> evm $ Call "neg" [Call "^" [x, y]]
+  Call "^" [Call "*" [n@Number{}, x@Id{}], y] -> evm $ Call "*" [n, Call "^" [x, y]]
   Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
     t1 <- evm e
     if isWhole . value $ t1
@@ -467,7 +468,7 @@ evalS ex = case ex of
             )
           ?= n
         pure n
-  Call op [Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn [x] [Call (T.init op) [Id x, y]])
+  Call op e@[Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn [x] [Call (T.init op) e])
   Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwErr $ "Cannot assign to an expression with: " <> op
   Call op [x] | M.member (op, Ar1) unaryOperators -> evalBuiltinOp1 (op, Ar1) x
   Call op [x, y] | M.member (op, Ar2) operators -> evalBuiltinOp2 (op, Ar2) x y
