@@ -92,7 +92,7 @@ import Data.Complex (Complex (..), conjugate, imagPart, magnitude, realPart)
 import Data.Either (fromRight)
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe, isNothing)
-import Data.Ratio (denominator, numerator, (%))
+import Data.Ratio (numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Metrics (damerauLevenshteinNorm)
@@ -204,8 +204,8 @@ pattern Atan2 e1 e2 = Call "atan" [Call "/" [e1, e2]]
 checkUnitCompatibility :: Text -> Value -> Value -> Bool
 checkUnitCompatibility _ (Value _ Unitless) _ = True
 checkUnitCompatibility _ _ (Value _ Unitless) = True
-checkUnitCompatibility op v1 v2 | op `elem` (["+", "-"] :: [Text]) && unit v1 == unit v2 = True
-checkUnitCompatibility op v1 v2 | op `elem` (["*", "/"] :: [Text]) = True
+checkUnitCompatibility op v1 v2 | op `elem` id @[Text] ["+", "-"] && unit v1 == unit v2 = True
+checkUnitCompatibility op v1 v2 | op `elem` id @[Text] ["*", "/"] = True
 checkUnitCompatibility op v1 v2 = False
 
 applyPrecision :: Value -> Result Value
@@ -391,7 +391,7 @@ evalS ex = case ex of
             (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) (unit c)
             _ -> throwErr $ "Operators with a different associativity: " <> op1 <> " and " <> op2
       else evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) (unit c)
-  oc@(Call op [x, y]) | op `elem` (["/", "div"] :: [Text]) -> do
+  oc@(Call op [x, y]) | op `elem` id @[Text] ["/", "div"] -> do
     n <- evm y
     n1 <- evm x
     if value n == 0 :+ 0
@@ -446,7 +446,7 @@ evalS ex = case ex of
       Just ch -> do
         maps . chairmap . at a ?= sitChair xs val ch
         throwMsg "Sitting chair"
-  Call op [Id x, y] | op `elem` ([":=", "::="] :: [Text]) -> do
+  Call op [Id x, y] | op `elem` id @[Text] [":=", "::="] -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
       then throwErr "I'm afraid you can't do that."
       else do
@@ -461,8 +461,8 @@ evalS ex = case ex of
             )
           ?= n
         pure n
-  Call op e@[Id x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] :: [Text]) -> evm (Asgn [x] [Call (T.init op) e])
-  Call op [x, y] | op `elem` (["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] :: [Text]) -> throwErr $ "Cannot assign to an expression with: " <> op
+  Call op [Id x, y] | op `elem` id @[Text] ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] -> evm (Asgn [x] [Call (T.init op) [Id x, y]])
+  Call op [x, y] | op `elem` id @[Text] ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] -> throwErr $ "Cannot assign to an expression with: " <> op
   Call op [x] | M.member (op, Ar1) unaryOperators -> evalBuiltinOp1 (op, Ar1) x
   Call op [x, y] | M.member (op, Ar2) operators -> evalBuiltinOp2 (op, Ar2) x y
   Call op [x] | isOp op -> do
