@@ -558,7 +558,7 @@ exprToString ex = case ex of
   _ -> "Error: no such expression is possible"
 
 opSymbols :: String
-opSymbols = "+-/*%^$!~&|=><:?"
+opSymbols = "+-/*%^$!~&|=><.:?"
 
 isOp :: Text -> Bool
 isOp = T.all (`elem` opSymbols)
@@ -599,15 +599,19 @@ showFraction t = showT (numerator t) <> " / " <> showT (denominator t)
 showComplexBase :: Int -> Value -> Either Text Text
 showComplexBase base cr
   | base `elem` ([2, 8, 16] :: [Int]) =
-      if isWhole (value cr) && isWhole (value cr)
-        then
-          let function = case base of
-                2 -> showBin
-                8 -> showOct
-                16 -> showHex
-                _ -> error "Unreachable"
-           in Right (T.pack . (`function` "") . numerator . realValue $ cr)
-        else Left "Can't show fractions yet"
+      let
+        function = case base of
+          2 -> showBin
+          8 -> showOct
+          16 -> showHex
+          _ -> error "Unreachable"
+        render = T.pack . (`function` "")
+        rval = realValue cr
+       in
+        Right $
+          if isWhole $ value cr
+            then render . numerator $ rval
+            else (render . numerator $ rval) <> "/" <> (render . denominator $ rval)
 showComplexBase _ cr = Right $ showValue cr
 
 showChair :: Chair -> Text
@@ -618,7 +622,6 @@ showChair ch = "{" <> T.intercalate ", " (map (\(k, v) -> k <> " => " <> showEle
   showElem (PikeVal v) = showChair v
 
 numToText :: Value -> Either Text Text
-numToText n | not . isWhole . value $ n = Left "Can't convert rational to string!"
 numToText n = Right . TE.decodeUtf8Lenient $ go BS.empty (abs . numerator . realValue $ n)
  where
   go t 0 = t

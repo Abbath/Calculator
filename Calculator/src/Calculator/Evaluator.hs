@@ -92,7 +92,7 @@ import Data.Complex (Complex (..), conjugate, imagPart, magnitude, realPart)
 import Data.Either (fromRight)
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe, isNothing)
-import Data.Ratio (numerator, (%))
+import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Metrics (damerauLevenshteinNorm)
@@ -363,24 +363,17 @@ evalS ex = case ex of
   Call "^" [Call "*" [n@Number{}, x@Id{}], y] -> evm $ Call "*" [n, Call "^" [x, y]]
   Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
     t1 <- evm e
+    let
+      (function, p) = case f of
+        "hex" -> (showHex, 'x')
+        "oct" -> (showOct, 'o')
+        "bin" -> (showBin, 'b')
+        _ -> (showInt, ' ')
+      rval = realValue t1
+      render t = T.pack . ((if signum t == 1 then "" else "-") <>) . (['0', p] <>) . (`function` "") . abs $ t
     if isWhole . value $ t1
-      then
-        let (function, p) = case f of
-              "hex" -> (showHex, 'x')
-              "oct" -> (showOct, 'o')
-              "bin" -> (showBin, 'b')
-              _ -> (showInt, ' ')
-            sign = signum . numerator . realValue $ t1
-         in throwMsg
-              . T.pack
-              . ((if sign == 1 then "" else "-") <>)
-              . (['0', p] <>)
-              . (`function` "")
-              . abs
-              . numerator
-              . realValue
-              $ t1
-      else throwErr "Can't convert rational yet"
+      then throwMsg . render . numerator . realValue $ t1
+      else throwMsg $ (render . numerator $ rval) <> "/" <> (render . denominator $ rval)
   Call ":" [a, b] -> evm (Call "if" [a, b, b])
   Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
     mps <- use maps
