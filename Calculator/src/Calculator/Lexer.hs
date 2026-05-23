@@ -256,7 +256,7 @@ backslash :: Parser Token
 backslash = TBackslash <$ charP '\\'
 
 tokah :: Parser Token
-tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> operata <|> numba <|> label <|> ident <|> dots <|> unit <|> backslash
+tokah = lpar <|> rpar <|> lbrace <|> rbrace <|> lbracket <|> rbracket <|> comma <|> dots <|> operata <|> numba <|> label <|> ident <|> unit <|> backslash
 
 tloop :: Text -> Either Text [Token]
 tloop = go [] . Input 0
