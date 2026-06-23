@@ -234,22 +234,22 @@ evalS ex = case ex of
   Asgn [s] [Id "undef"] -> evm (Call "undef" [Id s])
   Asgn [s] [Lambda a e] -> evm (UDF s a e)
   Asgn ss [Call "ret" es] -> zipWithM createVar ss es >>= throwMsgConcat
-  Asgn ss [call@(Call f ps)] | M.member (f, ArFixed . length $ ps) functions -> do
+  Asgn ss@[s] [call@(Call f ps)] | M.member (f, ArFixed . length $ ps) functions -> do
     let fun = functions M.! (f, ArFixed . length $ ps)
     case fexec fun of
       FnFn (MultiFn fn) -> do
         args <- map (\(r :+ i) -> Number r i Unitless) . fn . map value <$> mapM evm ps
         zipWithM createVar ss args >>= throwMsgConcat
       ExFn (Call "ret" es) -> zipWithM createVar ss es >>= throwMsgConcat
-      _ -> createVar (head ss) call >>= throwMsg
-  Asgn ss whole@[Call name e] -> do
+      _ -> createVar s call >>= throwMsg
+  Asgn ss@[s] whole@[Call name e] -> do
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
       Just Fun{params = al, fexec = ExFn expr@(Call "ret" _)} -> do
         case substitute (("#v.n", unitlessNumber . fromIntegral . length $ e) : turboZip al e) expr of
           Left txt -> throwErr txt
           Right (Call "ret" es) -> zipWithM createVar ss es >>= throwMsgConcat
-          Right e2 -> createVar (head ss) e2 >>= throwMsg
+          Right e2 -> createVar s e2 >>= throwMsg
       _ -> zipWithM createVar ss whole >>= throwMsgConcat
   Asgn ss es -> zipWithM createVar ss es >>= throwMsgConcat
   UDF f [s] (Call "df" [e, Id x]) | s == x -> do
@@ -500,19 +500,19 @@ evalS ex = case ex of
     let builtin_fun = functions M.! (f, ArFixed . length $ ps)
     pr <- use prec
     case fexec builtin_fun of
-      FnFn (EqFn fun) -> eq pr fun (head ps) (ps !! 1)
-      FnFn (OrdFn fun) -> cmp fun (head ps) (ps !! 1)
-      FnFn (IntFn1 fun) -> evalInt1 fun (head ps)
-      FnFn (IntFn2 fun) -> evalInt fun (head ps) (ps !! 1)
-      FnFn (BitFn fun) -> evalBit fun (head ps)
-      FnFn (FracFn1 fun) -> unitlessValue . fun . value <$> evm (head ps)
+      FnFn (EqFn fun) -> eq pr fun (ps !! 0) (ps !! 1)
+      FnFn (OrdFn fun) -> cmp fun (ps !! 0) (ps !! 1)
+      FnFn (IntFn1 fun) -> evalInt1 fun (ps !! 0)
+      FnFn (IntFn2 fun) -> evalInt fun (ps !! 0) (ps !! 1)
+      FnFn (BitFn fun) -> evalBit fun (ps !! 0)
+      FnFn (FracFn1 fun) -> unitlessValue . fun . value <$> evm (ps !! 0)
       FnFn (MathFn1 fun) -> do
-        n <- evm (head ps)
+        n <- evm (ps !! 0)
         let r = (\x -> if magnitude x <= sin pi then 0 else x) . fun . fmap fromRational . value $ n
         pure . unitlessValue $ toRational <$> r
-      FnFn (MathFn2 fun) -> unitlessValue <$> (fun . value <$> evm (head ps) <*> (value <$> evm (ps !! 1)))
-      FnFn (MathFn3 fun) -> unitlessValue <$> (fun . value <$> evm (head ps) <*> (value <$> evm (ps !! 1)) <*> (value <$> evm (ps !! 2)))
-      FnFn (MultiFn fun) -> unitlessValue . head . fun . map value <$> mapM evm ps
+      FnFn (MathFn2 fun) -> unitlessValue <$> (fun . value <$> evm (ps !! 0) <*> (value <$> evm (ps !! 1)))
+      FnFn (MathFn3 fun) -> unitlessValue <$> (fun . value <$> evm (ps !! 0) <*> (value <$> evm (ps !! 1)) <*> (value <$> evm (ps !! 2)))
+      FnFn (MultiFn fun) -> unitlessValue . (!! 0) . fun . map value <$> mapM evm ps
       ExFn expr -> either throwErr evm $ substitute (zip (params builtin_fun) ps) expr
       _ -> throwErr "Misteriously missing function"
   Call name e -> do
