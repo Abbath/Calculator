@@ -234,7 +234,7 @@ evalS ex = case ex of
   Asgn [s] [Id "undef"] -> evm (Call "undef" [Id s])
   Asgn [s] [Lambda a e] -> evm (UDF s a e)
   Asgn ss [Call "ret" es] -> zipWithM createVar ss es >>= throwMsgConcat
-  Asgn ss@[s] [call@(Call f ps)] | M.member (f, ArFixed . length $ ps) functions -> do
+  Asgn ss@(s : _) [call@(Call f ps)] | M.member (f, ArFixed . length $ ps) functions -> do
     let fun = functions M.! (f, ArFixed . length $ ps)
     case fexec fun of
       FnFn (MultiFn fn) -> do
@@ -242,7 +242,7 @@ evalS ex = case ex of
         zipWithM createVar ss args >>= throwMsgConcat
       ExFn (Call "ret" es) -> zipWithM createVar ss es >>= throwMsgConcat
       _ -> createVar s call >>= throwMsg
-  Asgn ss@[s] whole@[Call name e] -> do
+  Asgn ss@(s : _) whole@[Call name e] -> do
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
       Just Fun{params = al, fexec = ExFn expr@(Call "ret" _)} -> do
