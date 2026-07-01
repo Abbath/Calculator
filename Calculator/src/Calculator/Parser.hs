@@ -193,7 +193,7 @@ udfStmt :: Maps -> Parser Expr
 udfStmt m = do
   let ldots = (: []) <$> dots
   name <- identifier
-  args <- parens $ ldots <|> (++) <$> sepBy identifier comma <*> (comma *> ldots <|> pure [])
+  args <- parens $ ldots <|> (<>) <$> sepBy identifier comma <*> (comma *> ldots <|> pure [])
   void eq2
   UDF (trimTick name) args <$> expr 0.0 m
 

@@ -98,7 +98,7 @@ executable Calculator
                       , directory
   hs-source-dirs:       src-exe
   ghc-options:         -O2 -Wall -fno-warn-unused-matches
-                       -fwrite-ide-info -hiedir=.hie
+                       -fwrite-ide-info -hiedir=.hie -threaded
   default-language:     GHC2021
   if flag(telegram)
     cpp-options:       -DTELEGRAM
