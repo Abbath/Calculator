@@ -383,11 +383,13 @@ expr min_bp m = Parser $
     pure $ fromIntegral pr
   postfix_binding_power :: Text -> Maps -> Maybe Double
   postfix_binding_power "-" _ = Nothing
+  postfix_binding_power "+" _ = Nothing
   postfix_binding_power op ms = do
     (Op pr _ _) <- ms ^. (opmap . at (op, Ar1))
     pure $ fromIntegral pr
   handleNegation :: Text -> Text
   handleNegation "-" = "neg"
+  handleNegation "+" = "id"
   handleNegation op = op
 
 testParser :: Parser a -> Text -> Either Text (Input, a)

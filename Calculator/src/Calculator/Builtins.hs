@@ -20,8 +20,8 @@ import Data.Ratio (numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Math.NumberTheory.Primes.Testing qualified as PT
 import Math.NumberTheory.Primes qualified as P
+import Math.NumberTheory.Primes.Testing qualified as PT
 import Numeric (expm1, log1mexp, log1p, log1pexp)
 import System.Random (mkStdGen)
 
@@ -80,6 +80,7 @@ unaryOperators =
   , (("!", Ar1), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp prod)})
   , (("~", Ar1), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp complement)})
   , (("-", Ar1), Op{precedence = 9, associativity = N, oexec = NOp})
+  , (("+", Ar1), Op{precedence = 9, associativity = N, oexec = NOp})
   ]
 
 maxPrecedence :: Int

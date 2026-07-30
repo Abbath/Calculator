@@ -488,19 +488,19 @@ run m = do
     if null s
       then throwError "Stack underflow!"
       else do
-        stack .= tail s
-        pure . head $ s
+        stack .= drop 1 s
+        pure . (!! 0) $ s
   peek = do
     s <- use stack
     if null s
       then throwError "Stack underflow!"
-      else pure . head $ s
+      else pure . (!! 0) $ s
   peekSafe = do
     s <- use stack
     pure $
       if null s
         then unitlessValue (0 :+ 0)
-        else head s
+        else (!! 0) s
   readOpcode = readWord
   step = ip += 1
   sanityCheck = do
@@ -658,7 +658,7 @@ compile' m = go
             let UO _ _ e = om M.! callee
             ne <- liftEither $ substitute (zip ["#x", "#y"] args) e
             go ne
-        | (callee == "-" && length args == 1) -> go (Call "-" [unitlessZero, head args])
+        | (callee == "-" && length args == 1) -> go (Call "-" [unitlessZero, (!! 0) args])
         | (callee == "~" && length args == 1) -> go (Call "comp" args)
         | (callee == "!" && length args == 1) -> go (Call "fact" args)
         | otherwise -> throwError $ "Callee does not exist: " <> callee

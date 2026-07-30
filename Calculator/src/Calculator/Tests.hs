@@ -132,6 +132,7 @@ tests =
   , ("smd(11.525)", l "11°31'30\"")
   , ("x, y = 4, 5", l "Variable x=4\nVariable y=5")
   , ("d, m, s = smd(11.525)", l "Variable d=11\nVariable m=31\nVariable s=30")
+  , ("+2", R 2)
   ]
 
 testLoop :: IO ()
