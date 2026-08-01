@@ -125,7 +125,7 @@ replSettings =
     }
 
 extractNames :: Maps -> [String]
-extractNames ms = map TS.unpack $ map fst (M.keys (ms ^. opmap)) <> M.keys (ms ^. varmap) <> map fst (M.keys (ms ^. funmap))
+extractNames ms = map TS.unpack $ map (\(n, _, _) -> n) (M.keys (ms ^. opmap)) <> M.keys (ms ^. varmap) <> map fst (M.keys (ms ^. funmap))
 
 loop :: Maps -> IORef Maps -> IO ()
 loop mps backup = do

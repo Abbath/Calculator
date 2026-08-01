@@ -23,6 +23,7 @@ import Calculator.Generator
 import Calculator.Types (
   Arity (ArFixed, ArVar),
   Assoc (..),
+  CallFixity (..),
   ChLit (..),
   Chair,
   ChairVal (..),
@@ -106,7 +107,7 @@ import System.Random (Random (randomR))
 goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
   (Par e) -> Par <$> f e
-  (Call n e) -> Call n <$> mapM f e
+  (CallF fx n e) -> CallF fx n <$> mapM f e
   (Lambda a e) -> Lambda a <$> f e
   e -> pure e
 
@@ -124,25 +125,25 @@ substitute ((x, Lambda a ex) : xys) expr@(Call n e) =
   if n == x
     then substitute (zip a e) ex
     else substitute xys expr
-substitute s@((x, Id fname) : xys) (Call n e) =
+substitute s@((x, Id fname) : xys) (CallF fx n e) =
   if n == x
     then Call fname <$> mapM (substitute s) e
-    else mapM (substitute s) e >>= substitute xys . Call n
+    else mapM (substitute s) e >>= substitute xys . CallF fx n
 substitute ((x, Id sname) : xys) (ChairSit n e) =
   if n == T.tail x
     then Right $ ChairSit sname e
     else substitute xys (ChairSit n e)
-substitute s@(_ : xys) (Call n e) = mapM (substitute s) e >>= substitute xys . Call n
+substitute s@(_ : xys) (CallF fx n e) = mapM (substitute s) e >>= substitute xys . CallF fx n
 substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
 localize [] e = pure e
 localize _ (Id i) | "v." `T.isPrefixOf` i = pure $ Id (hashify i)
 localize (x : xs) (Id i) = if i == x then pure $ Id (hashify i) else localize xs (Id i)
-localize s@(x : xs) (Call nm e) =
+localize s@(x : xs) (CallF fx nm e) =
   if nm == x
-    then Call (hashify nm) <$> mapM (localize s) e
-    else mapM (localize s) e >>= localize xs . Call nm
+    then CallF fx (hashify nm) <$> mapM (localize s) e
+    else mapM (localize s) e >>= localize xs . CallF fx nm
 localize s ex = goInside (localize s) ex
 
 catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
@@ -199,7 +200,7 @@ pattern Debug e = Call "debug" [e]
 pattern Undef :: [Expr] -> Expr
 pattern Undef es = Call "undef" es
 pattern Atan2 :: GHC.IsList.Item [Expr] -> GHC.IsList.Item [Expr] -> Expr
-pattern Atan2 e1 e2 = Call "atan" [Call "/" [e1, e2]]
+pattern Atan2 e1 e2 = Call "atan" [CallF InFixity "/" [e1, e2]]
 
 checkUnitCompatibility :: Text -> Value -> Value -> Bool
 checkUnitCompatibility _ (Value _ Unitless) _ = True
@@ -223,7 +224,7 @@ evalS ex = case ex of
     maps . chairmap . at s ?= M.fromList es
     throwMsg "New chair"
   Asgn [s] _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
-  Asgn [f] [e@(Call "/" [Id g, Number n _ _])] -> do
+  Asgn [f] [e@(CallF InFixity "/" [Id g, Number n _ _])] -> do
     let n1 = ArFixed . fromInteger . numerator $ n
     fm <- use (maps . funmap)
     if M.member (g, n1) fm
@@ -269,14 +270,14 @@ evalS ex = case ex of
           throwMsg ("Function " <> f <> "/" <> showT (ar2int arity))
       )
       newe
-  UDO n (-1) _ e@(Call op _) -> do
+  UDO n (-1) _ _ e@(CallF _ op _) -> do
     mps <- use maps
-    case M.lookup (op, Ar2) (mps ^. opmap) of
+    case M.lookup (op, Ar2, InFixity) (mps ^. opmap) of
       Just o@Op{} -> do
-        maps . opmap . at (n, Ar2) ?= o{oexec = AOp op}
+        maps . opmap . at (n, Ar2, InFixity) ?= o{oexec = AOp op}
         throwMsg $ "Operator alias " <> n <> " = " <> op
       Nothing -> throwErr $ "No such operator: " <> op
-  UDO n p a e
+  UDO n p a fx e
     | opMember n -> throwErr $ "Can not redefine the built-in operator: " <> n
     | p == -2 -> throwErr "Operator does not exist"
     | p < 1 || p > maxPrecedence -> throwErr $ "Bad precedence: " <> showT p
@@ -286,8 +287,8 @@ evalS ex = case ex of
         either
           throwErr
           ( \r -> do
-              maps . opmap . at (n, if a == N then Ar1 else Ar2) ?= Op{precedence = p, associativity = a, oexec = ExOp r}
-              throwMsg ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else (if a == R then "right" else "none")))
+              maps . opmap . at (n, if a == N then Ar1 else Ar2, fx) ?= Op{precedence = p, associativity = a, oexec = ExOp r}
+              throwMsg ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else (if a == R then "right" else "none")) <> " f=" <> (T.take 1 . T.toLower . showT $ fx))
           )
           t
   Debug e -> throwMsg . showT . preprocess $ e
@@ -303,13 +304,13 @@ evalS ex = case ex of
         throwMsg $ "Precision is set to: " <> showValue pr
       else
         throwErr "Precision should be between 0 and 85"
-  Call f [Id x]
-    | f `elem` (["opt"] :: [Text]) ->
+  CallF fx f [Id x]
+    | f == "opt" && fx == NoFixity || f == "?" && fx == PreFixity ->
         if x == "m.r"
           then evm (Id "m.r")
           else extractId x >>= maybe (pure $ unitlessValue (0 :+ 0)) pure
   Call f [e] | f `elem` (["opt"] :: [Text]) -> evm e
-  Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
+  CallF fixity op [e1, e2] | op == "opt" && fixity == NoFixity || op == "?" && fixity == InFixity -> do
     case e1 of
       Id x ->
         if x == "m.r"
@@ -359,8 +360,8 @@ evalS ex = case ex of
       "imag" -> pure $ Value (imagPart t2 :+ 0) u
       "conj" -> pure $ Value (conjugate t2) u
       _ -> throwErr $ "No such complex function: " <> f
-  Call "^" [Call "neg" [x], y] -> evm $ Call "neg" [Call "^" [x, y]]
-  Call "^" [Call "*" [n@Number{}, x@Id{}], y] -> evm $ Call "*" [n, Call "^" [x, y]]
+  CallIn "^" [Call "neg" [x], y] -> evm $ Call "neg" [CallIn "^" [x, y]]
+  CallIn "^" [CallIn "*" [n@Number{}, x@Id{}], y] -> evm $ CallIn "*" [n, CallIn "^" [x, y]]
   Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
     t1 <- evm e
     let
@@ -374,24 +375,24 @@ evalS ex = case ex of
     if isWhole . value $ t1
       then throwMsg . render . numerator . realValue $ t1
       else throwMsg $ (render . numerator $ rval) <> "/" <> (render . denominator $ rval)
-  Call ":" [a, b] -> evm (Call "if" [a, b, b])
-  Call op1 [x, s@(Call op2 [y, z])] | isOp op1 && isOp op2 -> do
+  CallIn ":" [a, b] -> evm (Call "if" [a, b, b])
+  CallIn op1 [x, s@(CallIn op2 [y, z])] | isOp op1 && isOp op2 -> do
     mps <- use maps
     let pr = getPrecedences (mps ^. opmap) <> getFakePrecedences (mps ^. funmap)
-    let a = M.lookup (op1, Ar2) pr
-    let b = M.lookup (op2, Ar2) pr
+    let a = M.lookup (op1, Ar2, InFixity) pr
+    let b = M.lookup (op2, Ar2, InFixity) pr
     if a == b
       then case a of
         Nothing -> throwErr $ "No such operators: " <> op1 <> " " <> op2
         Just _ -> do
-          let Op{associativity = asc1} = (mps ^. opmap) M.! (op1, Ar2)
-          let Op{associativity = asc2} = (mps ^. opmap) M.! (op2, Ar2)
+          let Op{associativity = asc1} = (mps ^. opmap) M.! (op1, Ar2, InFixity)
+          let Op{associativity = asc2} = (mps ^. opmap) M.! (op2, Ar2, InFixity)
           case (asc1, asc2) of
-            (L, L) -> evm $ Call op2 [Call op1 [x, y], z]
-            (R, R) -> evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) (unit c)
+            (L, L) -> evm $ CallIn op2 [CallIn op1 [x, y], z]
+            (R, R) -> evm s >>= evm . (\yy -> CallIn op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) (unit c)
             _ -> throwErr $ "Operators with a different associativity: " <> op1 <> " and " <> op2
-      else evm s >>= evm . (\yy -> Call op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) (unit c)
-  oc@(Call op [x, y]) | op `elem` id @[Text] ["/", "div"] -> do
+      else evm s >>= evm . (\yy -> CallIn op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) (unit c)
+  oc@(CallF fixity op [x, y]) | op == "/" && fixity == InFixity || op == "div" && fixity == NoFixity -> do
     n <- evm y
     n1 <- evm x
     if value n == 0 :+ 0
@@ -400,14 +401,14 @@ evalS ex = case ex of
         if op == "/"
           then pure . unitlessValue $ value n1 `divide` value n
           else pure . unitlessValue $ (:+ 0) . toRational $ (toInteger . numerator . realValue $ n1) `div` (toInteger . numerator . realValue $ n)
-  oc@(Call "%" [x, y]) -> do
+  oc@(CallIn "%" [x, y]) -> do
     n <- evm y
     n1 <- evm x
     if realValue n == 0
       then throwErr $ "Division by zero: " <> exprToString oc
       else pure . unitlessValue $ value n1 `fmod` value n
-  Call "|>" [x, Id y] -> evm $ Call y [x]
-  Call ":=" [ChairSit a xs, ChairSit b ys] -> do
+  CallIn "|>" [x, Id y] -> evm $ Call y [x]
+  CallIn ":=" [ChairSit a xs, ChairSit b ys] -> do
     chair1 <- use $ maps . chairmap . at a
     chair2 <- use $ maps . chairmap . at b
     if isNothing chair1 || isNothing chair2
@@ -417,20 +418,20 @@ evalS ex = case ex of
         Just v -> do
           maps . chairmap . at a ?= sitChair xs v (fromMaybe M.empty chair1)
           throwMsg "Sitting chair"
-  Call ":=" [Id x, ChairSit a xs] -> do
+  CallIn ":=" [Id x, ChairSit a xs] -> do
     chair <- use $ maps . chairmap . at a
     case chair of
       Nothing -> throwErr "No such chair"
       Just ch -> case extractChair xs ch of
         Nothing -> throwErr "No such key"
-        Just (DickVal v) -> evm $ Call ":=" [Id x, Number (realValue v) (imagValue v) (unit v)]
+        Just (DickVal v) -> evm $ CallIn ":=" [Id x, Number (realValue v) (imagValue v) (unit v)]
         Just val@(ForkVal v) -> do
           maps . chairmap . at x ?= M.singleton "a" val
           throwMsg "Sittong chair"
         Just (PikeVal v) -> do
           maps . chairmap . at x ?= v
           throwMsg "Sitting chair"
-  Call ":=" [ChairSit a xs, y] -> do
+  CallIn ":=" [ChairSit a xs, y] -> do
     val <- case y of
       ChairLit e -> PikeVal . M.fromList <$> evalChairLit e
       ChairSit b ys -> do
@@ -446,7 +447,7 @@ evalS ex = case ex of
       Just ch -> do
         maps . chairmap . at a ?= sitChair xs val ch
         throwMsg "Sitting chair"
-  Call op [Id x, y] | op `elem` id @[Text] [":=", "::="] -> do
+  CallIn op [Id x, y] | op `elem` id @[Text] [":=", "::="] -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
       then throwErr "I'm afraid you can't do that."
       else do
@@ -461,28 +462,28 @@ evalS ex = case ex of
             )
           ?= n
         pure n
-  Call op [Id x, y] | op `elem` id @[Text] ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] -> evm (Asgn [x] [Call (T.init op) [Id x, y]])
-  Call op [x, y] | op `elem` id @[Text] ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] -> throwErr $ "Cannot assign to an expression with: " <> op
-  Call op [x] | M.member (op, Ar1) unaryOperators -> evalBuiltinOp1 (op, Ar1) x
-  Call op [x, y] | M.member (op, Ar2) operators -> evalBuiltinOp2 (op, Ar2) x y
-  Call op [x] | isOp op -> do
+  CallIn op [Id x, y] | op `elem` id @[Text] ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] -> evm (Asgn [x] [CallIn (T.init op) [Id x, y]])
+  CallIn op [x, y] | op `elem` id @[Text] ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] -> throwErr $ "Cannot assign to an expression with: " <> op
+  CallF fixity op [x] | M.member (op, Ar1, fixity) unaryOperators && fixity `elem` ([PreFixity, SufFixity] :: [CallFixity]) -> evalBuiltinOp1 (op, Ar1, fixity) x
+  CallIn op [x, y] | M.member (op, Ar2, InFixity) operators -> evalBuiltinOp2 (op, Ar2, InFixity) x y
+  CallF fixity op [x] | isOp op && fixity `elem` ([PreFixity, SufFixity] :: [CallFixity]) -> do
     mps <- use maps
-    case (M.lookup (op, Ar1) (mps ^. opmap) :: Maybe Op) of
+    case (M.lookup (op, Ar1, fixity) (mps ^. opmap) :: Maybe Op) of
       Just Op{oexec = ExOp expr} -> either throwErr evm $ substitute (zip ["#x"] [x]) expr
-      Just Op{oexec = AOp aop} -> evm (Call aop [x])
+      Just Op{oexec = AOp aop} -> evm (CallF fixity aop [x])
       Nothing -> case op of
         opn | T.head opn == '#' -> throwErr $ "Expression instead of a function name: " <> T.tail opn <> "/1"
         _ -> throwErr $ "No such operator: " <> op <> "/1"
-      _ -> throwErr $ "Suspicious operator: " <> op
-  Call op [x, y] | isOp op -> do
+      aaa@_ -> throwErr $ "Suspicious unary operator: " <> op <> " " <> showT aaa
+  CallIn op [x, y] | isOp op -> do
     mps <- use maps
-    case (M.lookup (op, Ar2) (mps ^. opmap) :: Maybe Op) of
+    case (M.lookup (op, Ar2, InFixity) (mps ^. opmap) :: Maybe Op) of
       Just Op{oexec = ExOp expr} -> either throwErr evm $ substitute (zip ["#x", "#y"] [x, y]) expr
-      Just Op{oexec = AOp aop} -> evm (Call aop [x, y])
+      Just Op{oexec = AOp aop} -> evm (CallIn aop [x, y])
       Nothing -> case op of
         opn | T.head opn == '#' -> throwErr $ "Expression instead of a function name: " <> T.tail opn <> "/2"
         _ -> throwErr $ "No such operator: " <> op <> "/2"
-      _ -> throwErr $ "Suspicious operator: " <> op
+      _ -> throwErr $ "Suspicious binary operator: " <> op
   Call "if" [a, b, c] -> do
     cond <- evm a
     if value cond /= 0 :+ 0
@@ -494,7 +495,7 @@ evalS ex = case ex of
     if value n == 0 :+ 0
       then evm a
       else evm $ Call "loop" [c, a]
-  Call "neg" [x] -> evm $ Call "*" [Number (-1) 0 Unitless, x]
+  Call "neg" [x] -> evm $ CallIn "*" [Number (-1) 0 Unitless, x]
   Call "ret" (e : _) -> evm e
   Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
     let builtin_fun = functions M.! (f, ArFixed . length $ ps)
@@ -531,6 +532,7 @@ evalS ex = case ex of
               wnt = cvt_nls "\nFunctions with similar names:\n" wn
            in throwErr $ "No such function: " <> name <> "/" <> showT (length e) <> wat <> wnt
       _ -> throwErr $ "Suspicious function: " <> name
+  CallF _ _ _ -> throwErr "Wrong call"
   Id "m.r" -> do
     rgen <- use gen
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Precise) rgen
@@ -606,13 +608,13 @@ evalS ex = case ex of
       FnOp (MathOp fun) -> do
         v1 <- evm x
         v2 <- evm y
-        if not $ checkUnitCompatibility (fst bop) v1 v2
+        if not $ checkUnitCompatibility ((\(n, _, _) -> n) bop) v1 v2
           then throwErr "Incompatible units"
           else
             pure $
-              if unit v1 == UProd [SUnit "m" 1] && fst bop == "^" && unit v2 == Unitless && value v2 `elem` ([2 :+ 0, 3 :+ 0] :: [Complex Internal])
+              if unit v1 == UProd [SUnit "m" 1] && (\(n, _, _) -> n) bop == "^" && unit v2 == Unitless && value v2 `elem` ([2 :+ 0, 3 :+ 0] :: [Complex Internal])
                 then Value (fun (value v1) (value v2)) (UProd [SUnit "m" (fromIntegral . numerator . realValue $ v2)])
-                else Value (fun (value v1) (value v2)) (combineUnits (fst bop) (unit v1) (unit v2))
+                else Value (fun (value v1) (value v2)) (combineUnits ((\(n, _, _) -> n) bop) (unit v1) (unit v2))
       FnOp (BitOp fun) -> unitlessValue . (:+ 0) <$> bitEval fun x y
       ExOp e -> evm e
       _ -> throwErr "Misteriously missing operator"

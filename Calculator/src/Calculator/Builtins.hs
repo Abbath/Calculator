@@ -6,7 +6,7 @@
 
 module Calculator.Builtins where
 
-import Calculator.Types (Arity (..), Assoc (..), EvalState (EvalState), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Internal, Maps (..), Op (..), OpArity (..), OpMap, Precise, Unit (..), VarMap, defaultFun, unitlessNumber, unitlessOne, unitlessValue, unitlessZero)
+import Calculator.Types (Arity (..), Assoc (..), CallFixity (..), EvalState (EvalState), ExecFn (..), ExecOp (..), Expr (..), Fun (..), FunFun (..), FunMap, FunOp (..), Internal, Maps (..), Op (..), OpArity (..), OpMap, Precise, Unit (..), VarMap, defaultFun, unitlessNumber, unitlessOne, unitlessValue, unitlessZero)
 import Calculator.Utils (splitRational)
 import Control.Applicative ((<|>))
 import Control.Arrow (second)
@@ -27,39 +27,39 @@ import System.Random (mkStdGen)
 
 operators :: OpMap
 operators =
-  [ (("=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , (("<-", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , (("+=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , (("-=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , (("*=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , (("/=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , (("%=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , (("^=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , (("|=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , (("&=", Ar2), Op{precedence = 0, associativity = R, oexec = NOp})
-  , ((":", Ar2), Op{precedence = 1, associativity = L, oexec = NOp})
-  , ((":=", Ar2), Op{precedence = 2, associativity = R, oexec = NOp})
-  , (("|", Ar2), Op{precedence = 3, associativity = L, oexec = FnOp (BitOp (.|.))})
-  , (("&", Ar2), Op{precedence = 4, associativity = L, oexec = FnOp (BitOp (.&.))})
-  , (("==", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp eq)})
-  , (("===", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp $ const (==))})
-  , (("<=", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (<=))})
-  , ((">=", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (>=))})
-  , (("!=", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp neq)})
-  , (("!==", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp $ const (/=))})
-  , (("<", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (<))})
-  , ((">", Ar2), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (>))})
-  , (("<<", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (BitOp \n s -> shift n (fromInteger s))})
-  , ((">>", Ar2), Op{precedence = 6, associativity = L, oexec = FnOp (BitOp \n s -> shift n ((-1) * fromInteger s))})
-  , (("+", Ar2), Op{precedence = 7, associativity = L, oexec = FnOp (MathOp $ fmath (+))})
-  , (("-", Ar2), Op{precedence = 7, associativity = L, oexec = FnOp (MathOp $ fmath (-))})
-  , (("*", Ar2), Op{precedence = 8, associativity = L, oexec = FnOp (MathOp mult)})
-  , (("/", Ar2), Op{precedence = 8, associativity = L, oexec = FnOp (MathOp divide)})
-  , (("%", Ar2), Op{precedence = 8, associativity = L, oexec = FnOp (MathOp fmod)})
-  , (("^", Ar2), Op{precedence = 10, associativity = R, oexec = FnOp (MathOp pow)})
-  , (("<=>", Ar2), Op{precedence = 11, associativity = L, oexec = FnOp (MathOp fcmp)})
-  , (("|>", Ar2), Op{precedence = 12, associativity = L, oexec = NOp})
-  , (("::=", Ar2), Op{precedence = 13, associativity = R, oexec = NOp})
+  [ (("=", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("<-", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("+=", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("-=", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("*=", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("/=", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("%=", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("^=", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("|=", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , (("&=", Ar2, InFixity), Op{precedence = 0, associativity = R, oexec = NOp})
+  , ((":", Ar2, InFixity), Op{precedence = 1, associativity = L, oexec = NOp})
+  , ((":=", Ar2, InFixity), Op{precedence = 2, associativity = R, oexec = NOp})
+  , (("|", Ar2, InFixity), Op{precedence = 3, associativity = L, oexec = FnOp (BitOp (.|.))})
+  , (("&", Ar2, InFixity), Op{precedence = 4, associativity = L, oexec = FnOp (BitOp (.&.))})
+  , (("==", Ar2, InFixity), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp eq)})
+  , (("===", Ar2, InFixity), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp $ const (==))})
+  , (("<=", Ar2, InFixity), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (<=))})
+  , ((">=", Ar2, InFixity), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (>=))})
+  , (("!=", Ar2, InFixity), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp neq)})
+  , (("!==", Ar2, InFixity), Op{precedence = 5, associativity = L, oexec = FnOp (EqOp $ const (/=))})
+  , (("<", Ar2, InFixity), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (<))})
+  , ((">", Ar2, InFixity), Op{precedence = 5, associativity = L, oexec = FnOp (OrdOp (>))})
+  , (("<<", Ar2, InFixity), Op{precedence = 6, associativity = L, oexec = FnOp (BitOp \n s -> shift n (fromInteger s))})
+  , ((">>", Ar2, InFixity), Op{precedence = 6, associativity = L, oexec = FnOp (BitOp \n s -> shift n ((-1) * fromInteger s))})
+  , (("+", Ar2, InFixity), Op{precedence = 7, associativity = L, oexec = FnOp (MathOp $ fmath (+))})
+  , (("-", Ar2, InFixity), Op{precedence = 7, associativity = L, oexec = FnOp (MathOp $ fmath (-))})
+  , (("*", Ar2, InFixity), Op{precedence = 8, associativity = L, oexec = FnOp (MathOp mult)})
+  , (("/", Ar2, InFixity), Op{precedence = 8, associativity = L, oexec = FnOp (MathOp divide)})
+  , (("%", Ar2, InFixity), Op{precedence = 8, associativity = L, oexec = FnOp (MathOp fmod)})
+  , (("^", Ar2, InFixity), Op{precedence = 10, associativity = R, oexec = FnOp (MathOp pow)})
+  , (("<=>", Ar2, InFixity), Op{precedence = 11, associativity = L, oexec = FnOp (MathOp fcmp)})
+  , (("|>", Ar2, InFixity), Op{precedence = 12, associativity = L, oexec = NOp})
+  , (("::=", Ar2, InFixity), Op{precedence = 13, associativity = R, oexec = NOp})
   ]
 
 eq :: Int -> Complex Internal -> Complex Internal -> Bool
@@ -69,24 +69,24 @@ neq :: Int -> Complex Internal -> Complex Internal -> Bool
 neq pr a b = let small = 10 ^^ (-pr) in abs (realPart a - realPart b) > small || abs (imagPart a - imagPart b) > small
 
 opMember :: Text -> Bool
-opMember op = M.member (op, Ar2) operators || M.member (op, Ar1) unaryOperators
+opMember op = M.member (op, Ar2, InFixity) operators || M.member (op, Ar1, PreFixity) unaryOperators || M.member (op, Ar1, SufFixity) unaryOperators
 
 opLookup :: Text -> Maybe Op
-opLookup op = M.lookup (op, Ar2) operators <|> M.lookup (op, Ar1) unaryOperators
+opLookup op = M.lookup (op, Ar2, InFixity) operators <|> M.lookup (op, Ar1, PreFixity) unaryOperators <|> M.lookup (op, Ar1, SufFixity) unaryOperators
 
 unaryOperators :: OpMap
 unaryOperators =
-  [ (("?", Ar1), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp summ)})
-  , (("!", Ar1), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp prod)})
-  , (("~", Ar1), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp complement)})
-  , (("-", Ar1), Op{precedence = 9, associativity = N, oexec = NOp})
-  , (("+", Ar1), Op{precedence = 9, associativity = N, oexec = NOp})
+  [ (("?", Ar1, SufFixity), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp summ)})
+  , (("!", Ar1, SufFixity), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp prod)})
+  , (("~", Ar1, PreFixity), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp complement)})
+  , (("-", Ar1, PreFixity), Op{precedence = 9, associativity = N, oexec = NOp})
+  , (("+", Ar1, PreFixity), Op{precedence = 9, associativity = N, oexec = NOp})
   ]
 
 maxPrecedence :: Int
 maxPrecedence = precedence $ maximumBy (compare `on` precedence) (M.elems operators)
 
-linearOperators :: V.Vector ((Text, OpArity), Op)
+linearOperators :: V.Vector ((Text, OpArity, CallFixity), Op)
 linearOperators = V.fromList $ M.assocs operators
 
 functions :: FunMap
@@ -144,26 +144,26 @@ functions =
   , (("log2", ArFixed 2), defaultFun{fexec = FnFn (MathFn2 log2)})
   , (("log", ArFixed 2), defaultFun{fexec = FnFn (MathFn2 turboLog)})
   , (("pow", ArFixed 2), defaultFun{fexec = FnFn (MathFn2 pow)})
-  , (("rad", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "*" [Id "x", Call "/" [Id "m.pi", unitlessNumber 180]])})
-  , (("deg", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "*" [Id "x", Call "/" [unitlessNumber 180, Id "m.pi"]])})
-  , (("cot", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "/" [unitlessOne, Call "tan" [Id "x"]])})
-  , (("sec", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "/" [unitlessOne, Call "sin" [Id "x"]])})
-  , (("csc", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "/" [unitlessOne, Call "cos" [Id "x"]])})
-  , (("coth", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "/" [unitlessOne, Call "tanh" [Id "x"]])})
-  , (("sech", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "/" [unitlessOne, Call "sinh" [Id "x"]])})
-  , (("csch", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "/" [unitlessOne, Call "cosh" [Id "x"]])})
-  , (("acot", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "atan" [Call "/" [unitlessOne, Id "x"]])})
-  , (("asec", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "acos" [Call "/" [unitlessOne, Id "x"]])})
-  , (("acsc", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "asin" [Call "/" [unitlessOne, Id "x"]])})
-  , (("acoth", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "atanh" [Call "/" [unitlessOne, Id "x"]])})
-  , (("asech", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "acosh" [Call "/" [unitlessOne, Id "x"]])})
-  , (("acsch", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "asinh" [Call "/" [unitlessOne, Id "x"]])})
-  , (("sinc", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", unitlessZero], Call "/" [Call "sin" [Id "x"], Id "x"], unitlessOne])})
-  , (("cosc", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", unitlessZero], Call "-" [Call "/" [Call "cos" [Id "x"], Id "x"], Call "/" [Call "sin" [Id "x"], Call "^" [Id "x", unitlessNumber 2]]], unitlessOne])})
-  , (("sincn", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", unitlessZero], Call "/" [Call "sin" [Call "*" [Id "m.pi", Id "x"]], Par (Call "*" [Id "m.pi", Id "x"])], unitlessOne])})
-  , (("coscn", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [Call "!=" [Id "x", unitlessZero], Call "-" [Call "/" [Call "cos" [Call "*" [Id "m.pi", Id "x"]], Id "x"], Call "/" [Call "sin" [Call "*" [Id "m.pi", Id "x"]], Par (Call "*" [Id "m.pi", Call "^" [Id "x", unitlessNumber 2]])]], unitlessOne])})
-  , (("hav", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "/" [Call "-" [unitlessOne, Call "cos" [Id "x"]], unitlessNumber 2])})
-  , (("ahav", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "*" [unitlessNumber 2, Call "asin" [Call "sqrt" [Id "x"]]])})
+  , (("rad", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "*" [Id "x", CallIn "/" [Id "m.pi", unitlessNumber 180]])})
+  , (("deg", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "*" [Id "x", CallIn "/" [unitlessNumber 180, Id "m.pi"]])})
+  , (("cot", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "/" [unitlessOne, Call "tan" [Id "x"]])})
+  , (("sec", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "/" [unitlessOne, Call "sin" [Id "x"]])})
+  , (("csc", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "/" [unitlessOne, Call "cos" [Id "x"]])})
+  , (("coth", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "/" [unitlessOne, Call "tanh" [Id "x"]])})
+  , (("sech", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "/" [unitlessOne, Call "sinh" [Id "x"]])})
+  , (("csch", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "/" [unitlessOne, Call "cosh" [Id "x"]])})
+  , (("acot", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "atan" [CallIn "/" [unitlessOne, Id "x"]])})
+  , (("asec", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "acos" [CallIn "/" [unitlessOne, Id "x"]])})
+  , (("acsc", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "asin" [CallIn "/" [unitlessOne, Id "x"]])})
+  , (("acoth", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "atanh" [CallIn "/" [unitlessOne, Id "x"]])})
+  , (("asech", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "acosh" [CallIn "/" [unitlessOne, Id "x"]])})
+  , (("acsch", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "asinh" [CallIn "/" [unitlessOne, Id "x"]])})
+  , (("sinc", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [CallIn "!=" [Id "x", unitlessZero], CallIn "/" [Call "sin" [Id "x"], Id "x"], unitlessOne])})
+  , (("cosc", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [CallIn "!=" [Id "x", unitlessZero], CallIn "-" [CallIn "/" [Call "cos" [Id "x"], Id "x"], CallIn "/" [Call "sin" [Id "x"], CallIn "^" [Id "x", unitlessNumber 2]]], unitlessOne])})
+  , (("sincn", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [CallIn "!=" [Id "x", unitlessZero], CallIn "/" [Call "sin" [CallIn "*" [Id "m.pi", Id "x"]], Par (CallIn "*" [Id "m.pi", Id "x"])], unitlessOne])})
+  , (("coscn", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [CallIn "!=" [Id "x", unitlessZero], CallIn "-" [CallIn "/" [Call "cos" [Call "*" [Id "m.pi", Id "x"]], Id "x"], CallIn "/" [Call "sin" [Call "*" [Id "m.pi", Id "x"]], Par (CallIn "*" [Id "m.pi", CallIn "^" [Id "x", unitlessNumber 2]])]], unitlessOne])})
+  , (("hav", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "/" [CallIn "-" [unitlessOne, Call "cos" [Id "x"]], unitlessNumber 2])})
+  , (("ahav", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (CallIn "*" [unitlessNumber 2, Call "asin" [Call "sqrt" [Id "x"]]])})
   , (("trunc", ArFixed 1), defaultFun{fexec = FnFn (IntFn1 truncate)})
   , (("round", ArFixed 1), defaultFun{fexec = FnFn (IntFn1 round)})
   , (("floor", ArFixed 1), defaultFun{fexec = FnFn (IntFn1 floor)})
@@ -295,7 +295,7 @@ log2 :: Complex Internal -> Complex Internal -> Complex Internal
 log2 = wrapRealFun2 logBase
 
 names :: [String]
-names = T.unpack <$> map fst (M.keys operators) ++ map fst (M.keys functions)
+names = T.unpack <$> map (\(n, _, _) -> n) (M.keys operators) ++ map fst (M.keys functions)
 
 defVar :: VarMap
 defVar =
@@ -316,11 +316,11 @@ defaultMaps = Maps defVar funMap opMap M.empty
 defaultEvalState :: EvalState
 defaultEvalState = EvalState defaultMaps (mkStdGen 0) 16
 
-getPrecedences :: OpMap -> Map (Text, OpArity) Int
+getPrecedences :: OpMap -> Map (Text, OpArity, CallFixity) Int
 getPrecedences = M.fromList . map (second precedence) . M.toList
 
-getFakePrecedences :: FunMap -> Map (Text, OpArity) Int
-getFakePrecedences = M.fromList . map (\(t, _) -> ((t, Ar2), maxPrecedence + 1)) . filter ((== ArFixed 2) . snd) . M.keys
+getFakePrecedences :: FunMap -> Map (Text, OpArity, CallFixity) Int
+getFakePrecedences = M.fromList . map (\(t, _) -> ((t, Ar2, InFixity), maxPrecedence + 1)) . filter ((== ArFixed 2) . snd) . M.keys
 
 derivative :: Expr -> Expr -> Either Text Expr
 derivative e x = case e of

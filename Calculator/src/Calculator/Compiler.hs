@@ -17,6 +17,7 @@ import Calculator.Builtins (
 import Calculator.Types (
   Arity (ArFixed),
   Assoc,
+  CallFixity (InFixity),
   ExecFn (FnFn),
   ExecOp (FnOp),
   Expr (..),
@@ -235,7 +236,7 @@ indexValueArray (ValueArray v) val = V.elemIndex val v
 goInside :: (Expr -> Either Text Expr) -> Expr -> Either Text Expr
 goInside f ex = case ex of
   (Par e) -> Par <$> f e
-  (Call n e) -> Call n <$> mapM f e
+  (CallF fx n e) -> CallF fx n <$> mapM f e
   e -> pure e
 
 substitute :: [(Text, Expr)] -> Expr -> Either Text Expr
@@ -248,23 +249,23 @@ substitute ((x, y) : xs) (Id i) =
       Par _ -> y
       t -> Par t
     else substitute xs (Id i)
-substitute s@((x, Id fname) : xs) (Call n e) =
+substitute s@((x, Id fname) : xs) (CallF fx n e) =
   if n == x
     then Call fname <$> mapM (substitute s) e
-    else mapM (substitute s) e >>= substitute xs . Call n
-substitute s (Call ":=" [Id z, e]) = do
+    else mapM (substitute s) e >>= substitute xs . CallF fx n
+substitute s (CallIn ":=" [Id z, e]) = do
   ne <- substitute s e
-  pure $ Call ":=" [Id z, ne]
-substitute s@(_ : xs) (Call n e) = mapM (substitute s) e >>= substitute xs . Call n
+  pure $ CallIn ":=" [Id z, ne]
+substitute s@(_ : xs) (CallF fx n e) = mapM (substitute s) e >>= substitute xs . CallF fx n
 substitute s ex = goInside (substitute s) ex
 
 localize :: [Text] -> Expr -> Either Text Expr
 localize [] e = pure e
 localize (x : xs) (Id i) = if i == x then pure $ Id (hashify i) else localize xs (Id i)
-localize s@(x : xs) (Call nm e) =
+localize s@(x : xs) (CallF fx nm e) =
   if nm == x
-    then Call (hashify nm) <$> mapM (localize s) e
-    else mapM (localize s) e >>= localize xs . Call nm
+    then CallF fx (hashify nm) <$> mapM (localize s) e
+    else mapM (localize s) e >>= localize xs . CallF fx nm
 localize s ex = goInside (localize s) ex
 
 catchVar :: Set Text -> Maps -> Expr -> Either Text Expr
@@ -455,9 +456,9 @@ run m = do
                     v1 <- pop
                     v2 <- pop
                     if
-                      | k == ("/", Ar2) -> do
+                      | k == ("/", Ar2, InFixity) -> do
                           push . unitlessValue $ value v2 `divide` value v1
-                      | k == ("%", Ar2) -> do
+                      | k == ("%", Ar2, InFixity) -> do
                           push . unitlessValue $ value v2 `fmod` value v1
                       | otherwise ->
                           case oexec op of
@@ -583,15 +584,15 @@ compile' m = go
       Left err -> throwError err
       Right der -> addFun m name args der
     UDF name args body -> addFun m name args body
-    UDO name opprec assoc body -> addOp m name opprec assoc body
+    UDO name opprec assoc fixity body -> addOp m name opprec assoc body
     Par e -> go e
-    Call ":=" [Id name, expr] ->
+    CallIn ":=" [Id name, expr] ->
       if "c." `T.isPrefixOf` name
         then throwError "Can't change constant"
         else go expr >> setVar (StrVal name)
-    Call ":" [a, b] -> go a >> go b
-    Call "|>" [x, Id f] -> go $ Call f [x]
-    Call "input" [] -> do
+    CallIn ":" [a, b] -> go a >> go b
+    CallIn "|>" [x, Id f] -> go $ Call f [x]
+    CallIn "input" [] -> do
       emitByte OpEject
       emitByte OpInput
     Call "print" [x] -> do
@@ -604,7 +605,7 @@ compile' m = go
       emitByte OpEject
       emitByte OpFmt
       findPlace (StrVal $ either id id format) >>= emitByte
-    Call "atan" [Call "/" [x, y]] -> go $ Call "atan2" [x, y]
+    Call "atan" [CallIn "/" [x, y]] -> go $ Call "atan2" [x, y]
     Call "log" [x, y] -> go $ Call "log2" [x, y]
     Call "if" [cond, t] -> go (Call "if" [cond, t, unitlessZero])
     Call "if" [cond, t, f] -> do
@@ -638,7 +639,7 @@ compile' m = go
       emitByte OpInternal
       let idx = fromMaybe 0 $ V.elemIndex f ["real", "imag", "conj"]
       emitByte (toEnum idx :: OpInternal)
-    Call op [x, y] | M.member (op, Ar2) (m ^. opmap) -> do
+    CallIn op [x, y] | M.member (op, Ar2, InFixity) (m ^. opmap) -> do
       go x
       go y
       emitByte OpBuiltin
@@ -647,7 +648,7 @@ compile' m = go
       forM_ args go
       emitByte OpBuiltin
       emitByte (fun2Code (m ^. funmap) (fun, ArFixed . length $ args))
-    Call callee args -> do
+    CallF fx callee args -> do
       UM fm om _ _ <- use umaps
       if
         | (M.member (callee, length args) fm) -> do
@@ -658,9 +659,10 @@ compile' m = go
             let UO _ _ e = om M.! callee
             ne <- liftEither $ substitute (zip ["#x", "#y"] args) e
             go ne
-        | (callee == "-" && length args == 1) -> go (Call "-" [unitlessZero, (!! 0) args])
+        | (callee == "-" && length args == 1) -> go (CallIn "-" [unitlessZero, (!! 0) args])
         | (callee == "~" && length args == 1) -> go (Call "comp" args)
         | (callee == "!" && length args == 1) -> go (Call "fact" args)
+        | (callee == "?" && length args == 1) -> go (Call "term" args)
         | otherwise -> throwError $ "Callee does not exist: " <> callee
     Number a b _ -> addConstant (NumVal $ unitlessValue (a :+ b))
     Id a -> do
@@ -677,7 +679,7 @@ compile' m = go
     Lambda _ _ -> throwError "Not implemented"
 
 op2Code :: OpMap -> Text -> Word8
-op2Code m op = toWord8 $ M.findIndex (op, Ar2) m
+op2Code m op = toWord8 $ M.findIndex (op, Ar2, InFixity) m
 
 fun2Code :: FunMap -> (Text, Arity) -> Word8
 fun2Code m (fun, l) = 0x80 .|. toWord8 (M.findIndex (fun, l) m)

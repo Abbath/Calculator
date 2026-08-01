@@ -10,6 +10,7 @@ import Calculator.Builtins (maxPrecedence)
 import Calculator.Lexer (tloop)
 import Calculator.Types (
   Assoc (..),
+  CallFixity (..),
   ChLit (..),
   Expr (..),
   Internal,
@@ -18,9 +19,9 @@ import Calculator.Types (
   OpArity (..),
   Token (..),
   Unit (Unitless),
+  isOp,
   isSpaceFun,
   numToText,
-  opSymbols,
   opmap,
   renderTokens,
   showT,
@@ -120,7 +121,7 @@ opAliasStmt = do
   op1 <- operator
   void eq
   op2 <- operator
-  pure $ UDO op1 (-1) L (Call op2 [Id "#x", Id "#y"])
+  pure $ UDO op1 (-1) L InFixity (Call op2 [Id "#x", Id "#y"])
 
 operator :: Parser Text
 operator = extractOp <$> parseIf "operator" isTOp
@@ -209,13 +210,18 @@ copyPrec m = do
   void parLeft
   name <- operator
   void parRight
-  let p1 = precedence <$> (m ^. (opmap . at (name, Ar1)))
-  let p2 = precedence <$> (m ^. (opmap . at (name, Ar2)))
-  pure . (,0) . toRational $ case (p1, p2) of
-    (Nothing, Nothing) -> -2
-    (Just p, Nothing) -> p
-    (Nothing, Just p) -> p
-    (Just _, Just p) -> p
+  let p0 = precedence <$> (m ^. (opmap . at (name, Ar1, SufFixity)))
+  let p1 = precedence <$> (m ^. (opmap . at (name, Ar1, PreFixity)))
+  let p2 = precedence <$> (m ^. (opmap . at (name, Ar2, InFixity)))
+  pure . (,0) . toRational $ case (p0, p1, p2) of
+    (Nothing, Nothing, Nothing) -> -2
+    (Just p, Nothing, Nothing) -> p
+    (Nothing, Just p, Nothing) -> p
+    (Just _, Nothing, Just p) -> p
+    (Nothing, Nothing, Just p) -> p
+    (Nothing, Just _, Just p) -> p
+    (Just _, Just _, Just p) -> p
+    (Just _, Just p, Nothing) -> p
 
 copyAssoc :: Maps -> Parser (Internal, Internal)
 copyAssoc m = do
@@ -223,13 +229,18 @@ copyAssoc m = do
   void parLeft
   name <- operator
   void parRight
-  let p1 = associativity <$> (m ^. (opmap . at (name, Ar1)))
-  let p2 = associativity <$> (m ^. (opmap . at (name, Ar2)))
-  pure . (,0) . toRational . fromEnum $ case (p1, p2) of
-    (Nothing, Nothing) -> N
-    (Just p, Nothing) -> p
-    (Nothing, Just p) -> p
-    (Just _, Just p) -> p
+  let p0 = associativity <$> (m ^. (opmap . at (name, Ar1, SufFixity)))
+  let p1 = associativity <$> (m ^. (opmap . at (name, Ar1, PreFixity)))
+  let p2 = associativity <$> (m ^. (opmap . at (name, Ar2, InFixity)))
+  pure . (,0) . toRational . fromEnum $ case (p0, p1, p2) of
+    (Nothing, Nothing, Nothing) -> N
+    (Just p, Nothing, Nothing) -> p
+    (Nothing, Just p, Nothing) -> p
+    (Just _, Nothing, Just p) -> p
+    (Nothing, Nothing, Just p) -> p
+    (Nothing, Just _, Just p) -> p
+    (Just _, Just _, Just p) -> p
+    (Just _, Just p, Nothing) -> p
 
 assocLetter :: Parser (Internal, Internal)
 assocLetter = do
@@ -239,6 +250,16 @@ assocLetter = do
     "R" -> 1
     _ -> 2
 
+fixLetter :: Parser (Internal, Internal)
+fixLetter = do
+  name <- identifier
+  pure . (,0) $ case name of
+    "N" -> 0
+    "I" -> 1
+    "P" -> 2
+    "S" -> 3
+    _ -> 0
+
 udoStmt :: Maps -> Parser Expr
 udoStmt m = do
   name <- operator
@@ -246,9 +267,11 @@ udoStmt m = do
   (p, _) <- number <|> copyPrec m
   void comma
   (a, _) <- number <|> copyAssoc m <|> assocLetter
+  void comma
+  (fx, _) <- number <|> fixLetter
   void parRight
   void eq2
-  UDO name (fromInteger . numerator $ p) (toEnum (fromInteger $ numerator a)) <$> expr 0.0 m
+  UDO name (fromInteger . numerator $ p) (toEnum (fromInteger $ numerator a)) (toEnum (fromInteger $ numerator fx)) <$> expr 0.0 m
 
 assignStmt :: Maps -> Parser Expr
 assignStmt m = do
@@ -293,11 +316,11 @@ expr min_bp m = Parser $
       TOp op -> case inputPeek ts of
         Just TLPar -> do
           (i, e) <- runParser (parens (sepBy (expr 0.0 m) comma)) ts
-          inner_loop (Call (handleNegation op) e) i
+          inner_loop (let (new_op, fx) = handleNegation NoFixity op in CallF fx new_op e) i
         _ -> case prefix_binding_power op m of
           Just bp1 -> do
             (i, e) <- runParser (expr bp1 m) ts
-            inner_loop (Call (handleNegation op) [e]) i
+            inner_loop (let (new_op, fx) = handleNegation PreFixity op in CallF fx new_op [e]) i
           Nothing -> Left $ "No such operator: " <> op
       TNumber a b -> case inputPeek ts of
         Just (TUnit u) -> inner_loop (Number a b u) (inputTail ts)
@@ -348,11 +371,11 @@ expr min_bp m = Parser $
           if bp < min_bp
             then rtl
             else case inputPeek ts1 of
-              Just (TOp op1) -> inner_loop (Call (handleNegation op) [lhs]) ts1
-              Nothing -> Right (ts1, Call (handleNegation op) [lhs])
+              Just (TOp op1) -> inner_loop (let (new_op, fx) = handleNegation SufFixity op in CallF fx new_op [lhs]) ts1
+              Nothing -> Right (ts1, let (new_op, fx) = handleNegation SufFixity op in CallF fx new_op [lhs])
               _ -> do
                 (ts2, e) <- runParser (expr bp m) ts1
-                inner_loop (Call op [lhs, e]) ts2
+                inner_loop (CallF InFixity op [lhs, e]) ts2
         Nothing -> case infix_binding_power op m of
           Nothing -> Left $ "Operator does not exist: " <> showT op
           Just (l_bp, r_bp) ->
@@ -360,7 +383,7 @@ expr min_bp m = Parser $
               then rtl
               else do
                 (ts2, e) <- runParser (expr r_bp m) ts1
-                inner_loop (Call op [lhs, e]) ts2
+                inner_loop (CallF (if isOp op then InFixity else NoFixity) op [lhs, e]) ts2
       TLPar -> Left "Calling a ticked function as a normal one"
       tok -> Left $ "Wrong token: " <> showT tok
     _ -> rtl
@@ -368,9 +391,9 @@ expr min_bp m = Parser $
     rtl = Right (ts, lhs)
   infix_binding_power :: Text -> Maps -> Maybe (Double, Double)
   infix_binding_power op ms =
-    if T.all (`elem` opSymbols) op
+    if isOp op
       then do
-        (Op pr asoc _) <- ms ^. (opmap . at (op, Ar2))
+        (Op pr asoc _) <- ms ^. (opmap . at (op, Ar2, InFixity))
         let p = fromIntegral pr
         pure $ case asoc of
           L -> (p, p + 0.25)
@@ -379,18 +402,18 @@ expr min_bp m = Parser $
       else let mp = fromIntegral (maxPrecedence + 1) in pure (mp, mp + 0.25)
   prefix_binding_power :: Text -> Maps -> Maybe Double
   prefix_binding_power op ms = do
-    (Op pr _ _) <- ms ^. (opmap . at (op, Ar1))
+    (Op pr _ _) <- ms ^. (opmap . at (op, Ar1, PreFixity))
     pure $ fromIntegral pr
   postfix_binding_power :: Text -> Maps -> Maybe Double
   postfix_binding_power "-" _ = Nothing
   postfix_binding_power "+" _ = Nothing
   postfix_binding_power op ms = do
-    (Op pr _ _) <- ms ^. (opmap . at (op, Ar1))
+    (Op pr _ _) <- ms ^. (opmap . at (op, Ar1, SufFixity))
     pure $ fromIntegral pr
-  handleNegation :: Text -> Text
-  handleNegation "-" = "neg"
-  handleNegation "+" = "id"
-  handleNegation op = op
+  handleNegation :: CallFixity -> Text -> (Text, CallFixity)
+  handleNegation _ "-" = ("neg", NoFixity)
+  handleNegation _ "+" = ("id", NoFixity)
+  handleNegation fx op = (op, fx)
 
 testParser :: Parser a -> Text -> Either Text (Input, a)
 testParser = flip ((>>=) . tloop) . (. Input 0) . runParser

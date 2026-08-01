@@ -6,10 +6,11 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Calculator.Types (
-  Expr (..),
+  Expr (.., Call, CallIn),
   Token (..),
   Assoc (..),
   Op (..),
@@ -80,6 +81,7 @@ module Calculator.Types (
   defaultFun,
   ChLit (..),
   Internal,
+  CallFixity (..),
 )
 where
 
@@ -390,6 +392,8 @@ isSpaceFun _ = False
 
 data Assoc = L | R | N deriving (Show, Read, Eq, Ord, Enum, Generic, ToJSON, FromJSON)
 
+data CallFixity = NoFixity | InFixity | PreFixity | SufFixity deriving (Eq, Ord, Enum, Show, Read, Generic, ToJSON, FromJSON)
+
 data ChLit = ChMap [(Text, Expr)] | ChArr [Expr] deriving (Show, Read, Eq, Generic, ToJSON, FromJSON)
 
 data Expr
@@ -399,14 +403,20 @@ data Expr
   | Imprt Text
   | Asgn [Text] [Expr]
   | UDF Text [Text] Expr
-  | UDO Text Int Assoc Expr
-  | Call Text [Expr]
+  | UDO Text Int Assoc CallFixity Expr
+  | CallF CallFixity Text [Expr]
   | Par Expr
   | Id Text
   | Seq [Expr]
   | Label Text
   | Lambda [Text] Expr
   deriving (Eq, Show, Read, Generic)
+
+pattern Call :: Text -> [Expr] -> Expr
+pattern Call f args = CallF NoFixity f args
+
+pattern CallIn :: Text -> [Expr] -> Expr
+pattern CallIn f args = CallF InFixity f args
 
 unitlessZero :: Expr
 unitlessZero = Number 0 0 Unitless
@@ -429,7 +439,7 @@ instance ToJSON Expr
 
 instance FromJSON Expr
 
-type ListTuple = ([(Text, (Internal, Internal))], [((Text, Arity), ([Text], Expr))], [((Text, OpArity), ((Int, Assoc), Expr))])
+type ListTuple = ([(Text, (Internal, Internal))], [((Text, Arity), ([Text], Expr))], [((Text, OpArity, CallFixity), ((Int, Assoc), Expr))])
 
 data FunFun
   = EqFn (Int -> Complex Internal -> Complex Internal -> Bool)
@@ -496,7 +506,7 @@ ar2int (ArVar n) = n
 
 type FunMap = Map (Text, Arity) Fun
 type VarMap = Map Text Value
-type OpMap = Map (Text, OpArity) Op
+type OpMap = Map (Text, OpArity, CallFixity) Op
 type ChairMap = Map Text Chair
 
 data Maps = Maps {_varmap :: VarMap, _funmap :: FunMap, _opmap :: OpMap, _chairmap :: ChairMap} deriving (Show)
@@ -511,13 +521,13 @@ unpackExOp :: ExecOp -> Expr
 unpackExOp (ExOp e) = e
 unpackExOp _ = error "Not an expression"
 
-opsToList :: OpMap -> [((Text, OpArity), ((Int, Assoc), Expr))]
+opsToList :: OpMap -> [((Text, OpArity, CallFixity), ((Int, Assoc), Expr))]
 opsToList = map (\(k, v) -> (k, ((precedence v, associativity v), unpackExOp . oexec $ v))) . filter (\(_, v) -> isExOp . oexec $ v) . M.toList
 
-opsFromList :: [((Text, OpArity), ((Int, Assoc), Expr))] -> OpMap
+opsFromList :: [((Text, OpArity, CallFixity), ((Int, Assoc), Expr))] -> OpMap
 opsFromList = M.fromList . map \(k, ((p, a), e)) -> (k, Op p a (ExOp e))
 
-getPrA :: OpMap -> Map (Text, OpArity) (Int, Assoc)
+getPrA :: OpMap -> Map (Text, OpArity, CallFixity) (Int, Assoc)
 getPrA om =
   let lst = M.toList om
       ps = M.fromList $ map (second (\o -> (precedence o, associativity o))) lst
@@ -540,7 +550,7 @@ funsFromList = M.fromList . map \(k, (p, e)) -> (k, Fun p (ExFn e))
 exprToString :: Expr -> Text
 exprToString ex = case ex of
   UDF n a e -> n <> "(" <> T.intercalate ", " a <> ")" <> " = " <> exprToString e
-  UDO n p a e -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Precise else 1) <> ")" <> " = " <> exprToString e
+  UDO n p a fx e -> n <> "(" <> showT p <> ", " <> showT (if a == L then 0 :: Precise else 1) <> ", " <> showT fx <> ")" <> " = " <> exprToString e
   Asgn [i] [e] -> i <> " = " <> exprToString e
   Number x y u -> (showT . (fromRational :: Internal -> Precise) $ x) <> (if y == 0 then "" else ("j" <>) . showT . (fromRational :: Internal -> Precise) $ y) <> (if u == Unitless then "" else showT u)
   Par e -> "(" <> exprToString e <> ")"
@@ -574,7 +584,7 @@ simplifyExpr :: Expr -> Expr
 simplifyExpr ex = case ex of
   Asgn s [e] -> Asgn s [simplifyExpr e]
   UDF n s e -> UDF n s (simplifyExpr e)
-  UDO n p a e -> UDO n p a (simplifyExpr e)
+  UDO n p a fx e -> UDO n p a fx (simplifyExpr e)
   Par (Par e) -> Par (simplifyExpr e)
   Par e -> Par (simplifyExpr e)
   Call "+" [Number 0.0 0.0 _, n] -> simplifyExpr n
