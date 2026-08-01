@@ -273,11 +273,12 @@ evalS ex = case ex of
           throwMsg ("Function " <> f <> "/" <> showT (ar2int arity))
       )
       newe
-  UDO n (-1) _ _ e@(CallF _ op _) -> do
+  UDO n (-1) _ _ e@(CallF fx op es) -> do
     mps <- use maps
-    case M.lookup (op, Ar2, InFixity) (mps ^. opmap) of
+    let arity = if length es == 2 then Ar2 else Ar1
+    case M.lookup (op, arity, fx) (mps ^. opmap) of
       Just o@Op{} -> do
-        maps . opmap . at (n, Ar2, InFixity) ?= o{oexec = AOp op}
+        maps . opmap . at (n, arity, fx) ?= o{oexec = AOp op}
         throwMsg $ "Operator alias " <> n <> " = " <> op
       Nothing -> throwErr $ "No such operator: " <> op
   UDO n p a fx e

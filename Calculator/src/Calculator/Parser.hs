@@ -121,7 +121,9 @@ opAliasStmt = do
   op1 <- operator
   void eq
   op2 <- operator
-  pure $ UDO op1 (-1) L InFixity (Call op2 [Id "#x", Id "#y"])
+  fx <- fixLetter <|> pure (1, 0)
+  let fixity = toEnum (fromInteger . numerator . fst $ fx)
+  pure $ UDO op1 (-1) L NoFixity (CallF fixity op2 (if fixity == InFixity then [Id "#x", Id "#y"] else [Id "#x"]))
 
 operator :: Parser Text
 operator = extractOp <$> parseIf "operator" isTOp
