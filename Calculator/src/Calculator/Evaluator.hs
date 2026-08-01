@@ -121,13 +121,13 @@ substitute ((x, y) : xys) (Id i) =
       (Par _) -> y
       t -> Par t
     else substitute xys (Id i)
-substitute ((x, Lambda a ex) : xys) expr@(Call n e) =
+substitute ((x, Lambda a ex) : xys) expr@(CallF _ n e) =
   if n == x
     then substitute (zip a e) ex
     else substitute xys expr
 substitute s@((x, Id fname) : xys) (CallF fx n e) =
   if n == x
-    then Call fname <$> mapM (substitute s) e
+    then CallF fx fname <$> mapM (substitute s) e
     else mapM (substitute s) e >>= substitute xys . CallF fx n
 substitute ((x, Id sname) : xys) (ChairSit n e) =
   if n == T.tail x
@@ -148,7 +148,7 @@ localize s ex = goInside (localize s) ex
 
 catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
 catchVar (vm, fm) ex = case ex of
-  Call op [Id i, e] | op `elem` ([":=", "::="] :: [Text]) -> st e >>= \ne -> pure $ Call op [Id i, ne]
+  CallF fx op [Id i, e] | op `elem` ([":=", "::="] :: [Text]) -> st e >>= \ne -> pure $ CallF fx op [Id i, ne]
   Id i | T.head i == '#' -> pure ex
   Id i ->
     let a = M.lookup i vm :: Maybe Value
@@ -219,6 +219,7 @@ applyPrecision v@(Value r u) = do
 
 evalS :: Expr -> Result Value
 evalS ex = case ex of
+  Debug e -> throwMsg . showT . preprocess $ e
   Asgn [s] [ChairLit e] -> do
     es <- evalChairLit e
     maps . chairmap . at s ?= M.fromList es
@@ -291,7 +292,6 @@ evalS ex = case ex of
               throwMsg ("Operator " <> n <> " p=" <> showT p <> " a=" <> (if a == L then "left" else (if a == R then "right" else "none")) <> " f=" <> (T.take 1 . T.toLower . showT $ fx))
           )
           t
-  Debug e -> throwMsg . showT . preprocess $ e
   Undef [Id x] -> removeVar x
   Undef [Id x, e] -> evm e >>= removeFun x . fromInteger . numerator . realPart . value
   Call "prec" [] -> prec .= 16 >> throwMsg "Precision is set to: 16"
@@ -309,7 +309,7 @@ evalS ex = case ex of
         if x == "m.r"
           then evm (Id "m.r")
           else extractId x >>= maybe (pure $ unitlessValue (0 :+ 0)) pure
-  Call f [e] | f `elem` (["opt"] :: [Text]) -> evm e
+  CallF fx f [e] | f == "opt" && fx == NoFixity || f == "?" && fx == PreFixity -> evm e
   CallF fixity op [e1, e2] | op == "opt" && fixity == NoFixity || op == "?" && fixity == InFixity -> do
     case e1 of
       Id x ->
@@ -598,7 +598,7 @@ evalS ex = case ex of
     let builtin_op = unaryOperators M.! uop
     case oexec builtin_op of
       FnOp (UnOp fun) -> unitlessValue . (:+ 0) . toRational . fun . numerator . realValue <$> evm x
-      _ -> throwErr "Misteriously missing operator"
+      _ -> throwErr "Misteriously missing unary operator"
   evalBuiltinOp2 bop x y = do
     let builtin_op = operators M.! bop
     pr <- use prec
@@ -617,7 +617,7 @@ evalS ex = case ex of
                 else Value (fun (value v1) (value v2)) (combineUnits ((\(n, _, _) -> n) bop) (unit v1) (unit v2))
       FnOp (BitOp fun) -> unitlessValue . (:+ 0) <$> bitEval fun x y
       ExOp e -> evm e
-      _ -> throwErr "Misteriously missing operator"
+      _ -> throwErr "Misteriously missing binary operator"
   tooBig = 2 ^ (8000000 :: Integer) :: Internal
   eq pr fun x y = do
     n <- evm x

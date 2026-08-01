@@ -77,6 +77,7 @@ opLookup op = M.lookup (op, Ar2, InFixity) operators <|> M.lookup (op, Ar1, PreF
 unaryOperators :: OpMap
 unaryOperators =
   [ (("?", Ar1, SufFixity), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp summ)})
+  , (("?", Ar1, PreFixity), Op{precedence = 9, associativity = N, oexec = NOp})
   , (("!", Ar1, SufFixity), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp prod)})
   , (("~", Ar1, PreFixity), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp complement)})
   , (("-", Ar1, PreFixity), Op{precedence = 9, associativity = N, oexec = NOp})

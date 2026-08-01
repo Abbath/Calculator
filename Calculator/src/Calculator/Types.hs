@@ -554,9 +554,9 @@ exprToString ex = case ex of
   Asgn [i] [e] -> i <> " = " <> exprToString e
   Number x y u -> (showT . (fromRational :: Internal -> Precise) $ x) <> (if y == 0 then "" else ("j" <>) . showT . (fromRational :: Internal -> Precise) $ y) <> (if u == Unitless then "" else showT u)
   Par e -> "(" <> exprToString e <> ")"
-  Call op [e] | isOp op -> "(" <> op <> exprToString e <> ")"
-  Call op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
-  Call n e -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
+  CallF _ op [e] | isOp op -> "(" <> op <> exprToString e <> ")"
+  CallF _ op [e1, e2] | isOp op -> "(" <> exprToString e1 <> op <> exprToString e2 <> ")"
+  CallF _ n e -> n <> "(" <> T.intercalate ", " (map exprToString e) <> ")"
   Id s -> s
   Seq es -> T.intercalate "\n" (map exprToString es)
   Imprt t -> "import " <> t
@@ -587,20 +587,20 @@ simplifyExpr ex = case ex of
   UDO n p a fx e -> UDO n p a fx (simplifyExpr e)
   Par (Par e) -> Par (simplifyExpr e)
   Par e -> Par (simplifyExpr e)
-  Call "+" [Number 0.0 0.0 _, n] -> simplifyExpr n
-  Call "+" [n, Number 0.0 0.0 _] -> simplifyExpr n
-  Call op [n, Number 0.0 0.0 _] | op `elem` (["+", "-"] :: [Text]) -> simplifyExpr n
-  Call "*" [Number 1.0 0.0 _, n] -> simplifyExpr n
-  Call "*" [Number 0.0 0.0 _, n] -> Number 0.0 0.0 Unitless
-  Call "*" [n, Number 1.0 0.0 _] -> simplifyExpr n
-  Call "*" [n, Number 0.0 0.0 _] -> Number 0.0 0.0 Unitless
-  Call op [n, Number 1.0 0.0 _] | op `elem` (["*", "/", "%"] :: [Text]) -> simplifyExpr n
-  Call "^" [n, Number 1.0 0.0 _] -> simplifyExpr n
-  Call "^" [Call "sqrt" [e], Number 2.0 0.0 _] -> simplifyExpr e
+  CallIn "+" [Number 0.0 0.0 _, n] -> simplifyExpr n
+  CallIn "+" [n, Number 0.0 0.0 _] -> simplifyExpr n
+  CallIn op [n, Number 0.0 0.0 _] | op `elem` (["+", "-"] :: [Text]) -> simplifyExpr n
+  CallIn "*" [Number 1.0 0.0 _, n] -> simplifyExpr n
+  CallIn "*" [Number 0.0 0.0 _, n] -> Number 0.0 0.0 Unitless
+  CallIn "*" [n, Number 1.0 0.0 _] -> simplifyExpr n
+  CallIn "*" [n, Number 0.0 0.0 _] -> Number 0.0 0.0 Unitless
+  CallIn op [n, Number 1.0 0.0 _] | op `elem` (["*", "/", "%"] :: [Text]) -> simplifyExpr n
+  CallIn "^" [n, Number 1.0 0.0 _] -> simplifyExpr n
+  CallIn "^" [Call "sqrt" [e], Number 2.0 0.0 _] -> simplifyExpr e
   Call "exp" [Call "log" [e]] -> simplifyExpr e
   Call "log" [Call "exp" [e]] -> simplifyExpr e
-  Call "sqrt" [Call "^" [e, Number 2.0 0.0 _]] -> simplifyExpr e
-  Call name e -> Call name (map simplifyExpr e)
+  Call "sqrt" [CallIn "^" [e, Number 2.0 0.0 _]] -> simplifyExpr e
+  CallF fx name e -> CallF fx name (map simplifyExpr e)
   x -> x
 
 showFraction :: Internal -> Text
