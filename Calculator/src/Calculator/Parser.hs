@@ -269,8 +269,7 @@ udoStmt m = do
   (p, _) <- number <|> copyPrec m
   void comma
   (a, _) <- number <|> copyAssoc m <|> assocLetter
-  void comma
-  (fx, _) <- number <|> fixLetter
+  (fx, _) <- (void comma *> (number <|> fixLetter)) <|> pure (1, 0)
   void parRight
   void eq2
   UDO name (fromInteger . numerator $ p) (toEnum (fromInteger $ numerator a)) (toEnum (fromInteger $ numerator fx)) <$> expr 0.0 m

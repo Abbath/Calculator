@@ -20,18 +20,15 @@ import Data.Text.IO as TIO (putStrLn)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 import System.Random (StdGen, initStdGen)
 
-data Backend = Internal deriving (Show)
-
 type Tests = [(Text, Either MessageType Value)]
 
-loop :: Tests -> Maps -> StdGen -> Backend -> Int -> IO Int
-loop [] _ _ _ n = pure n
-loop (x : xs) mps rgen bk n = do
+loop :: Tests -> Maps -> StdGen -> Int -> IO Int
+loop [] _ _ n = pure n
+loop (x : xs) mps rgen n = do
   let sample = fst x
   if not $ T.null sample
     then do
-      let e = case bk of
-            Internal -> tloop sample >>= P.parse mps
+      let e = tloop sample >>= P.parse mps
       let t = case e of
             Left err -> (Left (ErrMsg err), EvalState mps rgen 16 Nothing)
             Right r -> runState (runExceptT (evalS r)) (EvalState mps rgen 16 Nothing)
@@ -48,10 +45,10 @@ loop (x : xs) mps rgen bk n = do
         let (m, g) = case t of
               (Right r, EvalState m_ g_ _ _) -> (m_ & varmap %~ M.insert "_" r, g_)
               (Left _, EvalState m_ g_ _ _) -> (m_, g_)
-        loop xs m g bk (n + new_n)
+        loop xs m g (n + new_n)
     else do
       TIO.putStrLn "Empty!"
-      loop xs mps rgen bk n
+      loop xs mps rgen n
 
 pattern R :: Rational -> Either a2 Value
 pattern R n = Right (Value (n :+ 0) Unitless)
@@ -76,10 +73,10 @@ tests =
   , ("hh = h()", l "Variable hh=2")
   , ("p(x,y) = x - y", l "Function p/2")
   , ("p(2,2)", R 0)
-  , ("$(1,0,I) = x - y", l "Operator $ p=1 a=left f=i")
+  , ("$(1,0) = x - y", l "Operator $ p=1 a=left f=i")
   , ("2$2$2$2", R (-4))
   , ("2$2-2$2", R 0)
-  , ("$(p(-),L,I) = x - y", l "Operator $ p=7 a=left f=i")
+  , ("$(p(-),L) = x - y", l "Operator $ p=7 a=left f=i")
   , ("2$2-2$2", R (-4))
   , ("2^3^4", R 2417851639229258349412352)
   , ("2+2*2", R 6)
@@ -141,8 +138,7 @@ tests =
 
 testLoop :: IO ()
 testLoop = do
-  TIO.putStrLn "Internal parser:"
-  n <- initStdGen >>= \g -> loop tests defaultMaps g Internal 0
+  n <- initStdGen >>= \g -> loop tests defaultMaps g 0
   if n == 0
     then exitSuccess
     else exitWith $ ExitFailure n
