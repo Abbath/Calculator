@@ -304,11 +304,11 @@ evalS ex = case ex of
       else
         throwErr "Precision should be between 0 and 85"
   Call f [Id x]
-    | f `elem` (["opt", "?"] :: [Text]) ->
+    | f `elem` (["opt"] :: [Text]) ->
         if x == "m.r"
           then evm (Id "m.r")
           else extractId x >>= maybe (pure $ unitlessValue (0 :+ 0)) pure
-  Call f [e] | f `elem` (["opt", "?"] :: [Text]) -> evm e
+  Call f [e] | f `elem` (["opt"] :: [Text]) -> evm e
   Call op [e1, e2] | op `elem` (["opt", "?"] :: [Text]) -> do
     case e1 of
       Id x ->

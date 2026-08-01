@@ -76,7 +76,7 @@ opLookup op = M.lookup (op, Ar2) operators <|> M.lookup (op, Ar1) unaryOperators
 
 unaryOperators :: OpMap
 unaryOperators =
-  [ (("?", Ar1), Op{precedence = maxPrecedence + 1, associativity = N, oexec = NOp})
+  [ (("?", Ar1), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp summ)})
   , (("!", Ar1), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp prod)})
   , (("~", Ar1), Op{precedence = 9, associativity = N, oexec = FnOp (UnOp complement)})
   , (("-", Ar1), Op{precedence = 9, associativity = N, oexec = NOp})
@@ -179,6 +179,7 @@ functions =
   , (("pop", ArFixed 1), defaultFun{fexec = FnFn (BitFn $ fromIntegral . popCount)})
   , (("comp", ArFixed 1), defaultFun{fexec = FnFn (BitFn complement)})
   , (("fact", ArFixed 1), defaultFun{fexec = FnFn (BitFn prod)})
+  , (("term", ArFixed 1), defaultFun{fexec = FnFn (BitFn summ)})
   , (("not", ArFixed 1), defaultFun{params = ["x"], fexec = ExFn (Call "if" [Id "x", unitlessZero, unitlessOne])})
   , (("isprime", ArFixed 1), defaultFun{fexec = FnFn (BitFn isprime)})
   , (("prime", ArFixed 1), defaultFun{fexec = FnFn (BitFn prime)})
@@ -224,6 +225,9 @@ turboLog a b = toRational <$> logBase (fromRational <$> a :: Complex Precise) (f
 
 prod :: Integer -> Integer
 prod = product . enumFromTo 1
+
+summ :: Integer -> Integer
+summ = sum . enumFromTo 1
 
 opMap :: OpMap
 opMap = operators <> unaryOperators
