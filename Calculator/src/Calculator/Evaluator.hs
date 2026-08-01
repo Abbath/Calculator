@@ -55,8 +55,10 @@ import Calculator.Types (
   gen,
   imagValue,
   isOp,
+  last_args,
   maps,
   numToText,
+  opIn,
   opmap,
   prec,
   preprocess,
@@ -148,7 +150,7 @@ localize s ex = goInside (localize s) ex
 
 catchVar :: (VarMap, FunMap) -> Expr -> Either Text Expr
 catchVar (vm, fm) ex = case ex of
-  CallF fx op [Id i, e] | op `elem` ([":=", "::="] :: [Text]) -> st e >>= \ne -> pure $ CallF fx op [Id i, ne]
+  CallF fx op [Id i, e] | op `opIn` [":=", "::="] -> st e >>= \ne -> pure $ CallF fx op [Id i, ne]
   Id i | T.head i == '#' -> pure ex
   Id i ->
     let a = M.lookup i vm :: Maybe Value
@@ -205,8 +207,8 @@ pattern Atan2 e1 e2 = Call "atan" [CallF InFixity "/" [e1, e2]]
 checkUnitCompatibility :: Text -> Value -> Value -> Bool
 checkUnitCompatibility _ (Value _ Unitless) _ = True
 checkUnitCompatibility _ _ (Value _ Unitless) = True
-checkUnitCompatibility op v1 v2 | op `elem` id @[Text] ["+", "-"] && unit v1 == unit v2 = True
-checkUnitCompatibility op v1 v2 | op `elem` id @[Text] ["*", "/"] = True
+checkUnitCompatibility op v1 v2 | op `opIn` ["+", "-"] && unit v1 == unit v2 = True
+checkUnitCompatibility op v1 v2 | op `opIn` ["*", "/"] = True
 checkUnitCompatibility op v1 v2 = False
 
 applyPrecision :: Value -> Result Value
@@ -352,7 +354,7 @@ evalS ex = case ex of
   Call "prat" [e] -> evm e >>= throwMsg . showFraction . realValue
   Call "smp" [e] -> evm e >>= throwMsg . showMultipleOfPi
   Call "smd" [e] -> evm e >>= throwMsg . showDegMinSec
-  Call f [e] | f `elem` (["real", "imag", "conj"] :: [Text]) -> do
+  Call f [e] | f `opIn` ["real", "imag", "conj"] -> do
     t1 <- evm e
     let (Value t2 u) = t1
     case f of
@@ -362,7 +364,7 @@ evalS ex = case ex of
       _ -> throwErr $ "No such complex function: " <> f
   CallIn "^" [Call "neg" [x], y] -> evm $ Call "neg" [CallIn "^" [x, y]]
   CallIn "^" [CallIn "*" [n@Number{}, x@Id{}], y] -> evm $ CallIn "*" [n, CallIn "^" [x, y]]
-  Call f [e] | f `elem` (["hex", "oct", "bin"] :: [Text]) -> do
+  Call f [e] | f `opIn` ["hex", "oct", "bin"] -> do
     t1 <- evm e
     let
       (function, p) = case f of
@@ -447,7 +449,7 @@ evalS ex = case ex of
       Just ch -> do
         maps . chairmap . at a ?= sitChair xs val ch
         throwMsg "Sitting chair"
-  CallIn op [Id x, y] | op `elem` id @[Text] [":=", "::="] -> do
+  CallIn op [Id x, y] | op `opIn` [":=", "::="] -> do
     if "c." `T.isPrefixOf` x || M.member x defVar
       then throwErr "I'm afraid you can't do that."
       else do
@@ -462,8 +464,8 @@ evalS ex = case ex of
             )
           ?= n
         pure n
-  CallIn op [Id x, y] | op `elem` id @[Text] ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] -> evm (Asgn [x] [CallIn (T.init op) [Id x, y]])
-  CallIn op [x, y] | op `elem` id @[Text] ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] -> throwErr $ "Cannot assign to an expression with: " <> op
+  CallIn op [Id x, y] | op `opIn` ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&="] -> evm (Asgn [x] [CallIn (T.init op) [Id x, y]])
+  CallIn op [x, y] | op `opIn` ["+=", "-=", "*=", "/=", "%=", "^=", "|=", "&=", ":=", "::="] -> throwErr $ "Cannot assign to an expression " <> showT x <> " with: " <> op
   CallF fixity op [x] | M.member (op, Ar1, fixity) unaryOperators && fixity `elem` ([PreFixity, SufFixity] :: [CallFixity]) -> evalBuiltinOp1 (op, Ar1, fixity) x
   CallIn op [x, y] | M.member (op, Ar2, InFixity) operators -> evalBuiltinOp2 (op, Ar2, InFixity) x y
   CallF fixity op [x] | isOp op && fixity `elem` ([PreFixity, SufFixity] :: [CallFixity]) -> do
@@ -519,7 +521,9 @@ evalS ex = case ex of
   Call name e -> do
     mps <- use maps
     case findFunction name (length e) (mps ^. funmap) of
-      Just Fun{params = al, fexec = (ExFn expr)} -> either throwErr evm $ substitute (("#v.n", unitlessNumber . fromIntegral . length $ e) : turboZip al e) expr
+      Just Fun{params = al, fexec = (ExFn expr)} -> do
+        last_args .= Just e
+        either throwErr evm $ substitute (("#v.n", unitlessNumber . fromIntegral . length $ e) : turboZip al e) expr
       Nothing -> case name of
         x | T.head x == '#' -> throwErr $ "Expression instead of a function name: " <> T.tail x <> "/" <> showT (length e)
         _ ->
@@ -533,6 +537,18 @@ evalS ex = case ex of
            in throwErr $ "No such function: " <> name <> "/" <> showT (length e) <> wat <> wnt
       _ -> throwErr $ "Suspicious function: " <> name
   CallF _ _ _ -> throwErr "Wrong call"
+  Id s | "#v." `T.isPrefixOf` s -> do
+    let nm = T.drop 3 s
+    (Value i _) <- extractId nm >>= maybe (throwErr $ "No such variable : " <> nm) pure
+    args <- use last_args
+    case args of
+      Nothing -> throwErr "No args saved"
+      Just es -> do
+        let len = length es
+        let n = fromInteger . numerator . realPart $ i
+        if n >= len
+          then throwErr "Too few arguments"
+          else evm $ es !! n
   Id "m.r" -> do
     rgen <- use gen
     let (randomNumber, newGen) = randomR (0.0, 1.0 :: Precise) rgen
@@ -634,8 +650,7 @@ evalS ex = case ex of
       then pure . toRational $ op (numerator (realValue n)) (numerator (realValue n1))
       else throwErr "Cannot perform bitwise operator on a rational"
   evm x = do
-    v <- evalS x
-    let (Value r u) = v
+    (Value r u) <- evalS x
     if abs (realPart r) > tooBig || abs (imagPart r) > tooBig
       then throwErr "Too much!"
       else pure $ Value r u

@@ -20,6 +20,7 @@ module Calculator.Types (
   exprToString,
   unTOp,
   isOp,
+  opIn,
   preprocess,
   ListTuple,
   Fun (..),
@@ -82,6 +83,7 @@ module Calculator.Types (
   ChLit (..),
   Internal,
   CallFixity (..),
+  last_args,
 )
 where
 
@@ -573,6 +575,9 @@ opSymbols = "+-/*%^$!~&|=><.:?"
 isOp :: Text -> Bool
 isOp = T.all (`elem` opSymbols)
 
+opIn :: Text -> [Text] -> Bool
+opIn t ts = t `elem` ts
+
 unTOp :: Token -> Text
 unTOp (TOp op) = op
 unTOp _ = error "Not a TOp"
@@ -686,6 +691,6 @@ zipFormat = go T.empty
       formatted <- showComplexBase b cr
       go (acc <> formatted) fs rs
 
-data EvalState = EvalState {_maps :: Maps, _gen :: StdGen, _prec :: Int} deriving (Show)
+data EvalState = EvalState {_maps :: Maps, _gen :: StdGen, _prec :: Int, _last_args :: Maybe [Expr]} deriving (Show)
 
 makeLenses ''EvalState

@@ -63,7 +63,7 @@ handleAction (Reply msg) model =
       either
         Prelude.id
         (first (MsgMsg . showValue))
-        (let (EvalState mps rgen pr) = getMaps model in parseEval (EvalState mps rgen pr) msg)
+        (let (EvalState mps rgen pr la) = getMaps model in parseEval (EvalState mps rgen pr la) msg)
 
 -- | Run bot with a given 'Telegram.Token'.
 run :: Telegram.Token -> IO ()

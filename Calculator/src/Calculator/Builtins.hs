@@ -315,7 +315,7 @@ defaultMaps :: Maps
 defaultMaps = Maps defVar funMap opMap M.empty
 
 defaultEvalState :: EvalState
-defaultEvalState = EvalState defaultMaps (mkStdGen 0) 16
+defaultEvalState = EvalState defaultMaps (mkStdGen 0) 16 Nothing
 
 getPrecedences :: OpMap -> Map (Text, OpArity, CallFixity) Int
 getPrecedences = M.fromList . map (second precedence) . M.toList

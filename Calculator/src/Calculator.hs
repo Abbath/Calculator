@@ -137,7 +137,7 @@ loop mps backup = do
       flip S.evalStateT [] $
         runInputT
           (replSettings{historyFile = Just (hd <> "/.mycalchist")})
-          (loop' (EvalState mps g 16) backup)
+          (loop' (EvalState mps g 16 Nothing) backup)
   case x of
     Left (CE.ErrorCall s) -> do
       putStrLn s
@@ -157,7 +157,7 @@ loop mps backup = do
       Just x -> handleInterrupt (outputStrLn "Cancelled." >> loop' es mmaps) . withInterrupt $ do
         let y = parseEval es (TS.pack x)
         case y of
-          Left (err, EvalState m ng pr) -> do
+          Left (err, EvalState m ng pr la) -> do
             let m' = removeLocals m
             liftIO $ writeIORef mmaps m
             case err of
@@ -166,20 +166,20 @@ loop mps backup = do
                 loop' nes mmaps
               MsgMsg msg -> do
                 liftIO . TSIO.putStrLn $ msg
-                loop' (EvalState m' ng pr) mmaps
+                loop' (EvalState m' ng pr la) mmaps
               ErrMsg emsg -> do
                 liftIO . TSIO.putStrLn $ "Error: " <> emsg
-                loop' (EvalState m' ng pr) mmaps
-          Right (r, EvalState m ng pr) -> do
+                loop' (EvalState m' ng pr la) mmaps
+          Right (r, EvalState m ng pr la) -> do
             let m' = removeLocals m
             liftIO $ writeIORef mmaps m
             liftIO . TSIO.putStrLn . showValue $ r
-            loop' (EvalState (m' & varmap %~ M.insert "_" r) ng pr) mmaps
+            loop' (EvalState (m' & varmap %~ M.insert "_" r) ng pr la) mmaps
 
 evalString :: String -> IO ()
 evalString ex = do
   g <- initStdGen
-  case parseEval (EvalState defaultMaps g 16) (TS.pack ex) of
+  case parseEval (EvalState defaultMaps g 16 Nothing) (TS.pack ex) of
     Left (err, _) -> TSIO.putStrLn $ case err of
       MsgMsg t -> t
       ErrMsg e -> "Error: " <> e
@@ -190,7 +190,7 @@ interpret :: FilePath -> Maps -> IO EvalState
 interpret path mps = do
   g <- initStdGen
   source <- TS.lines <$> TSIO.readFile path
-  x <- CE.try $ flip S.evalStateT [] $ loop' source (EvalState mps g 16)
+  x <- CE.try $ flip S.evalStateT [] $ loop' source (EvalState mps g 16 Nothing)
   case x of
     Left (CE.ErrorCall s) -> do
       putStrLn s
@@ -212,9 +212,9 @@ interpret path mps = do
               ErrMsg emsg -> "Error: " <> emsg
               _ -> "Can't do"
             loop' ls nes
-          Right (r, EvalState m ng pr) -> do
+          Right (r, EvalState m ng pr la) -> do
             liftIO . TSIO.putStrLn $ showValue r
-            loop' ls (EvalState (m & varmap %~ M.insert "_" r) ng pr)
+            loop' ls (EvalState (m & varmap %~ M.insert "_" r) ng pr la)
 
 data CompileMode = CompStore | CompLoad | CompRead deriving (Show)
 
@@ -374,9 +374,9 @@ webLoop port = do
           let lg = fromMaybe (error "Cannot decode log") (decode (B.fromStrict rest) :: Maybe [(TS.Text, TS.Text)])
           let t = parseString fs ms
           g1 <- liftIO $ readIORef ref
-          let res = evalExprS t (EvalState ms g1 16)
+          let res = evalExprS t (EvalState ms g1 16 Nothing)
           let txt =
-                let (ress, EvalState mps ng _) =
+                let (ress, EvalState mps ng _ _) =
                       either
                         Prelude.id
                         (\(r, mg) -> (MsgMsg . showValue $ r, (maps . varmap %~ M.insert "_" r) mg))
