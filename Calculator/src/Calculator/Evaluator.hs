@@ -84,6 +84,7 @@ import Control.Monad (zipWithM)
 import Control.Monad.Except (
   ExceptT,
   MonadError (throwError),
+  liftEither,
   runExceptT,
  )
 import Control.Monad.State (
@@ -91,6 +92,7 @@ import Control.Monad.State (
   State,
   evalState,
  )
+import Data.Bifunctor qualified as BF
 import Data.Complex (Complex (..), conjugate, imagPart, magnitude, realPart)
 import Data.Either (fromRight)
 import Data.Map.Strict qualified as M
@@ -154,9 +156,9 @@ catchVar (vm, fm) ex = case ex of
   Id i | T.head i == '#' -> pure ex
   Id i ->
     let a = M.lookup i vm :: Maybe Value
-     in case a of
-          Just n -> pure $ randomCheck (value n, unit n) i
-          Nothing -> pure $ Id i
+     in pure case a of
+          Just n -> randomCheck (value n, unit n) i
+          Nothing -> Id i
    where
     randomCheck (re :+ im, u) i_ = if i_ == "m.r" then Id "m.r" else Number re im u
   e -> goInside st e
@@ -167,6 +169,9 @@ newtype Cmd = Cmd Text deriving (Show, Eq)
 data MessageType = ErrMsg Text | MsgMsg Text | CmdMsg Cmd deriving (Show, Eq)
 
 type Result = ExceptT MessageType (State EvalState)
+
+liftErr :: Either Text a -> Result a
+liftErr = liftEither . BF.first ErrMsg
 
 throwErr :: (MonadError MessageType m) => Text -> m a
 throwErr = throwError . ErrMsg
@@ -223,8 +228,7 @@ evalS :: Expr -> Result Value
 evalS ex = case ex of
   Debug e -> throwMsg . showT . preprocess $ e
   Asgn [s] [ChairLit e] -> do
-    es <- evalChairLit e
-    maps . chairmap . at s ?= M.fromList es
+    evalChairLit e >>= (\es -> maps . chairmap . at s ?= M.fromList es)
     throwMsg "New chair"
   Asgn [s] _ | M.member s defVar -> throwErr $ "Cannot change a constant value: " <> s
   Asgn [f] [e@(CallF InFixity "/" [Id g, Number n _ _])] -> do
@@ -239,8 +243,7 @@ evalS ex = case ex of
   Asgn [s] [Lambda a e] -> evm (UDF s a e)
   Asgn ss [Call "ret" es] -> zipWithM createVar ss es >>= throwMsgConcat
   Asgn ss@(s : _) [call@(Call f ps)] | M.member (f, ArFixed . length $ ps) functions -> do
-    let fun = functions M.! (f, ArFixed . length $ ps)
-    case fexec fun of
+    case fexec $ functions M.! (f, ArFixed . length $ ps) of
       FnFn (MultiFn fn) -> do
         args <- map (\(r :+ i) -> Number r i Unitless) . fn . map value <$> mapM evm ps
         zipWithM createVar ss args >>= throwMsgConcat
@@ -256,9 +259,7 @@ evalS ex = case ex of
           Right e2 -> createVar s e2 >>= throwMsg
       _ -> zipWithM createVar ss whole >>= throwMsgConcat
   Asgn ss es -> zipWithM createVar ss es >>= throwMsgConcat
-  UDF f [s] (Call "df" [e, Id x]) | s == x -> do
-    let de = derivative e (Id x)
-    either throwErr (evm . UDF f [s]) de
+  UDF f [s] (Call "df" [e, Id x]) | s == x -> pure (derivative e $ Id x) >>= either throwErr (evm . UDF f [s])
   UDF f s e -> do
     mps <- use maps
     let newe = localize s e >>= catchVar (mps ^. varmap, mps ^. funmap)
@@ -299,12 +300,11 @@ evalS ex = case ex of
   Undef [Id x, e] -> evm e >>= removeFun x . fromInteger . numerator . realPart . value
   Call "prec" [] -> prec .= 16 >> throwMsg "Precision is set to: 16"
   Call "prec" [e] -> do
-    pr <- evm e
-    let num = fromInteger . numerator . realPart . value $ pr
+    num <- evm e >>= pure . fromInteger . numerator . realPart . value
     if num >= -1 && num <= 85
       then do
         prec .= num
-        throwMsg $ "Precision is set to: " <> showValue pr
+        throwMsg $ "Precision is set to: " <> showT num
       else
         throwErr "Precision should be between 0 and 85"
   CallF fx f [Id x]
@@ -324,14 +324,10 @@ evalS ex = case ex of
       _ -> evm e1
   Call "str" [e] -> evm e >>= (either throwErr (throwMsg . \s -> "\"" <> s <> "\"") . numToText)
   Call "fmt" (Number n ni u : es) -> do
-    let format = numToText (Value (n :+ ni) u) >>= extractFormat
-    case format of
-      Left err -> throwErr err
-      Right fs -> do
-        rs <- traverse evm es
-        case zipFormat fs rs of
-          Left err -> throwErr err
-          Right t -> pure . flip Value u . (:+ 0) . (% 1) . textToNum $ t
+    fs <- liftErr $ (numToText (Value (n :+ ni) u) >>= extractFormat)
+    rs <- traverse evm es
+    t <- liftErr $ zipFormat fs rs
+    pure . flip Value u . (:+ 0) . (% 1) . textToNum $ t
   Call "generate" [e] -> throwMsg . T.init . T.concat . map ((<> "\n") . showT) . generateTac $ e
   Call "id" [x] -> evm x
   Call "df" [a, x] -> either throwErr (throwMsg . exprToString . preprocess) $ derivative a x
@@ -375,21 +371,20 @@ evalS ex = case ex of
         _ -> (showInt, ' ')
       rval = realValue t1
       render t = T.pack . ((if signum t == 1 then "" else "-") <>) . (['0', p] <>) . (`function` "") . abs $ t
-    if isWhole . value $ t1
-      then throwMsg . render . numerator . realValue $ t1
-      else throwMsg $ (render . numerator $ rval) <> "/" <> (render . denominator $ rval)
+    throwMsg
+      if isWhole . value $ t1
+        then render . numerator . realValue $ t1
+        else (render . numerator $ rval) <> "/" <> (render . denominator $ rval)
   CallIn ":" [a, b] -> evm (Call "if" [a, b, b])
   CallIn op1 [x, s@(CallIn op2 [y, z])] | isOp op1 && isOp op2 -> do
     mps <- use maps
     let pr = getPrecedences (mps ^. opmap) <> getFakePrecedences (mps ^. funmap)
-    let a = M.lookup (op1, Ar2, InFixity) pr
-    let b = M.lookup (op2, Ar2, InFixity) pr
+    let (a, b) = let search = \op -> M.lookup (op, Ar2, InFixity) pr in (search op1, search op2)
     if a == b
       then case a of
         Nothing -> throwErr $ "No such operators: " <> op1 <> " " <> op2
         Just _ -> do
-          let Op{associativity = asc1} = (mps ^. opmap) M.! (op1, Ar2, InFixity)
-          let Op{associativity = asc2} = (mps ^. opmap) M.! (op2, Ar2, InFixity)
+          let (Op{associativity = asc1}, Op{associativity = asc2}) = let search = \op -> (mps ^. opmap) M.! (op, Ar2, InFixity) in (search op1, search op2)
           case (asc1, asc2) of
             (L, L) -> evm $ CallIn op2 [CallIn op1 [x, y], z]
             (R, R) -> evm s >>= evm . (\yy -> CallIn op1 [x, yy]) . \c -> Number (realValue c) (imagValue c) (unit c)
@@ -401,9 +396,11 @@ evalS ex = case ex of
     if value n == 0 :+ 0
       then throwErr $ "Division by zero: " <> exprToString oc
       else
-        if op == "/"
-          then pure . unitlessValue $ value n1 `divide` value n
-          else pure . unitlessValue $ (:+ 0) . toRational $ (toInteger . numerator . realValue $ n1) `div` (toInteger . numerator . realValue $ n)
+        pure $
+          unitlessValue
+            if op == "/"
+              then value n1 `divide` value n
+              else let tnr = toInteger . numerator . realValue in (:+ 0) . toRational $ tnr n1 `div` tnr n
   oc@(CallIn "%" [x, y]) -> do
     n <- evm y
     n1 <- evm x
@@ -489,15 +486,11 @@ evalS ex = case ex of
       _ -> throwErr $ "Suspicious binary operator: " <> op
   Call "if" [a, b, c] -> do
     cond <- evm a
-    if value cond /= 0 :+ 0
-      then evm b
-      else evm c
+    evm if value cond /= 0 :+ 0 then b else c
   Call "loop" [i, c, a] -> evm i >> evm (Call "loop" [c, a])
   Call "loop" [c, a] -> do
     n <- evm c
-    if value n == 0 :+ 0
-      then evm a
-      else evm $ Call "loop" [c, a]
+    evm if value n == 0 :+ 0 then a else Call "loop" [c, a]
   Call "neg" [x] -> evm $ CallIn "*" [Number (-1) 0 Unitless, x]
   Call "ret" (e : _) -> evm e
   Call f ps | M.member (f, ArFixed . length $ ps) functions -> do
@@ -559,9 +552,7 @@ evalS ex = case ex of
   ChairLit _ -> pure $ unitlessValue (0 :+ 0)
   ChairSit a [] -> do
     val <- use $ maps . chairmap . at a
-    case val of
-      Nothing -> throwErr "No such chair!"
-      Just ch -> throwMsg $ showChair ch
+    maybe (throwErr "No such chair!") (throwMsg . showChair) val
   ChairSit a xs -> do
     val <- use $ maps . chairmap . at a
     case val of
@@ -584,14 +575,10 @@ evalS ex = case ex of
     vs <- mapM evm m
     pure [("a", ForkVal (V.fromList vs))]
   extractId s = do
-    chairs <- use $ maps . chairmap
-    vars <- use $ maps . varmap
+    (chairs, vars) <- (,) <$> (use $ maps . chairmap) <*> (use $ maps . varmap)
     if M.member s chairs
-      then
-        throwMsg $ showChair (chairs M.! s)
-      else do
-        let val = asum ([M.lookup ("_." <> s) vars, M.lookup s vars] :: [Maybe Value])
-        pure val
+      then throwMsg . showChair $ chairs M.! s
+      else pure $ asum ([M.lookup ("_." <> s) vars, M.lookup s vars] :: [Maybe Value])
   createVar f e = do
     r <- evm e
     maps . varmap . at f ?= r
